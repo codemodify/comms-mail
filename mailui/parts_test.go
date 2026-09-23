@@ -435,7 +435,7 @@ func TestStoreEmitsChangeEventsForBackgroundWork(t *testing.T) {
 
 func TestDaemonBroadcastsChangeOnBackgroundSync(t *testing.T) {
 	dir := t.TempDir()
-	sock := filepath.Join(dir, "mailclientd.sock")
+	sock := filepath.Join(dir, "comms-maild.sock")
 	store := mailcore.NewMemoryStore(mailcore.DemoNow)
 	ctx, cancel := contextForTest(t)
 	defer cancel()
@@ -515,7 +515,7 @@ func TestRefreshCoalescerCollapsesBursts(t *testing.T) {
 
 func TestUnreadAllIsOneRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	sock := filepath.Join(dir, "mailclientd.sock")
+	sock := filepath.Join(dir, "comms-maild.sock")
 	ctx, cancel := contextForTest(t)
 	defer cancel()
 	done := make(chan error, 1)

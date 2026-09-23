@@ -3,7 +3,7 @@ package mailcore
 import "encoding/json"
 
 // JSON-RPC 2.0 over a Unix socket, one JSON object per line (NDJSON).
-// mailclientd is the server; mailclientui is a client. Notifications
+// comms-maild is the server; comms-mail is a client. Notifications
 // (events) have no "id".
 //
 // Methods:

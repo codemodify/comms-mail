@@ -47,7 +47,7 @@ func MessageSourceApp(win *app.Window, msg mailcore.Message, rfc822 string) widg
 		widgets.NewMenu("&Help",
 			widgets.Item("About Message Source", func() {
 				widgets.Info(win.Content(), "Message Source",
-					"Raw RFC822 as stored by mailclientd (IMAP FETCH / .eml).\n"+
+					"Raw RFC822 as stored by comms-maild (IMAP FETCH / .eml).\n"+
 						"JetBrains Mono, read-only, selectable.",
 					nil)
 			}),

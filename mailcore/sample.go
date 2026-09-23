@@ -316,7 +316,7 @@ This is the uitoolkit Mail dogfood — Thunderbird’s classic 3-pane chrome
 on a retained scene (UITK_SCENE=auto), not a Mozilla protocol clone.
 
 What is real in v0.10
-  • mailclientd: MemoryStore demo or IMAP+SMTP with an on-disk cache
+  • comms-maild: MemoryStore demo or IMAP+SMTP with an on-disk cache
   • OAuth (Google / Microsoft) + typed password, VIP, smart folders, threading
   • Offline outbox, IDLE/QRESYNC push, text-only Message tab
 

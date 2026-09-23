@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// IMAP environment (mailclientd only — the UI never dials IMAP):
+// IMAP environment (comms-maild only — the UI never dials IMAP):
 //
 //	UITK_MAIL=imap
 //	UITK_MAIL_HOST=imap.example.com:993
@@ -27,7 +27,7 @@ import (
 // production-complete. Missing config returns a clear Health() error and
 // MemoryStore is available only when UITK_MAIL=memory.
 
-// IMAPStore is a single-account IMAP backend for mailclientd.
+// IMAPStore is a single-account IMAP backend for comms-maild.
 type IMAPStore struct {
 	mu       sync.Mutex
 	host     string

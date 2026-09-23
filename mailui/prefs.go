@@ -32,7 +32,7 @@ func OpenFilters(a *app.Application, cli *mailcore.Client) (*app.Window, error) 
 // PrefsApp is tabbed: Accounts and Tags (sidebar Tags / filter pins share this model).
 func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	st, _ := cli.Status()
-	status := widgets.NewStatusBar("mailclientd settings.", st.Backend, "v"+uitoolkit.Version)
+	status := widgets.NewStatusBar("comms-maild settings.", st.Backend, "v"+uitoolkit.Version)
 
 	accountsTab := prefsAccounts(a, win, cli, st, onChange)
 	tagsTab := prefsTags(a, win, cli, onChange)

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Client is the mailclientui side of the Unix JSON-RPC. No IMAP here.
+// Client is the comms-mail side of the Unix JSON-RPC. No IMAP here.
 type Client struct {
 	Socket string
 
@@ -28,14 +28,14 @@ type Client struct {
 	bodies map[MessageID]Message
 }
 
-// Dial connects to mailclientd at socket.
+// Dial connects to comms-maild at socket.
 func Dial(socket string) (*Client, error) {
 	if socket == "" {
 		socket = DefaultSocket()
 	}
 	c, err := net.DialTimeout("unix", socket, 2*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("mailclientui: dial %s: %w (is mailclientd running?)", socket, err)
+		return nil, fmt.Errorf("comms-mail: dial %s: %w (is comms-maild running?)", socket, err)
 	}
 	cli := &Client{
 		Socket:  socket,
@@ -60,7 +60,7 @@ func DialWait(socket string, wait time.Duration) (*Client, error) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	if last == nil {
-		last = fmt.Errorf("mailclientui: timeout dialing %s", socket)
+		last = fmt.Errorf("comms-mail: timeout dialing %s", socket)
 	}
 	return nil, last
 }
@@ -141,7 +141,7 @@ func (c *Client) failPending() {
 	c.mu.Unlock()
 	for _, ch := range pending {
 		select {
-		case ch <- Response{Error: &RPCError{Code: -32000, Message: "mailclientd: connection closed"}}:
+		case ch <- Response{Error: &RPCError{Code: -32000, Message: "comms-maild: connection closed"}}:
 		default:
 		}
 	}
@@ -208,7 +208,7 @@ func (c *Client) call(method string, params any, result any) error {
 	c.mu.Lock()
 	if c.conn == nil {
 		c.mu.Unlock()
-		return fmt.Errorf("mailclientui: not connected")
+		return fmt.Errorf("comms-mail: not connected")
 	}
 	c.pending[id] = ch
 	if err := writeJSON(c.w, req); err != nil {
@@ -233,7 +233,7 @@ func (c *Client) call(method string, params any, result any) error {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return fmt.Errorf("mailclientui: timeout on %s", method)
+		return fmt.Errorf("comms-mail: timeout on %s", method)
 	}
 }
 func (c *Client) Ping() error {

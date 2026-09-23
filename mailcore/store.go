@@ -269,7 +269,7 @@ type SearchQuery struct {
 	Filter    Filter
 }
 
-// DaemonStatus is what mailclientd reports on status.get.
+// DaemonStatus is what comms-maild reports on status.get.
 type DaemonStatus struct {
 	Backend  string `json:"backend"` // "memory" or "imap"
 	Socket   string `json:"socket"`
@@ -279,8 +279,8 @@ type DaemonStatus struct {
 	Outbox   int    `json:"outbox,omitempty"`
 }
 
-// Store is the mailclientd backend. LocalStore is the default (IMAP+SMTP).
-// MemoryStore is UITK_MAIL=memory only. mailclientui never calls this.
+// Store is the comms-maild backend. LocalStore is the default (IMAP+SMTP).
+// MemoryStore is UITK_MAIL=memory only. comms-mail never calls this.
 //
 // IMAP mapping (IMAPStore skeleton, UITK_MAIL=imap):
 //

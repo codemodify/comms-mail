@@ -14,7 +14,7 @@ import (
 	"unicode"
 )
 
-// imapClient is a production-minded IMAP4rev1 session (mailclientd only).
+// imapClient is a production-minded IMAP4rev1 session (comms-maild only).
 type imapClient struct {
 	mu       sync.Mutex
 	cfg      ServerConfig

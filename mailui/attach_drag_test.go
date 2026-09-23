@@ -17,7 +17,7 @@ import (
 // A drag of an attachment offers the file it is going to write, and the
 // bytes come when the target asks for them.
 //
-// The fetch used to run at the press: a mailclientd round trip for a part
+// The fetch used to run at the press: a comms-maild round trip for a part
 // the store had not cached froze the window between the press and the
 // drag taking hold. The path is all the drag needs to start, so it starts
 // with that and the fetch runs behind it.

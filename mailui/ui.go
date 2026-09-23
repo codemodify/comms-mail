@@ -57,11 +57,11 @@ type AppOptions struct {
 	Density       style.Density
 }
 
-// MailApp starts an in-process mailclientd (MemoryStore) and the UI client.
+// MailApp starts an in-process comms-maild (MemoryStore) and the UI client.
 func MailApp(a *app.Application, win *app.Window) widget.Component {
 	sock, _, err := mailcore.StartDemo(context.Background())
 	if err != nil {
-		return widgets.NewLabel("mailclientd: " + err.Error())
+		return widgets.NewLabel("comms-maild: " + err.Error())
 	}
 	cli, err := mailcore.DialWait(sock, 2*time.Second)
 	if err != nil {
@@ -70,7 +70,7 @@ func MailApp(a *app.Application, win *app.Window) widget.Component {
 	return Open(a, win, cli, AppOptions{ShowFilter: false})
 }
 
-// Open builds the Mail chrome against a mailclientd Client (no Store / IMAP).
+// Open builds the Mail chrome against a comms-maild Client (no Store / IMAP).
 func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOptions) widget.Component {
 	s := newSession(a, win, cli, opts)
 	root := s.build()
@@ -1595,7 +1595,7 @@ func filterPinLabel(name string, on bool) string {
 func (s *session) about() {
 	widgets.Info(s.win.Content(), "About Mail",
 		"Mail — Thunderbird chrome on uitoolkit "+uitoolkit.Version+".\n"+
-			"mailclientui talks JSON-RPC to mailclientd (Unix socket).\n"+
+			"comms-mail talks JSON-RPC to comms-maild (Unix socket).\n"+
 			"No IMAP/SMTP in this process. Empty until you add an account.\n"+
 			"MemoryStore dogfood: UITK_MAIL=memory.\n\n"+
 			"Message view is plain text only (HTML is stripped).\n"+
@@ -1963,7 +1963,7 @@ func (s *session) attachmentBytes(m mailcore.Message, i int) ([]byte, error) {
 	return s.partBytes(m.ID, pid, name)
 }
 
-// partBytes reads one part's bytes: what mailclientd hands back, or the
+// partBytes reads one part's bytes: what comms-maild hands back, or the
 // file it points at for a part it has already spilled to disk.
 //
 // It takes the part's id rather than an index, so a caller that means to
@@ -2115,7 +2115,7 @@ func (s *session) accounts() []mailcore.Account {
 
 func (s *session) backendLabel() string {
 	if s.backend == "" {
-		return "mailclientd"
+		return "comms-maild"
 	}
 	return s.backend
 }
@@ -2214,7 +2214,7 @@ func (s *session) refreshAccount() {
 	unread, _ := s.cli.UnreadTotal()
 	st, _ := s.cli.Status()
 	s.acctTitle.SetText(name)
-	s.acctBody.SetText(fmt.Sprintf("%s\n\nProtocol: %s\nIdentity for this window.\nUnread (all folders): %d\nDaemon: %s  ·  %s\nSocket: %s\n\nFetch, Write, or open Inbox — retrieve stays in mailclientd.",
+	s.acctBody.SetText(fmt.Sprintf("%s\n\nProtocol: %s\nIdentity for this window.\nUnread (all folders): %d\nDaemon: %s  ·  %s\nSocket: %s\n\nFetch, Write, or open Inbox — retrieve stays in comms-maild.",
 		addr, proto, unread, st.Backend, s.backendLabel(), s.cli.Socket))
 }
 

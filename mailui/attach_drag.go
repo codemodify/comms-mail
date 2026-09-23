@@ -20,7 +20,7 @@ import (
 // written out to a scratch file. Where that file will be is settled at
 // the press — it is a name and a directory, and costs nothing — but the
 // bytes are fetched off the UI goroutine while the drag is already
-// running, because a mailclientd round trip for a part the store has not
+// running, because a comms-maild round trip for a part the store has not
 // cached can take seconds, and doing it at the press froze the window
 // between the press and the drag taking hold.
 //

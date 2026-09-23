@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// pop3Client is a small RFC 1939 session (mailclientd only).
+// pop3Client is a small RFC 1939 session (comms-maild only).
 // Enough for inbox retrieve (USER/PASS, UIDL, RETR). Gaps: no TOP-only
 // preview, no server-side folders/flags, leave-on-server (no DELE).
 type pop3Client struct {

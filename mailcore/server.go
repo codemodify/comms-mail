@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Server is mailclientd: one Store, many Unix-socket JSON-RPC clients.
+// Server is comms-maild: one Store, many Unix-socket JSON-RPC clients.
 type Server struct {
 	Store  Store
 	Socket string

@@ -23,13 +23,13 @@ func TestDisposableMailSocket(t *testing.T) {
 	if IsDisposableMailSocket("") {
 		t.Fatal("empty")
 	}
-	if IsDisposableMailSocket("/tmp/mailclientd-1000.sock") {
+	if IsDisposableMailSocket("/tmp/comms-maild-1000.sock") {
 		t.Fatal("uid default socket must not look disposable")
 	}
-	if IsDisposableMailSocket("/run/user/1000/mailclientd.sock") {
+	if IsDisposableMailSocket("/run/user/1000/comms-maild.sock") {
 		t.Fatal("xdg default socket must not look disposable")
 	}
-	ok := filepath.Join("/tmp/mailclientd-abc123", "mailclientd.sock")
+	ok := filepath.Join("/tmp/comms-maild-abc123", "comms-maild.sock")
 	if !IsDisposableMailSocket(ok) {
 		t.Fatalf("StartDemo path %s", ok)
 	}

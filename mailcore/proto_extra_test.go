@@ -406,7 +406,7 @@ func TestPeerCheckAllowsOwnUID(t *testing.T) {
 
 func TestLockFileIsReleasedOnShutdown(t *testing.T) {
 	dir := t.TempDir()
-	sock := filepath.Join(dir, "mailclientd.sock")
+	sock := filepath.Join(dir, "comms-maild.sock")
 	ctx, cancel := contextForTest(t)
 	done := make(chan error, 1)
 	go func() { done <- ListenAndServe(ctx, sock, NewMemoryStore(DemoNow)) }()

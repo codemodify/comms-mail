@@ -78,15 +78,15 @@ func IsolateTestEnvTB(t envTB) {
 }
 
 // IsDisposableMailSocket reports whether socket was created by StartDemo /
-// StartEmpty (temp dir named mailclientd-*). The user's default daemon
-// socket (XDG_RUNTIME_DIR/mailclientd.sock or /tmp/mailclientd-<uid>.sock)
+// StartEmpty (temp dir named comms-maild-*). The user's default daemon
+// socket (XDG_RUNTIME_DIR/comms-maild.sock or /tmp/comms-maild-<uid>.sock)
 // is not disposable.
 func IsDisposableMailSocket(socket string) bool {
 	if socket == "" {
 		return false
 	}
 	base := filepath.Base(filepath.Dir(socket))
-	return strings.HasPrefix(base, "mailclientd-")
+	return strings.HasPrefix(base, "comms-maild-")
 }
 
 // AssertMemoryBackend refuses anything except the in-memory dogfood store.

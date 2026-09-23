@@ -55,7 +55,7 @@ func listenSocket(socket string) (net.Listener, *socketLock, error) {
 	ln, err := net.Listen("unix", socket)
 	if err != nil {
 		lock.release()
-		return nil, nil, fmt.Errorf("mailclientd: listen %s: %w", socket, err)
+		return nil, nil, fmt.Errorf("comms-maild: listen %s: %w", socket, err)
 	}
 	if err := os.Chmod(socket, 0o600); err != nil {
 		_ = ln.Close()

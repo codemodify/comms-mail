@@ -185,7 +185,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		did := draftID
 		status.Set(0, "Sending…")
 		runAsync(a, func() (any, error) {
-			// Attachments are read here and shipped as bytes: mailclientd
+			// Attachments are read here and shipped as bytes: comms-maild
 			// does not open paths on a client's behalf.
 			files, err := mailcore.ReadAttachments(attachPaths)
 			if err != nil {
@@ -202,7 +202,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 				opts.OnChange()
 			}
 			widgets.Info(win.Content(), "Sent",
-				"Message handed to mailclientd: submitted over SMTP and filed in Sent\n(queued in the Outbox when offline).",
+				"Message handed to comms-maild: submitted over SMTP and filed in Sent\n(queued in the Outbox when offline).",
 				func() { win.Close() })
 		})
 	}
@@ -291,7 +291,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	form.AddRow("Subject", subject)
 	fields := widgets.NewPad(10, form)
 
-	chrome := widgets.NewTitleBar("Write", "compose  ·  mailclientd  ·  v"+uitoolkit.Version)
+	chrome := widgets.NewTitleBar("Write", "compose  ·  comms-maild  ·  v"+uitoolkit.Version)
 	bodyPad := widgets.NewPad(8, body)
 	root := widgets.NewColumn(menubar, tools, chrome, fields, bodyPad, status).WithGap(0)
 	root.AddFlex(bodyPad, 1)

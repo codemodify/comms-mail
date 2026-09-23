@@ -863,7 +863,7 @@ func TestCorruptCacheIsQuarantinedNotOverwritten(t *testing.T) {
 
 func TestDaemonSocketPermissions(t *testing.T) {
 	dir := t.TempDir()
-	sock := filepath.Join(dir, "sub", "mailclientd.sock")
+	sock := filepath.Join(dir, "sub", "comms-maild.sock")
 	ctx, cancel := contextForTest(t)
 	defer cancel()
 	done := make(chan error, 1)
@@ -899,7 +899,7 @@ func TestDaemonSocketPermissions(t *testing.T) {
 
 func TestSecondDaemonCannotStealTheSocket(t *testing.T) {
 	dir := t.TempDir()
-	sock := filepath.Join(dir, "mailclientd.sock")
+	sock := filepath.Join(dir, "comms-maild.sock")
 	ctx, cancel := contextForTest(t)
 	defer cancel()
 	done := make(chan error, 1)

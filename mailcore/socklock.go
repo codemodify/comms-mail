@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-// Socket hardening for mailclientd.
+// Socket hardening for comms-maild.
 //
 // The daemon exposes every account, every message and the send path over
 // this socket with no authentication of its own, so the socket itself is
@@ -37,7 +37,7 @@ func (l *socketLock) release() {
 }
 
 // lockSocket takes the per-socket lock file. An error means another
-// mailclientd is already serving that path.
+// comms-maild is already serving that path.
 func lockSocket(socket string) (*socketLock, error) {
 	path := socket + ".lock"
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
@@ -46,7 +46,7 @@ func lockSocket(socket string) (*socketLock, error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("mailclientd: another daemon is already serving %s (%w)", socket, err)
+		return nil, fmt.Errorf("comms-maild: another daemon is already serving %s (%w)", socket, err)
 	}
 	if err := f.Truncate(0); err == nil {
 		_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
@@ -68,7 +68,7 @@ func prepareSocketDir(socket string) error {
 	}
 	sys, ok := st.Sys().(*syscall.Stat_t)
 	if ok && int(sys.Uid) != os.Getuid() {
-		return fmt.Errorf("mailclientd: socket directory %s is owned by uid %d, not %d", dir, sys.Uid, os.Getuid())
+		return fmt.Errorf("comms-maild: socket directory %s is owned by uid %d, not %d", dir, sys.Uid, os.Getuid())
 	}
 	// Only tighten a directory we own and that is not a shared root such as
 	// /tmp or $XDG_RUNTIME_DIR itself.
@@ -148,7 +148,7 @@ func peerAllowed(conn net.Conn) (bool, error) {
 		return false, credErr
 	}
 	if cred == nil {
-		return false, fmt.Errorf("mailclientd: no peer credentials")
+		return false, fmt.Errorf("comms-maild: no peer credentials")
 	}
 	me := os.Getuid()
 	return int(cred.Uid) == me || cred.Uid == 0, nil

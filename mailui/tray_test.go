@@ -168,7 +168,7 @@ func TestMailTrayNativeNeverPanics(t *testing.T) {
 	// Same options attachTray uses (without a headless Application, which
 	// would force a stub and hide the Plasma GetLayout path).
 	item, err := platform.NewStatusItem(platform.StatusItemOptions{
-		ID:      "mailclientui",
+		ID:      "comms-mail",
 		Title:   "Mail",
 		Tooltip: "Mail",
 		Icon:    app.StatusIconFromTool(style.IconMail, style.DarkLook(), 22),

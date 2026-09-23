@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Env vars for mailclientd / mailclientui.
+// Env vars for comms-maild / comms-mail.
 const (
 	EnvMail = "UITK_MAIL"      // unset: empty LocalStore | memory | imap
 	EnvSock = "UITK_MAIL_SOCK" // Unix socket path
@@ -21,17 +21,17 @@ const (
 	EnvName = "UITK_MAIL_NAME"
 )
 
-// DefaultSocket is the mailclientd listen path.
-// UITK_MAIL_SOCK overrides; else $XDG_RUNTIME_DIR/mailclientd.sock;
-// else /tmp/mailclientd-<uid>.sock.
+// DefaultSocket is the comms-maild listen path.
+// UITK_MAIL_SOCK overrides; else $XDG_RUNTIME_DIR/comms-maild.sock;
+// else /tmp/comms-maild-<uid>.sock.
 func DefaultSocket() string {
 	if p := os.Getenv(EnvSock); p != "" {
 		return p
 	}
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-		return filepath.Join(dir, "mailclientd.sock")
+		return filepath.Join(dir, "comms-maild.sock")
 	}
-	return filepath.Join(os.TempDir(), "mailclientd-"+strconv.Itoa(os.Getuid())+".sock")
+	return filepath.Join(os.TempDir(), "comms-maild-"+strconv.Itoa(os.Getuid())+".sock")
 }
 
 // OpenStore selects the disk+IMAP/POP3 LocalStore, or MemoryStore when asked.
@@ -71,23 +71,23 @@ func OpenStore() (Store, error) {
 	}
 }
 
-// StartDemo runs mailclientd in-process on a temp socket with the seeded
+// StartDemo runs comms-maild in-process on a temp socket with the seeded
 // MemoryStore (screenshots / UITK_MAIL=memory dogfood).
 func StartDemo(ctx context.Context) (socket string, stop func(), err error) {
 	return startStore(ctx, NewDemoStore())
 }
 
-// StartEmpty runs mailclientd with an empty MemoryStore (no demo accounts).
+// StartEmpty runs comms-maild with an empty MemoryStore (no demo accounts).
 func StartEmpty(ctx context.Context) (socket string, stop func(), err error) {
 	return startStore(ctx, NewMemoryStore(time.Time{}))
 }
 
 func startStore(ctx context.Context, store Store) (socket string, stop func(), err error) {
-	dir, err := os.MkdirTemp("", "mailclientd-")
+	dir, err := os.MkdirTemp("", "comms-maild-")
 	if err != nil {
 		return "", nil, err
 	}
-	socket = filepath.Join(dir, "mailclientd.sock")
+	socket = filepath.Join(dir, "comms-maild.sock")
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
@@ -110,7 +110,7 @@ func startStore(ctx context.Context, store Store) (socket string, stop func(), e
 		case err := <-done:
 			_ = os.RemoveAll(dir)
 			if err == nil {
-				err = fmt.Errorf("mailclientd exited before listen")
+				err = fmt.Errorf("comms-maild exited before listen")
 			}
 			cancel()
 			return "", nil, err
@@ -119,5 +119,5 @@ func startStore(ctx context.Context, store Store) (socket string, stop func(), e
 	}
 	cancel()
 	_ = os.RemoveAll(dir)
-	return "", nil, fmt.Errorf("mailclientd: socket not ready")
+	return "", nil, fmt.Errorf("comms-maild: socket not ready")
 }

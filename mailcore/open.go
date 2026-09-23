@@ -7,7 +7,7 @@ import (
 )
 
 // openCachedFile launches the platform opener (xdg-open on Linux) after
-// mailclientd writes an attachment cache file. No-op without a display
+// comms-maild writes an attachment cache file. No-op without a display
 // or when UITK_MAIL_NO_OPEN is set (tests / headless).
 func openCachedFile(path string) {
 	if path == "" || os.Getenv("UITK_MAIL_NO_OPEN") != "" {

@@ -9,7 +9,7 @@ import (
 
 // Off-thread RPC plumbing for the Mail window.
 //
-// Every mailclientd call is a blocking round trip, and a few of them (sync,
+// Every comms-maild call is a blocking round trip, and a few of them (sync,
 // fetch, opening a large attachment) legitimately take minutes. Running them
 // on the UI goroutine froze the window; results now come back through
 // app.Application.Post, which is the toolkit's UI-thread queue.

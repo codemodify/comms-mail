@@ -25,7 +25,7 @@ func (s *session) attachTray() {
 	if s.statusItem() == nil {
 		look := s.app.Look()
 		item, err := s.app.NewStatusItem(platform.StatusItemOptions{
-			ID:         "mailclientui",
+			ID:         "comms-mail",
 			Title:      "Mail",
 			Tooltip:    "Mail",
 			MenuChrome: platform.HostMenu,
@@ -61,7 +61,7 @@ func (s *session) statusItem() platform.StatusItem {
 
 // newMailNotifier makes the window's notifier (a seam for tests).
 var newMailNotifier = func(a *app.Application) mailNotifier {
-	return a.NewNotifier(platform.NotifierOptions{AppName: "Mail", DesktopEntry: "mailclientui"})
+	return a.NewNotifier(platform.NotifierOptions{AppName: "Mail", DesktopEntry: "comms-mail"})
 }
 
 // mailNotifier is what Mail needs of a platform.Notifier.

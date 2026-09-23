@@ -15,10 +15,9 @@ go.work
 go.work.sum
 /vendor/
 
-# Screenshots and headless renders written by the UI's -headless/-screenshot flags
-mail.png
-mail-*.png
-/screenshots/
+# Headless renders written by the -headless flag (docs/screenshots is tracked)
+/mail.png
+/mail-*.png
 
 # Editor / OS noise
 .idea/
