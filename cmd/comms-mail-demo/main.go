@@ -17,7 +17,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/codemodify/comms-mail/mail"
+	"github.com/codemodify/comms-mail/mailcore"
+	"github.com/codemodify/comms-mail/mailui"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/icons"
 	"github.com/codemodify/uitoolkit/platform"
@@ -32,18 +33,22 @@ func main() {
 	flag.Parse()
 
 	if *shot != "" {
-		if err := mail.WriteScreenshots(*shot); err != nil {
+		if err := mailui.WriteScreenshots(*shot); err != nil {
 			log.Fatal(err)
 		}
 		return
 	}
 
-	sock, stop, err := mail.StartDemo(context.Background())
+	// One process, so the in-process daemon can borrow the UI's notifier.
+	// comms-maild leaves this seam nil and links no toolkit code at all.
+	mailcore.DesktopNotifier = mailui.DesktopNotify
+
+	sock, stop, err := mailcore.StartDemo(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer stop()
-	cli, err := mail.DialWait(sock, 2*time.Second)
+	cli, err := mailcore.DialWait(sock, 2*time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,9 +58,9 @@ func main() {
 	if *light {
 		look = style.WithTheme(look, style.ThemeLight)
 	}
-	layout := mail.LayoutVertical
+	layout := mailui.LayoutVertical
 	if *classic {
-		layout = mail.LayoutClassic
+		layout = mailui.LayoutClassic
 	}
 
 	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: *headless, WatchLook: true})
@@ -67,7 +72,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	win.SetContent(mail.Open(a, win, cli, mail.AppOptions{
+	win.SetContent(mailui.Open(a, win, cli, mailui.AppOptions{
 		Light: style.LookAppearance(look).Theme == style.ThemeLight, Layout: layout,
 	}))
 	if *headless {

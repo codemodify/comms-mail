@@ -18,12 +18,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/codemodify/comms-mail/mail"
+	"github.com/codemodify/comms-mail/mailcore"
 )
 
 func main() {
-	sock := mail.DefaultSocket()
-	store, err := mail.OpenStore()
+	sock := mailcore.DefaultSocket()
+	store, err := mailcore.OpenStore()
 	if err != nil && store == nil {
 		log.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func main() {
 
 	fmt.Printf("comms-maild  backend=%s  socket=%s\n", store.Backend(), sock)
 	fmt.Println("JSON-RPC 2.0 NDJSON (socket is mode 0600, same-uid only). Docs: docs/mail.md")
-	if err := mail.ListenAndServe(ctx, sock, store); err != nil {
+	if err := mailcore.ListenAndServe(ctx, sock, store); err != nil {
 		// A lock-file clash means another comms-maild already owns the
 		// socket; saying so beats a silent takeover.
 		log.Fatalf("comms-maild: %v", err)
