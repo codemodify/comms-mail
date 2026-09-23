@@ -1,0 +1,27 @@
+# Compiled binaries
+/comms-mail
+/comms-maild
+/comms-mail-demo
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace / build caches
+go.work
+go.work.sum
+/vendor/
+
+# Screenshots and headless renders written by the UI's -headless/-screenshot flags
+mail.png
+mail-*.png
+/screenshots/
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
