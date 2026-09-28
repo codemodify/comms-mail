@@ -1,6 +1,7 @@
 package mailcore
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -56,6 +57,10 @@ type LocalStore struct {
 	now          time.Time
 	feat         *featureHost
 	pushCancel   func()
+	pushCtx      context.Context
+	// vault holds the passwords and tokens once a passphrase is set
+	// (vault.go): DataDir()/secrets/vault.json.
+	vault *Vault
 
 	// sqlc is mail.db (sqlstore.go); nil only when not even a fresh one
 	// could be created, and the store then runs from memory alone.
@@ -121,6 +126,12 @@ func NewLocalStoreDir(cfg MailConfig, dir string) (*LocalStore, error) {
 	s := &LocalStore{
 		dir: dir, cfg: cfg, clients: map[string]*imapClient{}, fgClients: map[string]*imapClient{}, downSince: map[string]time.Time{},
 		tags: DefaultTags(), nextID: 1, now: time.Now(), feat: newFeatureHost(),
+		vault: OpenVault(filepath.Join(dir, "secrets", "vault.json")),
+	}
+	// TODO(keyring): with the owner's keyring, the vault opens here with no
+	// passphrase asked; until then this does nothing.
+	if s.vault.Exists() && !s.vault.Unlocked() {
+		s.vault.UnlockWithKeyring()
 	}
 	s.loadLocked()
 	for _, a := range cfg.Accounts {
@@ -212,12 +223,36 @@ func (s *LocalStore) PutAccount(in AccountConfig) (Account, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	file, _ := LoadConfig()
-	a = KeepExistingSecrets(a, file.Accounts)
-	if left := LeftBehind(a, file.Accounts); len(left) > 0 {
+	// The saved passwords are in the vault when there is one (the file
+	// has none), else in the file.
+	existing := file.Accounts
+	vault := s.vaultOf()
+	if vault.Exists() {
+		if !vault.Unlocked() {
+			return Account{}, ErrLocked
+		}
+		existing = nil
+		for _, x := range s.cfg.Accounts {
+			existing = append(existing, s.withSecrets(accountKeyID(x), x))
+		}
+	}
+	a = KeepExistingSecrets(a, existing)
+	if left := LeftBehind(a, existing); len(left) > 0 {
 		return Account{}, fmt.Errorf("the server changed, so its saved password was not sent there — enter the password for %s", strings.Join(left, " and "))
 	}
+	if vault.Exists() {
+		id := accountKeyID(a)
+		if err := vault.Update(map[string]string{
+			passSecret(id, "imap"): a.IMAP.Pass,
+			passSecret(id, "pop"):  a.POP.Pass,
+			passSecret(id, "smtp"): a.SMTP.Pass,
+		}); err != nil {
+			return Account{}, err
+		}
+		a.IMAP.Pass, a.POP.Pass, a.SMTP.Pass = "", "", ""
+	}
 	file.Accounts = upsertAccountConfig(file.Accounts, a)
-	if err := SaveConfig(file); err != nil {
+	if err := s.saveConfig(file); err != nil {
 		return Account{}, err
 	}
 	s.cfg.Accounts = upsertAccountConfig(s.cfg.Accounts, a)
@@ -270,7 +305,7 @@ func (s *LocalStore) DeleteAccount(id string) error {
 	}
 	file, _ := LoadConfig()
 	file.Accounts = dropAccountConfig(file.Accounts, id)
-	if err := SaveConfig(file); err != nil {
+	if err := s.saveConfig(file); err != nil {
 		return err
 	}
 	s.cfg.Accounts = dropAccountConfig(s.cfg.Accounts, id)
@@ -278,6 +313,9 @@ func (s *LocalStore) DeleteAccount(id string) error {
 	_ = DefaultTokenStore().Delete(id)
 	if addr != "" {
 		_ = DefaultTokenStore().Delete(addr)
+	}
+	if v := s.vaultOf(); v.Exists() {
+		_ = v.Update(nil, passSecret(id, "imap"), passSecret(id, "pop"), passSecret(id, "smtp"))
 	}
 	if len(s.accounts) == 0 {
 		s.health = fmt.Errorf("mail: no accounts in %s", ConfigPath())
@@ -1979,6 +2017,9 @@ func (s *LocalStore) syncPOP3(accountID string) (int, error) {
 	if in.Host == "" {
 		return 0, fmt.Errorf("mail: no POP3 host for %s", accountID)
 	}
+	if in.locked {
+		return 0, ErrLocked
+	}
 	in.tokenKey = accountID
 
 	s.mu.Lock()
@@ -2978,6 +3019,9 @@ func (s *LocalStore) clientIn(pool map[string]*imapClient, accountID string, fg 
 	if cfg.IMAP.Host == "" {
 		return nil, fmt.Errorf("mail: no IMAP host for %s", accountID)
 	}
+	if cfg.IMAP.locked {
+		return nil, ErrLocked
+	}
 	cfg.IMAP.tokenKey = accountID
 	c := newIMAPClient(cfg.IMAP, cfg.Address)
 	if fg {
@@ -3035,7 +3079,7 @@ func (s *LocalStore) accountCfgLocked(accountID string) (AccountConfig, bool) {
 			id = slug(a.Address)
 		}
 		if id == accountID {
-			return a, true
+			return s.withSecrets(id, a), true
 		}
 	}
 	return AccountConfig{}, false
@@ -3263,7 +3307,12 @@ func (s *LocalStore) sendViaSMTP(accountID, identityID string, msg Message, file
 		queue(id, "")
 		return id, nil
 	}
-	if err := SendSMTP(cfg.SMTP, ExtractAddr(msg.From), rcpts, raw); err != nil {
+	if cfg.SMTP.locked {
+		err = ErrLocked // it waits in the Outbox until comms-mail is unlocked
+	} else {
+		err = SendSMTP(cfg.SMTP, ExtractAddr(msg.From), rcpts, raw)
+	}
+	if err != nil {
 		if !transientSendError(err) || retry {
 			Logf("send from %s: %v", accountID, err)
 			return "", err // retrying would fail the same way, or it is a retry

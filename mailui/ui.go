@@ -75,10 +75,16 @@ func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOpt
 	s := newSession(a, win, cli, opts)
 	root := s.build()
 	s.attachTray()
+	s.checkVault()
 	return root
 }
 
 type session struct {
+	// vaultAsked: the window has checked for a locked daemon or passwords
+	// in plain text (checkVault); unlockWin is the unlock prompt, while up.
+	vaultAsked bool
+	unlockWin  *app.Window
+
 	app  *app.Application
 	win  *app.Window
 	cli  *mailcore.Client
@@ -1698,6 +1704,10 @@ func (s *session) getMessages() {
 	s.async(func() (any, error) {
 		return s.cli.Sync(acct)
 	}, func(v any, err error) {
+		if mailcore.IsLocked(err) {
+			s.promptUnlock()
+			return
+		}
 		if err != nil {
 			widgets.Warn(s.win.Content(), "Fetch", err.Error(), nil)
 			s.refreshAll()
@@ -1705,6 +1715,10 @@ func (s *session) getMessages() {
 		}
 		res := v.(mailcore.SyncResult)
 		s.refreshAll()
+		if strings.Contains(res.Error, mailcore.ErrLocked.Error()) {
+			s.promptUnlock()
+			return
+		}
 		if res.Error != "" {
 			s.mark("Sync: " + res.Error)
 			return

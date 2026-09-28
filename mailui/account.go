@@ -50,11 +50,10 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 	inLabel := widgets.NewLabel("IMAP host")
 	hint := widgets.NewLabel("Type an email — IMAP is guessed from the domain. Switch to POP3 or use Test connection.")
 	oauthNote := widgets.NewLabel(
-		"Password is stored in mail.json (mode 0600) — temporary plaintext until a secret store.\n" +
+		"Passwords and sign-ins are kept encrypted, locked with your passphrase.\n" +
 			"OAuth (Google / Microsoft) is IMAP + SMTP only.\n" +
 			"Redirect: http://127.0.0.1:<port>/oauth/callback (loopback) or device code.\n" +
 			"Or set UITK_MAIL_OAUTH_GOOGLE_CLIENT_ID / UITK_MAIL_OAUTH_MS_CLIENT_ID.\n" +
-			"Tokens: encrypted files under the data dir (AES-GCM; secret-tool if present).\n" +
 			"Optional: UITK_MAIL_PASS / passEnv still works if the password field is empty.",
 	)
 	status := widgets.NewStatusBar("IMAP or POP3 · Test connection · typed password or OAuth", mailcore.ConfigPath(), "v"+uitoolkit.Version)
@@ -211,26 +210,36 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		} else {
 			cfg.IMAP = in
 		}
-		acct, err := cli.PutAccount(cfg)
-		if err != nil {
-			widgets.Warn(win.Content(), "Add account", err.Error(), nil)
-			return
-		}
-		if onSaved != nil {
-			onSaved()
-		}
-		widgets.Info(win.Content(), "Account saved",
-			fmt.Sprintf("%s <%s>\nProtocol: %s\n\nPassword is in %s (mode 0600). Fetch to connect.",
-				acct.Name, acct.Address, mailcore.ProtocolLabel(acct), mailcore.ConfigPath()),
-			func() { win.Close() })
+		// The password is kept in the vault: a passphrase is set (or the
+		// daemon unlocked) first.
+		withVault(a, cli, reasonAccount, func() {
+			acct, err := cli.PutAccount(cfg)
+			if err != nil {
+				widgets.Warn(win.Content(), "Add account", err.Error(), nil)
+				return
+			}
+			if onSaved != nil {
+				onSaved()
+			}
+			widgets.Info(win.Content(), "Account saved",
+				fmt.Sprintf("%s <%s>\nProtocol: %s\n\nIts password is locked with your passphrase. Fetch to connect.",
+					acct.Name, acct.Address, mailcore.ProtocolLabel(acct)),
+				func() { win.Close() })
+		})
 	}
 
+	var startSignIn func(provider, flow, email string)
 	runOAuth := func(provider, flow string) {
 		email := strings.TrimSpace(addr.Text)
 		if email == "" {
 			widgets.Warn(win.Content(), "OAuth", "Enter the email address first.", nil)
 			return
 		}
+		// The sign-in's tokens are kept in the vault: a passphrase is set
+		// (or the daemon unlocked) first.
+		withVault(a, cli, reasonAccount, func() { startSignIn(provider, flow, email) })
+	}
+	startSignIn = func(provider, flow, email string) {
 		st, err := cli.StartOAuth(provider, email, strings.TrimSpace(name.Text),
 			strings.TrimSpace(clientID.Text), strings.TrimSpace(clientSecret.Text), flow)
 		if err != nil {

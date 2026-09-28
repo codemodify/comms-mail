@@ -81,6 +81,12 @@ const (
 	MethodFoldersMove     = "folders.move"
 	MethodFoldersCompact  = "folders.compact"
 	MethodFoldersFocus    = "folders.focus"
+	// The vault (vault.go): the passphrase that locks the secrets.
+	MethodVaultStatus     = "vault.status"
+	MethodVaultCreate     = "vault.create"
+	MethodVaultUnlock     = "vault.unlock"
+	MethodVaultChange     = "vault.change"
+	MethodVaultReset      = "vault.reset"
 	MethodFoldersMarkRead = "folders.markRead"
 	MethodImportScan      = "import.scan"
 	MethodImportScanPath  = "import.scanPath"
@@ -336,6 +342,11 @@ type tagNameParams struct {
 
 type applyRulesParams struct {
 	FolderID FolderID `json:"folderId,omitempty"`
+}
+
+type vaultParams struct {
+	Passphrase string `json:"passphrase,omitempty"`
+	Next       string `json:"next,omitempty"` // vault.change: the new one
 }
 
 type searchServerParams struct {

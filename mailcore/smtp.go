@@ -170,6 +170,9 @@ func (e *QueuedError) Error() string {
 // the network, or a 4xx reply. A 5xx (a rejected address, a refused login)
 // or a configuration problem will not, and retrying it only repeats it.
 func transientSendError(err error) bool {
+	if errors.Is(err, ErrLocked) {
+		return true // it goes once comms-mail is unlocked
+	}
 	var te *textproto.Error
 	if errors.As(err, &te) {
 		return te.Code >= 400 && te.Code < 500

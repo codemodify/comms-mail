@@ -37,7 +37,7 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 	accountsTab := prefsAccounts(a, win, cli, st, onChange)
 	tagsTab := prefsTags(a, win, cli, onChange)
 	sigTab := prefsSignatures(win, cli)
-	privacyTab := prefsPrivacy(win, cli, onChange)
+	privacyTab := prefsPrivacy(a, win, cli, onChange)
 	filtersTab := prefsFilters(a, win, cli)
 
 	tabs := widgets.NewTabView(
@@ -366,7 +366,7 @@ func prefsSignatures(win *app.Window, cli *mailcore.Client) widget.Component {
 
 // prefsPrivacy lists the senders whose remote images load without asking
 // (given with Always in the reading pane), and takes them back.
-func prefsPrivacy(win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+func prefsPrivacy(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	senders, _ := cli.RemoteImageSenders()
 	var table *widgets.TableView
 	var remove *widgets.Button
@@ -408,12 +408,53 @@ func prefsPrivacy(win *app.Window, cli *mailcore.Client, onChange func()) widget
 		table.Selected = 0
 	}
 	remove.SetEnabled(len(senders) > 0)
-	col := widgets.NewColumn(
+	col := widgets.NewColumn()
+	if pass := passphraseSection(a, cli); pass != nil {
+		col.Add(pass)
+		col.Add(widgets.NewSeparator())
+	}
+	for _, c := range []widget.Component{
 		widgets.NewTitle("Remote images"),
 		wrapLabel("Images on the web are not loaded unless you ask: loading one tells the sender you opened the message, and from where. These senders' images load without asking (Always, in the reading pane). Remove one to be asked again."),
-		table,
-		widgets.NewRow(remove).WithGap(8),
-	).WithGap(8)
+	} {
+		col.Add(c)
+	}
 	col.AddFlex(table, 1)
-	return col
+	col.Add(widgets.NewRow(remove).WithGap(8))
+	return col.WithGap(8)
+}
+
+// passphraseSection is Privacy's say on the passphrase that locks the
+// saved passwords: set one, or change it. None for a store that keeps no
+// secrets (the demo).
+func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Component {
+	st, err := cli.VaultStatus()
+	if err != nil || !st.Supported {
+		return nil
+	}
+	note := wrapLabel("")
+	var btn *widgets.Button
+	show := func(st mailcore.VaultStatus) {
+		if st.Exists {
+			note.SetText("Your saved passwords and sign-ins are locked with your passphrase. comms-mail asks for it once each time it starts.")
+			btn.Text = "Change passphrase…"
+		} else {
+			note.SetText("Your mail passwords are saved in plain text, readable by any program running as you. Set a passphrase to lock them away.")
+			btn.Text = "Set a passphrase…"
+		}
+		btn.Invalidate()
+	}
+	btn = widgets.NewButton("", func() {
+		mode, reason := passCreate, reasonPlain
+		if cur, err := cli.VaultStatus(); err == nil && cur.Exists {
+			mode = passChange
+		}
+		openPassphrase(a, cli, mode, reason, func() {
+			if cur, err := cli.VaultStatus(); err == nil {
+				show(cur)
+			}
+		})
+	})
+	show(st)
+	return widgets.NewColumn(widgets.NewTitle("Passphrase"), note, widgets.NewRow(btn).WithGap(8)).WithGap(8)
 }

@@ -94,6 +94,9 @@ type ServerConfig struct {
 	StartTLS *bool  `json:"starttls,omitempty"` // legacy: upgrade after connect
 	Auth     string `json:"auth,omitempty"`     // plain (default), login, xoauth2
 	tokenKey string // runtime; account id for the encrypted token store
+	// locked (runtime) says the password is in the vault and the vault is
+	// locked: nothing may connect with this config.
+	locked bool
 }
 
 func (s ServerConfig) Username(fallback string) string {

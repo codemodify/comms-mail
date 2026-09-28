@@ -33,12 +33,13 @@ type TokenBlob struct {
 	ClientSecret string `json:"clientSecret,omitempty"`
 }
 
-// TokenStore is AES-GCM encrypted files under DataDir()/secrets.
-// The 32-byte master key is:
-//  1. secret-tool (libsecret) when `secret-tool` is on PATH, else
-//  2. DataDir()/secrets/master.key (mode 0600).
-//
-// Documented in docs/mail.md — this is not a hardware-backed TPM vault.
+// TokenStore keeps OAuth tokens. Once the vault (vault.go) exists they are
+// entries in it, encrypted under the owner's passphrase, and need it
+// unlocked. Before that — an install that has not yet set a passphrase —
+// they are AES-GCM files under DataDir()/secrets with the key in
+// master.key beside them, which protects nothing from a program that can
+// read the directory; setting the passphrase moves them into the vault
+// and deletes those files (LocalStore.CreateVault).
 type TokenStore struct {
 	dir string
 	mu  sync.Mutex
@@ -70,17 +71,24 @@ func NewTokenStore(dir string) *TokenStore {
 	return &TokenStore{dir: dir}
 }
 
+// vault is the vault beside the token files (DefaultVault for the
+// default store).
+func (s *TokenStore) vault() *Vault { return OpenVault(filepath.Join(s.dir, "vault.json")) }
+
 func (s *TokenStore) Put(key string, tok TokenBlob) error {
 	if s == nil || key == "" {
 		return fmt.Errorf("mail: token key required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	tok.AccountKey = key
 	raw, err := json.Marshal(tok)
 	if err != nil {
 		return err
 	}
+	if v := s.vault(); v.Exists() {
+		return v.Update(map[string]string{tokenSecret(key): string(raw)})
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	keyb, err := s.masterKey()
 	if err != nil {
 		return err
@@ -109,6 +117,25 @@ func (s *TokenStore) Get(key string) (TokenBlob, error) {
 	if s == nil || key == "" {
 		return TokenBlob{}, fmt.Errorf("mail: token key required")
 	}
+	if v := s.vault(); v.Exists() {
+		if !v.Unlocked() {
+			return TokenBlob{}, ErrLocked
+		}
+		raw, ok := v.Get(tokenSecret(key))
+		if !ok {
+			return TokenBlob{}, fmt.Errorf("mail: no stored token for %s", key)
+		}
+		var tok TokenBlob
+		if err := json.Unmarshal([]byte(raw), &tok); err != nil {
+			return TokenBlob{}, err
+		}
+		return tok, nil
+	}
+	return s.legacyGet(key)
+}
+
+// legacyGet reads a token file of an install without a vault.
+func (s *TokenStore) legacyGet(key string) (TokenBlob, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	path := filepath.Join(s.dir, safeID(key)+".tok")
@@ -147,27 +174,54 @@ func (s *TokenStore) Delete(key string) error {
 	if s == nil || key == "" {
 		return nil
 	}
+	if v := s.vault(); v.Exists() {
+		return v.Update(nil, tokenSecret(key))
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return os.Remove(filepath.Join(s.dir, safeID(key)+".tok"))
 }
 
-// masterKey returns the 32-byte AES key.
-//
-// The key material is always a hex string: whether it comes from libsecret
-// or from master.key, it is decoded the same way. The previous version
-// encrypted with the raw random bytes but decrypted with sha256(hex(bytes))
-// whenever secret-tool was on PATH, so on any desktop with libsecret every
-// stored token became permanently undecryptable.
-func (s *TokenStore) masterKey() ([]byte, error) {
-	if hexKey, ok := secretToolLookup(); ok {
-		if k, err := decodeMasterKey(hexKey); err == nil {
-			return k, nil
+// legacyTokens reads every token file of an install without a vault, for
+// moving them into one; files that do not open are skipped.
+func (s *TokenStore) legacyTokens() map[string]TokenBlob {
+	out := map[string]TokenBlob{}
+	files, _ := filepath.Glob(filepath.Join(s.dir, "*.tok"))
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".tok")
+		tok, err := s.legacyGet(name)
+		if err != nil {
+			continue
 		}
-		// A value we cannot parse (an old install, or another app's entry)
-		// must not silently produce a different key: fall through to the
-		// file, which is the authoritative copy.
+		key := tok.AccountKey
+		if key == "" {
+			key = name
+		}
+		out[key] = tok
 	}
+	return out
+}
+
+// removeLegacyFiles deletes the token files and master.key once their
+// contents are in the vault, and the copy of the key older builds put in
+// the desktop keyring through secret-tool.
+func (s *TokenStore) removeLegacyFiles() {
+	files, _ := filepath.Glob(filepath.Join(s.dir, "*.tok"))
+	for _, f := range append(files, filepath.Join(s.dir, "master.key")) {
+		_ = os.Remove(f)
+	}
+	if _, err := exec.LookPath("secret-tool"); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = exec.CommandContext(ctx, "secret-tool", "clear", "service", "uitoolkit-mail", "attribute", "master").Run()
+	}
+}
+
+// masterKey returns the 32-byte AES key of the token files of an install
+// without a vault: master.key, a hex string (older builds wrote the raw
+// bytes). Builds that also stored it through secret-tool always wrote this
+// file too, and it is the copy read.
+func (s *TokenStore) masterKey() ([]byte, error) {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -189,7 +243,6 @@ func (s *TokenStore) masterKey() ([]byte, error) {
 	if err := WriteFileAtomic(path, []byte(hexKey), 0o600); err != nil {
 		return nil, err
 	}
-	_ = secretToolStore(hexKey)
 	return key, nil
 }
 
@@ -200,31 +253,6 @@ func decodeMasterKey(v string) ([]byte, error) {
 		return nil, fmt.Errorf("mail: master key is not 32 hex bytes")
 	}
 	return hex.DecodeString(v)
-}
-func secretToolLookup() (string, bool) {
-	if _, err := exec.LookPath("secret-tool"); err != nil {
-		return "", false
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "secret-tool", "lookup", "service", "uitoolkit-mail", "attribute", "master")
-	out, err := cmd.Output()
-	if err != nil {
-		return "", false
-	}
-	v := strings.TrimSpace(string(out))
-	return v, v != ""
-}
-func secretToolStore(hexkey string) error {
-	if _, err := exec.LookPath("secret-tool"); err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "secret-tool", "store", "--label", "uitoolkit mail master",
-		"service", "uitoolkit-mail", "attribute", "master")
-	cmd.Stdin = strings.NewReader(hexkey)
-	return cmd.Run()
 }
 func resolveAccessToken(cfg ServerConfig, address string) (string, error) {
 	if t := strings.TrimSpace(os.Getenv(EnvXOAuth)); t != "" {

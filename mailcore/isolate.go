@@ -38,6 +38,7 @@ func IsolateTestEnv(dir string) error {
 	_ = os.Unsetenv(EnvPass)
 	_ = os.Unsetenv(EnvSMTPHost)
 	_ = os.Unsetenv(EnvXOAuth)
+	vaultKDF = testVaultKDF
 	return nil
 }
 
@@ -75,6 +76,7 @@ func IsolateTestEnvTB(t envTB) {
 	t.Setenv(EnvPass, "")
 	t.Setenv(EnvSMTPHost, "")
 	t.Setenv(EnvXOAuth, "")
+	vaultKDF = testVaultKDF
 }
 
 // IsDisposableMailSocket reports whether socket was created by StartDemo /
@@ -104,3 +106,7 @@ type errNotMemory string
 func (e errNotMemory) Error() string {
 	return "mail test safety: backend " + string(e) + " is not the in-memory fixture (refusing live IMAP/POP3)"
 }
+
+// testVaultKDF is a cheap Argon2id cost for tests: a vault made in one
+// opens in milliseconds, not the tenth of a second a real one takes.
+var testVaultKDF = kdfParams{Time: 1, MemoryKiB: 1024, Threads: 1}

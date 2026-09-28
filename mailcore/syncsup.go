@@ -18,6 +18,7 @@ func (s *LocalStore) StartPush(ctx context.Context) {
 		s.mu.Unlock()
 		return
 	}
+	s.pushCtx = ctx // to start again with after an unlock
 	ctx, cancel := context.WithCancel(ctx)
 	s.pushCancel = cancel
 	s.mu.Unlock()
@@ -102,8 +103,8 @@ func (s *LocalStore) rewatch(ctx context.Context, watched map[string]context.Can
 
 func (s *LocalStore) idleAccount(ctx context.Context, accountID string) {
 	cfg, ok := s.accountCfg(accountID)
-	if !ok || cfg.IsPOP3() || cfg.IMAP.Host == "" {
-		return
+	if !ok || cfg.IsPOP3() || cfg.IMAP.Host == "" || cfg.IMAP.locked {
+		return // locked: push starts again once unlocked (restartPush)
 	}
 	cfg.IMAP.tokenKey = accountID
 

@@ -217,10 +217,10 @@ A mail app keeps copies of your mail, and some secret (a password or a token) to
 
 ## Where comms-mail stands today
 
-Read from the code on 28 September 2026. comms-mail is strict where the network is concerned and careful when showing mail. Its weak spot is the secrets it keeps on disk, and it has nothing yet for end-to-end encryption or for telling you whether a sender is genuine.
+Read from the code on 28 September 2026, and updated the same day as fixes landed. comms-mail is strict where the network is concerned and careful when showing mail, and its saved passwords are now locked with your passphrase. It has nothing yet for end-to-end encryption or for telling you whether a sender is genuine.
 
-- **Strong**: the pipe (TLS), reading HTML, remote content, the local daemon.
-- **Weak**: secrets at rest: passwords in plain text, the token key beside the tokens.
+- **Strong**: the pipe (TLS), reading HTML, remote content, saved passwords (locked with your passphrase).
+- **Partial**: mail on disk is not encrypted; any program running as you can use the daemon.
 - **Missing**: PGP, S/MIME, signature checks, sender warnings.
 
 ### The pipe
@@ -235,9 +235,9 @@ Read from the code on 28 September 2026. comms-mail is strict where the network 
 
 | Area | What comms-mail does | State |
 |---|---|---|
-| Passwords | Stored in plain text in `~/.config/comms-mail/mail.json` (readable only by you, mode 0600). The Add Account screen says so. No keyring. | **Weak** |
+| Passwords | Kept in the vault, `~/.data/comms-mail/secrets/vault.json`, encrypted with a key from your passphrase (Argon2id, AES-256-GCM). `mail.json` holds none. The daemon asks for the passphrase once per run and connects to nothing until it has it. | In place |
 | OAuth sign-in | Google and Microsoft, with PKCE and a local redirect, device-code as a fallback. IMAP and SMTP use `XOAUTH2`. POP has no OAuth. | In place |
-| OAuth tokens | Encrypted (AES-256-GCM), but the key is written to `master.key` right beside them as well as to the keyring, so they are only as safe as a plain file. | Partial |
+| OAuth tokens | In the vault beside the passwords. The old token files, `master.key` and its copy in the desktop keyring are gone. | In place |
 | Client ID | You supply it (wizard or environment). None is built in. | Your call |
 
 ### End to end
@@ -263,7 +263,7 @@ Read from the code on 28 September 2026. comms-mail is strict where the network 
 | Remote images | Blocked until you ask; Always for a sender. The sender allow-list trusts the From address, which can be forged. | In place |
 | Image fetching | Only public addresses (the check is made on the address actually connected to), size and count limits, no cookies. | In place |
 | Links | A confirmation shows the real destination first. | In place |
-| Attachments | Launchers, scripts, installers and HTML are refused by file name; everything else goes to the desktop's opener. Opened copies in `~/.data/comms-mail/open` and printed pages in `/tmp` are never cleaned up. | Partial |
+| Attachments | Launchers, scripts, installers and HTML are refused by file name; everything else goes to the desktop's opener. Opened copies are removed after a day, printed pages after an hour. | In place |
 
 ### This machine
 
@@ -271,23 +271,38 @@ Read from the code on 28 September 2026. comms-mail is strict where the network 
 |---|---|---|
 | Mail on disk | `mail.db`, message files and the log are readable only by you, and not encrypted; that relies on full-disk encryption. | As designed |
 | The log | Records errors and which request failed, never its contents; passwords are not echoed. | In place |
-| The daemon's socket | Only your user (or root) may connect. Any program running as you has the same access as the app: it can read mail and send as you. It can also point an account at a new server and the saved password goes along. | Partial |
-| Message-ID | Sent mail carries `<number.your-address@uitoolkit>`, which names the software and repeats your address. | Partial |
+| The daemon's socket | Only your user (or root) may connect. Any program running as you has the same access as the app: it can read mail and send as you. It cannot move a saved password to another server: a changed server needs its password again. | Partial |
+| Message-ID | Random, at your domain, like other clients' (`<random@your-domain>`). | In place |
 | Header injection | Line breaks in addresses, subjects and file names are refused. | In place |
 
-### Fixes that need no decision
+### Fixes that needed no decision
 
-- Show an S/MIME- or PGP-encrypted message as "encrypted, cannot be opened yet" instead of binary text or an empty body.
-- Clean up opened attachments and printed pages once they are closed or old.
-- Make sent Message-IDs look like everyone else's (`<random@your-domain>`), without the software name or your address.
-- Ask for the password again when an account is pointed at a different server, instead of carrying the saved one over.
+Done on 28 September 2026:
+
+- Sent Message-IDs look like everyone else's (`<random@your-domain>`), without the software name or your address.
+- The password is asked for again when an account is pointed at a different server, instead of the saved one being carried over.
+- Opened attachments and printed pages are cleaned up once old.
+
+Still to do:
+
 - Read the `Authentication-Results` header and warn on a failed DMARC or DKIM check, a display name that pretends to be another address, and a Reply-To on another domain. Trust the per-sender "Always show images" only when the sender passed those checks.
+- Show an S/MIME- or PGP-encrypted message as "encrypted" instead of binary text or an empty body (part of recognising signed and encrypted mail).
 
 ---
 
 ## Decisions to make
 
-Each of these changes what gets built. They are yours to make; each has a recommendation.
+> **Decided on 28 September 2026.**
+>
+> - **Contacts:** both PGP and S/MIME. First recognise and check both kinds of signed and encrypted mail, then sending and decrypting for both.
+> - **Engine:** built into comms-mail (pure Go), not GnuPG. PGP with Proton's `go-crypto`; S/MIME's message format (CMS) written in comms-mail itself, with no extra library.
+> - **Secrets:** a passphrase-locked vault now; the owner's own keyring will plug in later. Done.
+> - **Unlock:** once per run of the daemon.
+> - **Searching encrypted mail:** off by default, with a setting to turn it on.
+> - **OAuth:** the owner's own client ID while comms-mail has one user.
+> - **Fixes without a decision:** all approved, sender warnings included.
+
+The choices as they were laid out, with the recommendation each had:
 
 ### 1. Where passwords and tokens live
 

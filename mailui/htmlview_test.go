@@ -178,7 +178,7 @@ func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
 	}
 	defer w.Close()
 	changed := 0
-	col := prefsPrivacy(w, cli, func() { changed++ })
+	col := prefsPrivacy(a, w, cli, func() { changed++ })
 	w.SetContent(col)
 	a.PumpOnce()
 	var remove *widgets.Button

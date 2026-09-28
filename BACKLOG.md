@@ -67,8 +67,27 @@ new ones turn up.
   test checks each window at its minimum size).
 
 ## Accounts / setup / trust
-- **OAuth (Gmail / Microsoft 365)** — needs the client-id decision (own
-  registration vs a project app) before it is usable.
+- **OAuth (Gmail / Microsoft 365)** — decided 2026-09-28: the owner's own
+  client ID while comms-mail has one user (works today). A built-in
+  registration only when others use it (Google verification + CASA).
+- **Keyring** — the owner is building their own; it plugs in where
+  `TODO(keyring)` is in `mailcore/vault.go` to unlock without a typed
+  passphrase.
 
-## From the roadmap (features, not polish)
-Thunderbird / KMail import · calendar invites · PGP · S/MIME.
+## Security (decided 2026-09-28, docs/security/security-primer.md)
+- **Sender warnings** — `Authentication-Results` (SPF/DKIM/DMARC) failures,
+  look-alike display names, Reply-To on another domain; "Always show
+  images" only for senders who passed.
+- **Recognise and check signed / encrypted mail** — PGP and S/MIME both;
+  encrypted mail says what it is (an S/MIME `smime.p7m` shows as binary
+  text today).
+- **PGP** — built in (Proton `go-crypto`): keys, decrypt, sign/encrypt on
+  send, private keys in the vault.
+- **S/MIME** — built in, own CMS code: `.p12` import, decrypt, sign/encrypt
+  on send.
+- **Search inside encrypted mail** — a setting, off by default.
+
+## Reading
+- **Markdown view** — a tab beside Message / Source / HTML showing the
+  message converted to Markdown text (asked for 2026-09-28; next after the
+  passphrase work).

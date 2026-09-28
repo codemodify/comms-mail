@@ -20,7 +20,7 @@ and tray live in [`mailui`](../mailui).
 | One fail-closed `tlsMode` (`ssl` / `starttls` / `plain`) | A `starttls` server that stops offering STARTTLS is now an **error**, not a silent cleartext login. `"tls": true` on port 143/110/587 now upgrades instead of going cleartext |
 | No plaintext credentials to a remote host | An account deliberately on a custom cleartext port must say `"tlsMode": "plain"`, and even then only loopback will authenticate |
 | `compose.send` takes attachment **bytes** | `attachPaths` is gone from the wire; the daemon no longer opens client-supplied paths. `Client.SendIdent` still takes paths and reads them UI-side |
-| OAuth master key derivation fixed | Existing `secrets/*.tok` written by a build **with libsecret present** cannot be read (they never could). Delete `secrets/` and sign in again |
+| Secrets moved into the vault | Passwords and OAuth tokens are encrypted with your passphrase (`secrets/vault.json`); `mail.json` no longer holds passwords, and `master.key`, `*.tok` and the `secret-tool` entry are gone once the passphrase is set |
 | `Bcc` is no longer written into the message | Blind recipients still receive it; they are just no longer disclosed |
 | Moves re-key on `COPYUID` | Cache entries change id after a move; a server without UIDPLUS drops the entry until the next sync |
 | Deletion reconciliation without QRESYNC | Messages deleted elsewhere finally disappear from the cache |
@@ -132,7 +132,7 @@ var DesktopNotifier func(title, body string)
 
 ## Real IMAP or POP3 + SMTP (primary path)
 
-`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password and writes it into `mail.json`. That file is **mode `0600`**. The password field is **temporary plaintext** until a secret store exists. OAuth (encrypted refresh token) and optional `passEnv` / `UITK_MAIL_PASS` still work when `password` is empty.
+`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept in the **vault**, encrypted and locked with your passphrase (see [Passwords and the passphrase](#passwords-and-the-passphrase)), never in `mail.json`. OAuth sign-ins are kept there too. Optional `passEnv` / `UITK_MAIL_PASS` still work when no password is saved.
 
 ### Connection security (`tlsMode`)
 
@@ -181,13 +181,13 @@ What lives in it:
 | `mail.db` (+ `-wal`, `-shm`) | SQLite, mode `0600`. `messages`: one row per message — headers, flags, tags, thread, parts — plus its decoded text once downloaded. `message_text`: the search index — each downloaded message's text in trigrams (FTS5, no copy of the text). `folder_meta`: each folder's UIDVALIDITY / UIDNEXT / HIGHESTMODSEQ. `kv`: accounts, identities and signatures, folders, tags, filter rules, smart folders, VIPs, muted threads, categories, notification settings, the offline outbox. |
 | `raw/<account>/<message>.eml` | The message exactly as the server sent it, once downloaded (a click, or the background prefetch). Source view, attachments and re-parsing read it. |
 | `open/` | Attachment copies written for **Open** to hand to the desktop; removed after a day (the next time one is opened, and at start). |
-| `secrets/` | OAuth refresh tokens, encrypted. |
+| `secrets/` | `vault.json`: passwords and OAuth tokens, encrypted with your passphrase. |
 
-Settings are not in the cache: `mail.json` (accounts and passwords) is in the
+Settings are not in the cache: `mail.json` (accounts; passwords are in the vault) is in the
 config directory above, and the window's own settings (layout, density, card
 view) are in `mailui.json` beside it.
 
-Example `mail.json` (written mode `0600`; `password` is temporary plaintext):
+Example `mail.json` (written mode `0600`). An install that has not set a passphrase yet keeps `password` here in plain text; setting one moves it into the vault and takes it out of this file:
 
 ```json
 {
@@ -391,24 +391,7 @@ Device flow: **Device code…** on the same dialog (useful when loopback cannot 
 
 ### Token storage
 
-Refresh/access tokens are **never** written to `mail.json`. They live under `~/.data/comms-mail/secrets/` (or `$UITK_MAIL_DATA/secrets/`):
-
-- `*.tok` — AES-256-GCM (random nonce prefix), mode `0600`
-- `master.key` — the 32-byte key as **hex**, mode `0600`
-- If `secret-tool` is on `PATH` the same hex string is also stored as
-  `service=uitoolkit-mail`
-
-Both copies hold the identical value and are decoded the same way. (Before
-v0.10.14 the libsecret copy was hashed on read but not on write, so on any
-desktop with libsecret every stored token became undecryptable and OAuth
-accounts failed to authenticate after the first sign-in. If you hit that,
-delete `secrets/` and sign in again.)
-
-The OAuth **client id** (and secret, when the app is confidential) is stored
-alongside the token, so refreshing an hour later works even if the
-`UITK_MAIL_OAUTH_*` variables are no longer exported.
-
-This is an encrypted file (plus optional OS keyring), **not** a TPM-backed vault. Backup the `secrets/` directory with the same care as an SSH key.
+Refresh/access tokens are **never** written to `mail.json`. They are entries in the vault, beside the passwords (next section). The OAuth **client id** (and secret, when the app is confidential) is stored with the token, so refreshing an hour later works even if the `UITK_MAIL_OAUTH_*` variables are no longer exported.
 
 Expired access tokens are refreshed with the stored refresh token.
 
@@ -526,7 +509,47 @@ against the data directory, so an `accounts.put` with an id like `../../..`
 cannot write (or, on `accounts.delete`, `RemoveAll`) outside the cache.
 
 `mail.json` is re-`chmod`ed to `0600` on every save, including a file you
-created by hand with a looser umask — it holds a plaintext password.
+created by hand with a looser umask.
+
+### Passwords and the passphrase
+
+comms-mail keeps every secret it needs — account passwords and OAuth
+sign-ins — in the **vault**, `~/.data/comms-mail/secrets/vault.json` (mode
+`0600`): its contents are encrypted with AES-256-GCM under a key derived
+from your **passphrase** with Argon2id (the file records the salt and cost,
+and they are bound into the encryption, so they cannot be swapped for
+weaker ones). Without the passphrase nothing in it can be read — not from a
+backup, a copied file, or by another program reading the disk.
+
+- **Setting it.** The window offers it when it finds passwords in plain
+  text (an install from before the vault), and before the first account is
+  saved. Setting it moves every secret in — the passwords out of
+  `mail.json`, the old token files and `master.key` (deleted), and the copy
+  of that key older builds put in the desktop keyring through `secret-tool`
+  (cleared). The vault is written first, so a crash part-way leaves the
+  secrets in both places, never in neither; the next unlock finishes the
+  move.
+- **Unlocking.** comms-maild asks once per run: when the window opens and
+  the daemon is locked, it asks for the passphrase and the daemon keeps the
+  key in memory until it stops. While locked the daemon connects to **no
+  server** (it never tries a login without its password): mail already
+  downloaded shows, a message you send waits in the Outbox, and accounts
+  cannot be changed. Fetch on a locked daemon asks for the passphrase.
+- **Changing it** — Settings → Privacy → **Change passphrase…**.
+- **Forgetting it** — **Forgot it…** on the unlock window starts over:
+  every saved password and sign-in is deleted (they cannot be read without
+  the passphrase), the accounts and their mail stay, and each account needs
+  its password again.
+- A passphrase has at least 8 characters. The RPC log records `vault.*`
+  requests by name only, never the passphrase.
+
+`vault.status`, `vault.create`, `vault.unlock`, `vault.change` and
+`vault.reset` are the daemon's side of this. A store that keeps no secrets
+(the demo) reports `supported: false`, and the window asks nothing.
+
+The desktop keyring is not used. A keyring of the owner's own is planned;
+`TODO(keyring)` in `mailcore/vault.go` marks where it will provide the key
+instead of a typed passphrase.
 
 ## Folders
 

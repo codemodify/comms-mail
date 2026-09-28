@@ -376,6 +376,35 @@ func (c *Client) MoveFolder(id, parent FolderID) (Folder, error) {
 
 // FocusFolder tells the daemon which folder the window shows, so changes to
 // it arrive at once (IDLE), not at the next poll.
+// VaultStatus says whether a passphrase is set and whether the daemon is
+// unlocked.
+func (c *Client) VaultStatus() (VaultStatus, error) {
+	var st VaultStatus
+	err := c.call(MethodVaultStatus, struct{}{}, &st)
+	return st, err
+}
+
+// CreateVault sets the passphrase and moves every saved secret under it.
+func (c *Client) CreateVault(passphrase string) error {
+	return c.call(MethodVaultCreate, vaultParams{Passphrase: passphrase}, nil)
+}
+
+// UnlockVault unlocks the daemon's secrets for this run.
+func (c *Client) UnlockVault(passphrase string) error {
+	return c.call(MethodVaultUnlock, vaultParams{Passphrase: passphrase}, nil)
+}
+
+// ChangePassphrase locks the secrets with next instead of old.
+func (c *Client) ChangePassphrase(old, next string) error {
+	return c.call(MethodVaultChange, vaultParams{Passphrase: old, Next: next}, nil)
+}
+
+// ResetVault deletes every saved password and sign-in (a forgotten
+// passphrase).
+func (c *Client) ResetVault() error {
+	return c.call(MethodVaultReset, struct{}{}, nil)
+}
+
 func (c *Client) FocusFolder(id FolderID) error {
 	return c.call(MethodFoldersFocus, folderIDParams{FolderID: id}, nil)
 }

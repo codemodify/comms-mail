@@ -404,6 +404,34 @@ func (s *Server) dispatch(req Request) Response {
 				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
 			}
 		}
+	case MethodVaultStatus:
+		if ls, ok := s.Store.(*LocalStore); ok {
+			result = ls.VaultStatus()
+		} else {
+			result = VaultStatus{}
+		}
+	case MethodVaultCreate, MethodVaultUnlock, MethodVaultChange, MethodVaultReset:
+		var p vaultParams
+		p, err = decodeParams[vaultParams](req.Params)
+		ls, ok := s.Store.(*LocalStore)
+		if err == nil && !ok {
+			err = fmt.Errorf("mail: this store keeps no secrets")
+		}
+		if err == nil {
+			switch req.Method {
+			case MethodVaultCreate:
+				err = ls.CreateVault(p.Passphrase)
+			case MethodVaultUnlock:
+				err = ls.UnlockVault(p.Passphrase)
+			case MethodVaultChange:
+				err = ls.ChangePassphrase(p.Passphrase, p.Next)
+			case MethodVaultReset:
+				err = ls.ResetVault()
+			}
+		}
+		if err == nil {
+			result = ls.VaultStatus()
+		}
 	case MethodFoldersFocus:
 		var p folderIDParams
 		p, err = decodeParams[folderIDParams](req.Params)
