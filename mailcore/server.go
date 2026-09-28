@@ -365,6 +365,15 @@ func (s *Server) dispatch(req Request) Response {
 				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
 			}
 		}
+	case MethodFoldersRename:
+		var p folderRenameParams
+		p, err = decodeParams[folderRenameParams](req.Params)
+		if err == nil {
+			result, err = s.Store.RenameFolder(p.FolderID, p.Name)
+			if err == nil {
+				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
+			}
+		}
 	case MethodFoldersMarkRead:
 		var p folderIDParams
 		p, err = decodeParams[folderIDParams](req.Params)

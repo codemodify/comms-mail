@@ -427,6 +427,22 @@ func (f *featureHost) dropOutboxLocked(id string) {
 	f.outbox = out
 }
 
+// touchesFolder reports whether a queued op moves a message out of, or
+// into, folder.
+func (f *featureHost) touchesFolder(folder FolderID) bool {
+	if f == nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, op := range f.outbox {
+		if op.Src == folder || op.Dest == folder {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *featureHost) pendingFor(id MessageID) bool {
 	if f == nil {
 		return false

@@ -401,7 +401,9 @@ func (s *LocalStore) CreateFolder(accountID, name string, parent FolderID) (Fold
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	id := FolderID(safeID(accountID) + "/" + safeID(name))
+	// A renamed folder keeps the id its old name gave it, so a new folder
+	// under that old name needs another.
+	id := s.uniqueFolderIDLocked(FolderID(safeID(accountID) + "/" + safeID(name)))
 	f := Folder{ID: id, AccountID: accountID, Name: name, Kind: FolderCustom, Parent: parent, Remote: remote}
 	s.Folders = append(s.Folders, f)
 	s.saveLocked()
@@ -1297,6 +1299,7 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 	}
 	added := 0
 	var netErr error
+	listed := map[FolderID]bool{}
 	for _, b := range boxes {
 		if b.Name == "" {
 			continue
@@ -1306,20 +1309,34 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 			display = DecodeIMAPUTF7(b.Name)
 		}
 		kind := folderKindFromIMAP(display, b.Attrs)
-		id := FolderID(safeID(accountID) + "/" + safeID(display))
-		if kind == FolderInbox {
-			id = FolderID(safeID(accountID) + "/inbox")
-		}
 		s.mu.Lock()
-		f, ok := s.folderLocked(id)
+		// A folder is the server mailbox it names, whatever its id: a folder
+		// renamed here keeps its id (and its messages theirs) under its new
+		// name. Remote used to hold the modified-UTF-7 wire name, which
+		// every command encoded a second time; it is the decoded name now.
+		f, ok := s.folderByRemoteLocked(accountID, display, b.Name)
 		if !ok {
-			f = Folder{ID: id, AccountID: accountID, Name: displayIMAPName(display, b.Delim), Kind: kind, Remote: b.Name}
+			id := FolderID(safeID(accountID) + "/" + safeID(display))
+			if kind == FolderInbox {
+				id = FolderID(safeID(accountID) + "/inbox")
+			}
+			if x, taken := s.folderLocked(id); taken && x.Remote != "" && x.Remote != display && x.Remote != b.Name {
+				// The id is a renamed folder's; this mailbox needs its own.
+				id = s.uniqueFolderIDLocked(id)
+			}
+			if f, ok = s.folderLocked(id); !ok {
+				f = Folder{ID: id, AccountID: accountID, Name: displayIMAPName(display, b.Delim), Kind: kind}
+			}
+		}
+		if !ok {
+			f.Remote, f.Delim = display, b.Delim
 			s.Folders = append(s.Folders, f)
 		} else {
-			f.Remote = b.Name
+			f.Remote, f.Delim = display, b.Delim
 			f.Kind = kind
 			s.replaceFolderLocked(f)
 		}
+		listed[f.ID] = true
 		s.mu.Unlock()
 
 		n, err := s.syncFolder(cli, f)
@@ -1336,8 +1353,160 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 		}
 	}
 	s.noteNetwork(accountID, netErr)
+	s.dropUnlistedFolders(accountID, listed)
 	return added, nil
 }
+
+// folderByRemoteLocked is the account's folder for a server mailbox, by
+// its decoded name (or, from caches written before names were decoded,
+// its wire name).
+func (s *LocalStore) folderByRemoteLocked(accountID, display, wire string) (Folder, bool) {
+	for _, f := range s.Folders {
+		if f.AccountID == accountID && !f.Virtual && f.Remote != "" && (f.Remote == display || f.Remote == wire) {
+			return f, true
+		}
+	}
+	return Folder{}, false
+}
+
+// uniqueFolderIDLocked is id, or id with a number after it, whichever no
+// folder has.
+func (s *LocalStore) uniqueFolderIDLocked(id FolderID) FolderID {
+	if _, taken := s.folderLocked(id); !taken {
+		return id
+	}
+	for n := 2; ; n++ {
+		next := FolderID(fmt.Sprintf("%s-%d", id, n))
+		if _, taken := s.folderLocked(next); !taken {
+			return next
+		}
+	}
+}
+
+// dropUnlistedFolders forgets the folders the server no longer has —
+// deleted, or renamed in another client (the new name arrived as a folder
+// of its own). Only folders that were synced from the server before go: one
+// made here while offline has not reached it yet. A folder that queued
+// changes still point at is kept until they are replayed.
+func (s *LocalStore) dropUnlistedFolders(accountID string, listed map[FolderID]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var gone []FolderID
+	for _, f := range s.Folders {
+		if f.AccountID != accountID || f.Virtual || listed[f.ID] || f.Remote == "" {
+			continue
+		}
+		if s.loadFolderMeta(f.ID).UIDValidity == 0 {
+			continue
+		}
+		if s.feat != nil && s.feat.touchesFolder(f.ID) {
+			continue
+		}
+		gone = append(gone, f.ID)
+	}
+	if len(gone) == 0 {
+		return
+	}
+	drop := map[FolderID]bool{}
+	for _, id := range gone {
+		drop[id] = true
+		s.dropFolderMessagesLocked(id)
+		s.dropFolderMetaLocked(id)
+	}
+	out := s.Folders[:0]
+	for _, f := range s.Folders {
+		if !drop[f.ID] {
+			out = append(out, f)
+		}
+	}
+	s.Folders = out
+	s.saveLocked()
+}
+
+// RenameFolder renames a user-created folder: RENAME on the server, then
+// the cache. The folder keeps its id and its messages keep theirs; folders
+// under it follow it (the server renames them with it).
+func (s *LocalStore) RenameFolder(id FolderID, name string) (Folder, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Folder{}, fmt.Errorf("mail: a folder needs a name")
+	}
+	if !validMailboxName(name) {
+		return Folder{}, fmt.Errorf("mail: illegal folder name")
+	}
+	s.mu.Lock()
+	f, ok := s.folderLocked(id)
+	if !ok {
+		s.mu.Unlock()
+		return Folder{}, fmt.Errorf("mail: no folder %s", id)
+	}
+	if f.Virtual || f.Kind != FolderCustom {
+		s.mu.Unlock()
+		return Folder{}, fmt.Errorf("mail: %q is a system folder and cannot be renamed", f.Name)
+	}
+	delim := f.Delim
+	if delim == "" {
+		delim = "/"
+	}
+	if strings.Contains(name, delim) {
+		s.mu.Unlock()
+		return Folder{}, fmt.Errorf("mail: a folder name cannot contain %q", delim)
+	}
+	oldRemote := remoteName(f)
+	newRemote := name
+	if i := strings.LastIndex(oldRemote, delim); i >= 0 {
+		newRemote = oldRemote[:i+len(delim)] + name
+	}
+	for _, x := range s.Folders {
+		if x.AccountID == f.AccountID && x.ID != id && !x.Virtual && strings.EqualFold(remoteName(x), newRemote) {
+			s.mu.Unlock()
+			return Folder{}, fmt.Errorf("mail: there is already a folder called %q", name)
+		}
+	}
+	accountID := f.AccountID
+	onServer := f.Remote != "" && accountID != LocalAccountID
+	s.mu.Unlock()
+
+	if onServer {
+		cli, err := s.client(accountID)
+		if err != nil {
+			return Folder{}, err
+		}
+		if err := cli.renameMailbox(oldRemote, newRemote); err != nil {
+			return Folder{}, err
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, x := range s.Folders {
+		if x.AccountID != accountID || x.Virtual {
+			continue
+		}
+		switch {
+		case x.ID == id:
+			x.Name = name
+			if onServer {
+				x.Remote = newRemote
+			}
+		case onServer && strings.HasPrefix(x.Remote, oldRemote+delim):
+			x.Remote = newRemote + strings.TrimPrefix(x.Remote, oldRemote)
+		default:
+			continue
+		}
+		s.Folders[i] = x
+		if meta := s.loadFolderMeta(x.ID); meta.UIDValidity != 0 {
+			meta.Remote = x.Remote
+			s.saveFolderMeta(x.ID, meta)
+		}
+		if x.ID == id {
+			f = x
+		}
+	}
+	s.saveLocked()
+	return f, nil
+}
+
 func (s *LocalStore) syncPOP3(accountID string) (int, error) {
 	cfg, ok := s.accountCfg(accountID)
 	if !ok {

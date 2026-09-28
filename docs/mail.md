@@ -438,6 +438,23 @@ cannot write (or, on `accounts.delete`, `RemoveAll`) outside the cache.
 `mail.json` is re-`chmod`ed to `0600` on every save, including a file you
 created by hand with a looser umask — it holds a plaintext password.
 
+## Folders
+
+Right-click a folder for **New Folder…** / **New Subfolder…** (each asks
+for a name), **Rename Folder…**, **Delete Folder…** and **Mark Folder Read**.
+Only folders you made can be renamed or deleted; Inbox, Sent, Drafts, Trash
+and the rest cannot.
+
+A rename is an IMAP `RENAME` (the server renames the folders under it
+too). The folder keeps its id and its messages keep theirs, so nothing is
+downloaded again. Sync matches folders to server mailboxes by their server
+name, not by an id made from the name, so a renamed folder is not added a
+second time; and a folder renamed or deleted in another client is dropped
+here (its new name arrives as a folder of its own) once the server no
+longer lists it. Folder names outside ASCII (`Entwürfe`, `送信済み`) are
+sent in IMAP's modified UTF-7 once — they used to be encoded twice and
+could not be opened.
+
 ## Fast search + Smart folders
 
 Daemon-side inverted index over subject / from / to / body (AND of tokens). Quick Filter and `messages.search` use it when a query is present, then apply pins.
@@ -551,6 +568,9 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `folders.list` | `{accountId}` |
 | `folders.get` | `{id}` |
 | `folders.create` | `{accountId, name, parent?}` |
+| `folders.rename` | `{folderId, name}` — user folders only: IMAP `RENAME`, the folder keeps its id and messages |
+| `folders.delete` | `{folderId}` — user folders only, with their messages, on the server too |
+| `folders.markRead` | `{folderId}` |
 | `folders.virtual` | — Outbox / (hidden unified / categories / smart / VIP) / tags |
 | `messages.list` | `{folderId, filter?}` (virtual ids ok) |
 | `messages.get` | `{id}` (disk raw / in-memory body if already fetched; no extra IMAP) |

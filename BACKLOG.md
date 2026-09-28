@@ -49,15 +49,15 @@ new ones turn up.
   its formatting.
 
 ## Folders / search
-- **Rename folder** — needs sync to match folders by their server path
-  (Remote) rather than a name-derived id, or a renamed folder is duplicated
-  on the next sync.
+- **Folder hierarchy from the server** — folders synced from IMAP are
+  listed flat (Parent is only set for folders made here); nesting them by
+  the server's delimiter would show `Archives/2023` under `Archives`.
+- **Move a folder** (drag it onto another) — rename covers the name only.
 - **Server-side search** — find mail not yet downloaded (IMAP `UID SEARCH`),
   fetching envelopes for hits. Today's search covers synced headers +
   downloaded bodies only.
 - **Show the folder of each search result** — a folder column in search /
   unified views.
-- **Create a subfolder** — create is always a top-level "New Folder N".
 - **Compact folders** — `EXPUNGE` deleted messages (the menu stub was
   removed).
 

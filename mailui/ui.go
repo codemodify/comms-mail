@@ -963,8 +963,11 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 		if haveFolder && !folder.Virtual {
 			f := folder
 			items = append(items, widgets.Item("Mark Folder Read", func() { s.markFolderRead(f.ID) }))
+			items = append(items, widgets.Item("New Subfolder…", func() { s.newSubfolder(f) }))
 			if folder.Kind == mailcore.FolderCustom {
-				items = append(items, widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
+				items = append(items,
+					widgets.Item("Rename Folder…", func() { s.renameFolder(f) }),
+					widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
 			}
 		}
 		items = append(items,
@@ -2148,20 +2151,45 @@ func (s *session) confirmDeleteFolder(f mailcore.Folder) {
 		})
 }
 
+// newFolder asks for a name and makes a top-level folder in the current
+// account.
 func (s *session) newFolder() {
-	acct := s.accountID()
-	folders, _ := s.cli.ListFolders(acct)
-	name := fmt.Sprintf("New Folder %d", len(folders)+1)
-	f, err := s.cli.CreateFolder(acct, name, "")
-	if err != nil {
-		widgets.Warn(s.win.Content(), "New Folder", err.Error(), nil)
-		return
-	}
-	s.central = false
-	s.folder = f.ID
-	s.selected = nil
-	s.refreshAll()
-	s.mark("Created " + name)
+	s.createFolderNamed(s.accountID(), "", "New Folder")
+}
+
+// newSubfolder asks for a name and makes a folder inside parent.
+func (s *session) newSubfolder(parent mailcore.Folder) {
+	s.createFolderNamed(parent.AccountID, parent.ID, "New Folder in “"+parent.Name+"”")
+}
+
+func (s *session) createFolderNamed(acct string, parent mailcore.FolderID, title string) {
+	var made mailcore.Folder
+	askName(s.app, title, "Folder name", "", "Create", func(name string) error {
+		f, err := s.cli.CreateFolder(acct, name, parent)
+		made = f
+		return err
+	}, func(name string) {
+		s.central = false
+		s.folder = made.ID
+		s.selected = nil
+		s.refreshAll()
+		s.mark("Created " + name)
+	})
+}
+
+// renameFolder asks for a folder's new name. The folder keeps its messages,
+// its place in the tree, and — when it is the one showing — the view.
+func (s *session) renameFolder(f mailcore.Folder) {
+	askName(s.app, "Rename Folder", "New name for “"+f.Name+"”", f.Name, "Rename", func(name string) error {
+		if name == f.Name {
+			return nil
+		}
+		_, err := s.cli.RenameFolder(f.ID, name)
+		return err
+	}, func(name string) {
+		s.refreshAll()
+		s.mark("Renamed " + f.Name + " to " + name)
+	})
 }
 
 func (s *session) selectAll() {

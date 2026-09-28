@@ -75,6 +75,7 @@ const (
 	MethodMessagesSearch  = "messages.search"
 	MethodContactsSuggest = "contacts.suggest"
 	MethodFoldersDelete   = "folders.delete"
+	MethodFoldersRename   = "folders.rename"
 	MethodFoldersMarkRead = "folders.markRead"
 	MethodImportScan      = "import.scan"
 	MethodImportScanPath  = "import.scanPath"
@@ -215,6 +216,11 @@ type importMailParams struct {
 
 type folderIDParams struct {
 	FolderID FolderID `json:"folderId"`
+}
+
+type folderRenameParams struct {
+	FolderID FolderID `json:"folderId"`
+	Name     string   `json:"name"`
 }
 
 type contactsSuggestParams struct {

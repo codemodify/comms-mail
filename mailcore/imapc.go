@@ -277,6 +277,29 @@ func (c *imapClient) createMailbox(name string) error {
 	return err
 }
 
+// renameMailbox renames a mailbox (and, on the server, everything under it).
+func (c *imapClient) renameMailbox(from, to string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.connectLocked(); err != nil {
+		return err
+	}
+	src, err := IMAPMailbox(from)
+	if err != nil {
+		return err
+	}
+	dst, err := IMAPMailbox(to)
+	if err != nil {
+		return err
+	}
+	if c.selected != "" {
+		_, _ = c.cmdLocked("CLOSE")
+		c.selected = ""
+	}
+	_, err = c.cmdLocked("RENAME %s %s", src, dst)
+	return err
+}
+
 func (c *imapClient) deleteMailbox(name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

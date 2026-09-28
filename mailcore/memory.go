@@ -54,6 +54,35 @@ func (s *MemoryStore) SuggestContacts(query string, limit int) []Contact {
 	return s.feat.suggest(query, limit)
 }
 
+// RenameFolder renames a user-created folder in place.
+func (s *MemoryStore) RenameFolder(id FolderID, name string) (Folder, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || !validMailboxName(name) || strings.Contains(name, "/") {
+		return Folder{}, fmt.Errorf("mail: illegal folder name")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := memFolder(s.folders, id)
+	if !ok {
+		return Folder{}, fmt.Errorf("mail: no folder %s", id)
+	}
+	if f.Virtual || f.Kind != FolderCustom {
+		return Folder{}, fmt.Errorf("mail: %q is a system folder and cannot be renamed", f.Name)
+	}
+	for _, x := range s.folders {
+		if x.AccountID == f.AccountID && x.ID != id && x.Parent == f.Parent && strings.EqualFold(x.Name, name) {
+			return Folder{}, fmt.Errorf("mail: there is already a folder called %q", name)
+		}
+	}
+	for i := range s.folders {
+		if s.folders[i].ID == id {
+			s.folders[i].Name = name
+			f = s.folders[i]
+		}
+	}
+	return f, nil
+}
+
 // DeleteFolder removes a user-created folder and its messages.
 func (s *MemoryStore) DeleteFolder(id FolderID) error {
 	s.mu.Lock()

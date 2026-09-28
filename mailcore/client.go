@@ -349,6 +349,13 @@ func (c *Client) DeleteFolder(id FolderID) error {
 	return c.call(MethodFoldersDelete, folderIDParams{FolderID: id}, nil)
 }
 
+// RenameFolder gives a user-created folder a new name.
+func (c *Client) RenameFolder(id FolderID, name string) (Folder, error) {
+	var f Folder
+	err := c.call(MethodFoldersRename, folderRenameParams{FolderID: id, Name: name}, &f)
+	return f, err
+}
+
 // MarkFolderRead marks every message in a folder read.
 func (c *Client) MarkFolderRead(id FolderID) error {
 	return c.call(MethodFoldersMarkRead, folderIDParams{FolderID: id}, nil)

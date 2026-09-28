@@ -179,7 +179,8 @@ type Folder struct {
 	Virtual   bool       `json:"virtual,omitempty"`
 	MatchKind FolderKind `json:"matchKind,omitempty"`
 	Tag       string     `json:"tag,omitempty"`
-	Remote    string     `json:"remote,omitempty"` // IMAP mailbox name
+	Remote    string     `json:"remote,omitempty"` // IMAP mailbox name (decoded, not modified UTF-7)
+	Delim     string     `json:"delim,omitempty"`  // the server's hierarchy delimiter
 }
 
 // Message is a full RFC-822-ish record. Body is plain text (no MIME tree).
@@ -314,6 +315,9 @@ type Store interface {
 	CreateFolder(accountID, name string, parent FolderID) (Folder, error)
 	// DeleteFolder removes a user-created folder from the server and cache.
 	DeleteFolder(id FolderID) error
+	// RenameFolder gives a user-created folder a new name, on the server and
+	// in the cache; its messages keep their ids.
+	RenameFolder(id FolderID, name string) (Folder, error)
 	// MarkFolderRead marks every message in a real folder read.
 	MarkFolderRead(id FolderID) error
 	// ImportLocalMail reads on-disk mail (Thunderbird/KMail) into the local

@@ -76,3 +76,11 @@ directory). comms-mail's "Add a folder or mailbox file…" relies on that and
 has to explain it in the title. Maildir / MH / .eml imports are directories.
 **Fix:** a `FileOpenFolder` mode (the portal's `directory` option does this
 natively).
+
+### 10. No text-input dialog (prompt)
+`MessageBoxOptions` has no input field, and there is no `Prompt` /
+`InputDialog`. Every "name this" (new folder, rename folder, save search)
+needs a hand-built window with a field and OK/Cancel — comms-mail has
+`askName` for it. Qt's `QInputDialog::getText` / GTK's entry dialog.
+**Fix:** a `Prompt(from, title, label, initial, on func(text string, ok bool))`
+alongside `Confirm` / `Warn`, as an in-window overlay like them.
