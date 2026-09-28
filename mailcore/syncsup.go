@@ -107,7 +107,9 @@ func (s *LocalStore) idleAccount(ctx context.Context, accountID string) {
 	}
 	cfg.IMAP.tokenKey = accountID
 
-	started := map[FolderID]bool{}
+	// Inbox and Sent are always watched; so is the folder the window shows
+	// (Focus), while it shows it — one more connection, not one a folder.
+	started := map[FolderID]context.CancelFunc{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -115,28 +117,54 @@ func (s *LocalStore) idleAccount(ctx context.Context, accountID string) {
 		default:
 		}
 		s.mu.Lock()
-		var watch []Folder
+		want := map[FolderID]Folder{}
 		for _, f := range s.Folders {
-			if f.AccountID == accountID && (f.Kind == FolderInbox || f.Kind == FolderSent) {
-				watch = append(watch, f)
-			}
-		}
-		s.mu.Unlock()
-		for _, f := range watch {
-			if started[f.ID] {
+			if f.AccountID != accountID || f.Virtual || f.NoSelect {
 				continue
 			}
-			started[f.ID] = true
-			go s.idleFolder(ctx, cfg, f)
+			if f.Kind == FolderInbox || f.Kind == FolderSent || f.ID == s.focus {
+				want[f.ID] = f
+			}
+		}
+		changed := s.focusChanged
+		s.mu.Unlock()
+		for id, f := range want {
+			if started[id] == nil {
+				fctx, cancel := context.WithCancel(ctx)
+				started[id] = cancel
+				go s.idleFolder(fctx, cfg, f)
+			}
+		}
+		for id, cancel := range started {
+			if _, ok := want[id]; !ok {
+				cancel() // the window moved on
+				delete(started, id)
+			}
 		}
 		// Folders appear after the first LIST, so keep looking for a while
-		// instead of sampling once at startup.
+		// instead of sampling once at startup; a new focus wakes it early.
 		select {
 		case <-ctx.Done():
 			return
+		case <-changed:
 		case <-time.After(30 * time.Second):
 		}
 	}
+}
+
+// Focus says which folder the window shows, so it is watched for changes
+// (IDLE) as Inbox and Sent are, and not only polled.
+func (s *LocalStore) Focus(id FolderID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.focus == id {
+		return
+	}
+	s.focus = id
+	if s.focusChanged != nil {
+		close(s.focusChanged)
+	}
+	s.focusChanged = make(chan struct{})
 }
 
 func (s *LocalStore) idleFolder(ctx context.Context, cfg AccountConfig, f Folder) {
@@ -155,6 +183,7 @@ func (s *LocalStore) idleFolder(ctx context.Context, cfg AccountConfig, f Folder
 	}()
 
 	backoff := 5 * time.Second
+	caughtUp := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -183,6 +212,13 @@ func (s *LocalStore) idleFolder(ctx context.Context, cfg AccountConfig, f Folder
 			continue
 		}
 		backoff = 5 * time.Second
+		if !caughtUp {
+			// What arrived since the last poll, before waiting for news.
+			caughtUp = true
+			if n, err := s.syncFolder(cli, f); err == nil && n > 0 {
+				s.afterPush(f, n)
+			}
+		}
 		if !cli.has("IDLE") {
 			if n, err := s.syncFolder(cli, f); err == nil && n > 0 {
 				s.afterPush(f, n)

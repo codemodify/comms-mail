@@ -374,6 +374,12 @@ func (c *Client) MoveFolder(id, parent FolderID) (Folder, error) {
 	return f, err
 }
 
+// FocusFolder tells the daemon which folder the window shows, so changes to
+// it arrive at once (IDLE), not at the next poll.
+func (c *Client) FocusFolder(id FolderID) error {
+	return c.call(MethodFoldersFocus, folderIDParams{FolderID: id}, nil)
+}
+
 // CompactFolder removes what is marked deleted in a folder, on the server.
 func (c *Client) CompactFolder(id FolderID) error {
 	return c.call(MethodFoldersCompact, folderIDParams{FolderID: id}, nil)

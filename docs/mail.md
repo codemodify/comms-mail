@@ -409,6 +409,10 @@ Expired access tokens are refreshed with the stored refresh token.
 
 After listen, LocalStore starts a **push supervisor**:
 
+The folder the window shows is watched too (`folders.focus`), besides Inbox
+and Sent, and caught up the moment it is chosen; the other folders are
+polled every two minutes.
+
 - **IDLE** on **Inbox and Sent** (one IMAP connection per watched mailbox; IMAP allows only one selected mailbox per connection).
 - IDLE wake (EXISTS / FETCH / EXPUNGE / RECENT) → incremental sync of that folder.
 - **QRESYNC** when the server advertises it (`ENABLE QRESYNC`): `SELECT … (QRESYNC (uidvalidity highestmodseq))`, apply `VANISHED`, then flag refresh.

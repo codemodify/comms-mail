@@ -55,8 +55,9 @@ new ones turn up.
 - **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 
 ## Offline / sync
-- **IDLE watches only Inbox + Sent** — other folders poll every 2 minutes;
-  push for all folders (or the selected one) would feel instant.
+- **IDLE for every folder** — Inbox, Sent and the folder showing are
+  watched; the rest poll every 2 minutes (one connection a folder would
+  pass servers' per-user connection limits; NOTIFY, RFC 5465, would not).
 
 - **Filter-rule tags stay local** — a tag a filter rule adds is not pushed
   to the server (other clients do not see it); it is kept here through

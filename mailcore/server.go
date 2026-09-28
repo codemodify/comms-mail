@@ -402,6 +402,15 @@ func (s *Server) dispatch(req Request) Response {
 				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
 			}
 		}
+	case MethodFoldersFocus:
+		var p folderIDParams
+		p, err = decodeParams[folderIDParams](req.Params)
+		if err == nil {
+			if ls, ok := s.Store.(*LocalStore); ok {
+				ls.Focus(p.FolderID)
+			}
+			result = map[string]bool{"ok": true}
+		}
 	case MethodFoldersCompact:
 		var p folderIDParams
 		p, err = decodeParams[folderIDParams](req.Params)

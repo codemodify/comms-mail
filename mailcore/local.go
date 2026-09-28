@@ -44,12 +44,16 @@ type LocalStore struct {
 	rekeyed map[MessageID]MessageID
 	// flushMu lets one Outbox replay run at a time: two at once could send
 	// the same message twice.
-	flushMu    sync.Mutex
-	nextID     int
-	health     error
-	now        time.Time
-	feat       *featureHost
-	pushCancel func()
+	flushMu sync.Mutex
+	// focus is the folder the window shows (watched like Inbox); a change
+	// closes focusChanged to wake the watchers.
+	focus        FolderID
+	focusChanged chan struct{}
+	nextID       int
+	health       error
+	now          time.Time
+	feat         *featureHost
+	pushCancel   func()
 
 	// sqlc is mail.db (sqlstore.go); nil only when not even a fresh one
 	// could be created, and the store then runs from memory alone.

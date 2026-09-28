@@ -1,9 +1,11 @@
 package mailcore
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func folderByRemote(st *LocalStore, remote string) (Folder, bool) {
@@ -136,4 +138,26 @@ func TestCompactFolder(t *testing.T) {
 		t.Fatal("a kept message went")
 	}
 	_ = filepath.Join
+}
+
+// The folder the window shows is watched (and caught up at once) along
+// with Inbox and Sent.
+func TestFocusedFolderIsWatched(t *testing.T) {
+	fs := newFolderServer(t, "/", map[string][]uint32{"INBOX": {1}, "Projects": {4}})
+	st := newFolderStore(t, fs)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go st.idleAccount(ctx, "home")
+	proj, _ := folderByRemote(st, "Projects")
+	st.Focus(proj.ID)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, l := range fs.takeLog() {
+			if strings.HasSuffix(l, " Projects") && (strings.HasPrefix(l, "EXAMINE") || strings.HasPrefix(l, "SELECT")) {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the focused folder was never opened")
 }

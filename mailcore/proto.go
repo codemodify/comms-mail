@@ -80,6 +80,7 @@ const (
 	MethodFoldersRename   = "folders.rename"
 	MethodFoldersMove     = "folders.move"
 	MethodFoldersCompact  = "folders.compact"
+	MethodFoldersFocus    = "folders.focus"
 	MethodFoldersMarkRead = "folders.markRead"
 	MethodImportScan      = "import.scan"
 	MethodImportScanPath  = "import.scanPath"

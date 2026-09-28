@@ -3067,6 +3067,8 @@ func (s *session) selectFolder(id mailcore.FolderID) {
 	}
 	s.selected = nil
 	s.refreshAll()
+	// Watched while it shows: new mail in it arrives at once.
+	s.async(func() (any, error) { return nil, s.cli.FocusFolder(id) }, nil)
 }
 
 func (s *session) openAccountInbox(acct string) {
