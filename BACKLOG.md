@@ -61,9 +61,10 @@ new ones turn up.
 
 - **Import contacts / filters** (see below) — account settings and local
   mail import are done; these remain.
-- **Import: tests for the client config readers** — Evolution, Claws Mail,
-  Geary, mutt and Apple Mail settings parsing has no fixture tests yet (their
-  mail discovery goes through the tested generic scanner).
+- **Import: Apple Mail on macOS 10.11+** — accounts live in
+  `~/Library/Accounts/Accounts4.sqlite` (NSKeyedArchiver blobs), not read;
+  the import says to add them by hand. Evolution's `_2E`-escaped Maildir++
+  folder names are shown escaped.
 - **Import: answered / forwarded state** — read and starred carry over;
   replied / forwarded (maildir R/P, mbox X-Status A, emlx bits 2/8) have no
   field here yet.
