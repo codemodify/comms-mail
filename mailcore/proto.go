@@ -338,8 +338,11 @@ type imagesAllowParams struct {
 
 // inviteReplyParams answers the invitation in message ID.
 type inviteReplyParams struct {
-	ID       MessageID `json:"id"`
-	PartStat string    `json:"partstat"`
+	ID         MessageID `json:"id"`
+	PartStat   string    `json:"partstat"`
+	Comment    string    `json:"comment,omitempty"`
+	NoSend     bool      `json:"noSend,omitempty"`
+	IdentityID string    `json:"identityId,omitempty"`
 }
 
 type partParams struct {
@@ -373,6 +376,8 @@ type fetchResult struct {
 
 type appendResult struct {
 	ID MessageID `json:"id"`
+	// Queued says the message was not sent but waits in the Outbox, and why.
+	Queued string `json:"queued,omitempty"`
 }
 
 type eventParams struct {

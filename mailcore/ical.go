@@ -42,6 +42,14 @@ type Invite struct {
 	// Answer is this user's PARTSTAT: the reply they sent from here, else
 	// what the invite says.
 	Answer string `json:"answer,omitempty"`
+	// PartID is the MIME part the calendar object came from (to open it in
+	// a calendar application).
+	PartID string `json:"partId,omitempty"`
+	// Comment is the COMMENT a reply or proposal carries.
+	Comment string `json:"comment,omitempty"`
+	// Note says what became of an answer that was not sent at once — it
+	// waits in the Outbox, or was kept here without being sent.
+	Note string `json:"note,omitempty"`
 }
 
 // Attendee is an ORGANIZER or ATTENDEE of an event.
@@ -124,6 +132,7 @@ func FindInvite(raw []byte) (Invite, []byte, bool) {
 		if err != nil {
 			continue
 		}
+		inv.PartID = p.ID
 		return inv, data, true
 	}
 	return Invite{}, nil, false
@@ -148,6 +157,7 @@ func ParseInvite(data []byte) (Invite, error) {
 		Description: icsText(ev.value("DESCRIPTION")),
 		Status:      strings.ToUpper(ev.value("STATUS")),
 		Repeats:     describeRRule(ev.value("RRULE")),
+		Comment:     icsText(ev.value("COMMENT")),
 	}
 	if inv.UID == "" {
 		return Invite{}, fmt.Errorf("ical: event has no UID")
@@ -204,6 +214,12 @@ func calAddress(v string) string {
 // times in UTC so no VTIMEZONE has to travel with it. An attendee not on
 // the list is added: a reply from someone the invite was forwarded to.
 func BuildInviteReply(ics []byte, attendee, partstat string, now time.Time) ([]byte, error) {
+	return buildInviteReply(ics, attendee, "", partstat, "", now)
+}
+
+// buildInviteReply is BuildInviteReply with the attendee's name (when the
+// invite does not have it) and a COMMENT to the organizer.
+func buildInviteReply(ics []byte, attendee, name, partstat, comment string, now time.Time) ([]byte, error) {
 	partstat = strings.ToUpper(strings.TrimSpace(partstat))
 	switch partstat {
 	case PartStatAccepted, PartStatTentative, PartStatDeclined:
@@ -232,6 +248,9 @@ func BuildInviteReply(ics []byte, attendee, partstat string, now time.Time) ([]b
 	}
 	if !found {
 		me = icsProp{Name: "ATTENDEE", Value: "mailto:" + attendee, Params: map[string]string{}}
+		if name != "" {
+			me.Params["CN"] = name
+		}
 	}
 
 	var w icsWriter
@@ -267,9 +286,61 @@ func BuildInviteReply(ics []byte, attendee, partstat string, now time.Time) ([]b
 	me.Params["PARTSTAT"] = partstat
 	delete(me.Params, "RSVP")
 	w.line(me.encode("CN", "CUTYPE", "ROLE", "PARTSTAT", "DELEGATED-TO", "DELEGATED-FROM"))
+	if c := strings.TrimSpace(comment); c != "" {
+		w.line("COMMENT:" + icsEscape(c))
+	}
 	w.line("END:VEVENT")
 	w.line("END:VCALENDAR")
 	return w.b.Bytes(), nil
+}
+
+// BuildDeclineCounter writes the METHOD:DECLINECOUNTER object an organizer
+// sends to turn down the new time a guest proposed (RFC 5546 section
+// 3.2.8), from the guest's COUNTER.
+func BuildDeclineCounter(counter []byte, comment string, now time.Time) ([]byte, error) {
+	cal, err := parseICS(counter)
+	if err != nil {
+		return nil, err
+	}
+	ev := cal.event()
+	if ev == nil || ev.value("UID") == "" {
+		return nil, fmt.Errorf("ical: no event in the proposal")
+	}
+	org, ok := ev.get("ORGANIZER")
+	if !ok {
+		return nil, fmt.Errorf("ical: the proposal names no organizer")
+	}
+	var w icsWriter
+	w.line("BEGIN:VCALENDAR")
+	w.line("PRODID:-//comms-mail//comms-mail//EN")
+	w.line("VERSION:2.0")
+	w.line("METHOD:DECLINECOUNTER")
+	w.line("BEGIN:VEVENT")
+	w.line("UID:" + ev.value("UID"))
+	if p, ok := ev.get("RECURRENCE-ID"); ok {
+		w.line(cal.utcProp(p))
+	}
+	seq := strings.TrimSpace(ev.value("SEQUENCE"))
+	if seq == "" {
+		seq = "0"
+	}
+	w.line("SEQUENCE:" + seq)
+	w.line("DTSTAMP:" + now.UTC().Format("20060102T150405Z"))
+	w.line(org.encode("CN", "SENT-BY"))
+	for _, a := range ev.all("ATTENDEE") {
+		w.line(a.encode("CN"))
+	}
+	if c := strings.TrimSpace(comment); c != "" {
+		w.line("COMMENT:" + icsEscape(c))
+	}
+	w.line("END:VEVENT")
+	w.line("END:VCALENDAR")
+	return w.b.Bytes(), nil
+}
+
+// icsEscape escapes TEXT for a content line: backslash, ; , and newlines.
+func icsEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, ";", `\;`, ",", `\,`, "\r\n", `\n`, "\n", `\n`, "\r", "").Replace(s)
 }
 
 // InviteReplySubject is the subject of a reply: "Accepted: Team sync".
@@ -932,6 +1003,10 @@ func cloneParams(in map[string]string) map[string]string {
 // InviteReplyText is the plain-text body that goes beside a reply's
 // calendar part, for mail readers that do not understand it.
 func InviteReplyText(inv Invite, who, partstat string) string {
+	return inviteReplyText(inv, who, partstat, "")
+}
+
+func inviteReplyText(inv Invite, who, partstat, comment string) string {
 	name := who
 	if a, err := mail.ParseAddress(who); err == nil {
 		name = a.Address
@@ -939,7 +1014,11 @@ func InviteReplyText(inv Invite, who, partstat string) string {
 			name = a.Name
 		}
 	}
-	return fmt.Sprintf("%s has %s the invitation: %s\n", name, PartStatWords(partstat), inv.Summary)
+	out := fmt.Sprintf("%s has %s the invitation: %s\n", name, PartStatWords(partstat), inv.Summary)
+	if c := strings.TrimSpace(comment); c != "" {
+		out += "\n" + c + "\n"
+	}
+	return out
 }
 
 // calendarContentType is the Content-Type of an iMIP part for method.

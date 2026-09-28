@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -630,7 +631,7 @@ func (s *Server) dispatch(req Request) Response {
 		var p inviteReplyParams
 		p, err = decodeParams[inviteReplyParams](req.Params)
 		if err == nil {
-			result, err = s.replyInvite(p.ID, p.PartStat)
+			result, err = s.replyInvite(p.ID, InviteAnswer{PartStat: p.PartStat, Comment: p.Comment, NoSend: p.NoSend, IdentityID: p.IdentityID})
 		}
 	case MethodMessagesOpen:
 		var p partParams
@@ -932,14 +933,20 @@ func (s *Server) send(p ComposeParams) (appendResult, error) {
 	}
 	if ls, ok := s.Store.(*LocalStore); ok && ls.hasConfiguredAccounts() {
 		id, err := ls.SendViaSMTP(accountID, ident.ID, msg, files)
-		if err != nil {
+		var queued *QueuedError
+		if err != nil && !errors.As(err, &queued) {
 			return appendResult{}, err
 		}
+		// Sent, or safely in the Outbox: either way the draft is done.
 		if p.ID != "" {
 			_ = s.Store.Delete([]MessageID{p.ID})
 		}
 		s.broadcast(EventChanged, eventParams{Reason: "send"})
-		return appendResult{ID: id}, nil
+		r := appendResult{ID: id}
+		if queued != nil {
+			r.Queued = queued.Reason
+		}
+		return r, nil
 	}
 	sent, ok := specialFolder(s.Store, accountID, FolderSent)
 	if !ok {

@@ -954,7 +954,11 @@ func (s *MemoryStore) OpenPart(id MessageID, partID string) (PartData, error) {
 	}
 	name := AttachFileName(p.Filename)
 	if name == "attachment" {
-		name = AttachFileName(safeID(string(id))+"-"+safeID(partID)) + ".txt"
+		ext := extForMIME(p.MIMEType)
+		if ext == "" {
+			ext = ".txt"
+		}
+		name = AttachFileName(safeID(string(id)) + "-" + safeID(partID) + ext)
 	}
 	if unsafeAttachmentName(name) {
 		return p, fmt.Errorf("mail: refusing to open %q — save it and inspect it instead", name)

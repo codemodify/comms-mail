@@ -369,7 +369,7 @@ func TestInviteReplyQueuedOffline(t *testing.T) {
 	st.SetOnline(false)
 
 	srv := NewServer(st, filepath.Join(t.TempDir(), "s.sock"))
-	inv, err := srv.replyInvite(m.ID, PartStatTentative)
+	inv, err := srv.replyInvite(m.ID, InviteAnswer{PartStat: PartStatTentative})
 	if err != nil {
 		t.Fatal(err)
 	}

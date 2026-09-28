@@ -89,3 +89,14 @@ needs a hand-built window with a field and OK/Cancel — comms-mail has
 `askName` for it. Qt's `QInputDialog::getText` / GTK's entry dialog.
 **Fix:** a `Prompt(from, title, label, initial, on func(text string, ok bool))`
 alongside `Confirm` / `Warn`, as an in-window overlay like them.
+
+### 11. A wrapping Label that flexes in a Row is clipped
+`Label.Wrap` measures "to the width its parent offers", but a `FlexBox`
+row measures its flex child before it knows the width it will give it: the
+label reports one line's height, is then arranged narrower, wraps to three
+lines, and draws them centred in a one-line box — the first and last lines
+cut off. Seen in comms-mail's invite card (title beside two buttons).
+**Fix:** measure flex children again at their final main-axis size (a
+height-for-width pass), or have Row re-measure wrapping children after it
+distributes the space.
+

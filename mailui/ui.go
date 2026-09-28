@@ -162,8 +162,10 @@ type session struct {
 	sourceID   mailcore.MessageID
 	sourceOpen bool
 	retryBar   widget.Component
-	// invite is the calendar invitation card over the preview's body.
-	invite *inviteCard
+	// invite is the calendar invitation card over the preview's body;
+	// inviteCompact folds every card's guest list and options away.
+	invite        *inviteCard
+	inviteCompact bool
 	// images holds the pictures HTML mail showed (cid: parts by message,
 	// remote ones by URL) and the senders whose remote images load
 	// without asking.

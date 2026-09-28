@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -292,6 +293,17 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			}
 			return cli.SendFiles(acct, ident, msg, did, files)
 		}, func(_ any, err error) {
+			var queued *mailcore.QueuedError
+			if errors.As(err, &queued) {
+				// Not lost and not to be sent again: it waits in the Outbox.
+				if opts.OnChange != nil {
+					opts.OnChange()
+				}
+				widgets.Info(win.Content(), "Not sent yet",
+					"The server could not be reached, so the message is in the Outbox and will be sent when it answers.\n\n"+queued.Reason,
+					func() { win.Close() })
+				return
+			}
 			if err != nil {
 				sent = false
 				status.Set(0, "Send failed")

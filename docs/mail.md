@@ -299,15 +299,29 @@ is remembered per version of the invite, so the card says *You accepted*;
 an organizer's update (a new SEQUENCE) asks again. You can change your
 answer — that sends a new reply.
 
+Under the buttons: **Tell the organizer** (untick it to keep your answer
+here without mailing anyone), a **note** that goes with the answer (as the
+reply's `COMMENT` and in its text), and — when the invite reached you
+through a list, none of your addresses on it — **Answer as**, to pick the
+identity that answers (it is added as a guest). **Open in Calendar** hands
+the event to your desktop's calendar application (the invite's `.ics`,
+opened like an attachment). **Less** folds the guest list and the options
+away on every card, so a short window keeps room for the message; **More**
+brings them back.
+
 A **cancellation** says so with no buttons; a guest's **reply** to an
 invite you sent says who accepted, declined or said maybe; a **published**
-event (shared for information) asks nothing. Time zones are read from the
-IANA name, the Windows names Outlook uses, or the invite's own `VTIMEZONE`
-rules.
+event (shared for information) asks nothing. A guest's **proposal of a new
+time** (`COUNTER`) shows the time proposed with **Decline Proposal**, which
+mails them an iTIP `DECLINECOUNTER`; taking the new time is done in your
+calendar, which then sends everyone the update. Time zones are read from
+the IANA name, the Windows names Outlook uses, or the invite's own
+`VTIMEZONE` rules.
 
-Not yet: adding the event to a calendar (save the `.ics` attachment and open
-it in one), answering without sending or with a comment, and acting on a
-guest's proposed new time (`COUNTER`) — see BACKLOG.md.
+If the server cannot be reached, an answer (like any message) waits in the
+Outbox and the card says so; it is sent once, when the server answers. A
+server that refuses the message outright (a rejected address, a failed
+login) is reported and nothing is queued.
 
 ## OAuth (Google + Microsoft)
 
@@ -596,7 +610,7 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `images.fetch` | `{urls}` → `[{url, mime?, data?, error?}]` — public http(s) addresses only, size and time bounded |
 | `images.senders` / `images.allowSender` | senders whose remote images load without asking / `{address, allow}` |
 | `messages.invite` | `{id}` → the calendar invitation in the message (`null` when none), with `you` and your `answer` |
-| `invite.reply` | `{id, partstat}` — `ACCEPTED`, `TENTATIVE` or `DECLINED`: mails the organizer an iTIP REPLY, files it in Sent, returns the invite updated |
+| `invite.reply` | `{id, partstat, comment?, noSend?, identityId?}` — `ACCEPTED`, `TENTATIVE` or `DECLINED`: mails the organizer an iTIP REPLY (unless `noSend`), files it in Sent, returns the invite updated; `DECLINECOUNTER` turns down a guest's proposed time |
 | `messages.fetch` | `{accountId}` |
 | `sync.run` | `{accountId?}` |
 | `unread.get` | `{folderId?}` |

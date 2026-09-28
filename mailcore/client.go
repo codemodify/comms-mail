@@ -459,11 +459,16 @@ func (c *Client) SendIdent(accountID, identityID string, msg Message, draftID Me
 }
 
 // SendFiles is SendIdent with the attachment bytes already in hand.
+// SendFiles submits a message. A *QueuedError means it was not sent now
+// but waits in the Outbox to be sent again: done, not failed.
 func (c *Client) SendFiles(accountID, identityID string, msg Message, draftID MessageID, files []AttachedFile) (MessageID, error) {
 	var r appendResult
 	err := c.call(MethodComposeSend, ComposeParams{
 		AccountID: accountID, IdentityID: identityID, Message: msg, ID: draftID, Attachments: files,
 	}, &r)
+	if err == nil && r.Queued != "" {
+		err = &QueuedError{Reason: r.Queued}
+	}
 	return r.ID, err
 }
 
@@ -623,8 +628,16 @@ func (c *Client) Invite(id MessageID) (*Invite, error) {
 // ReplyInvite answers the invitation in message id — ACCEPTED, TENTATIVE
 // or DECLINED — by mail to its organizer, and returns it updated.
 func (c *Client) ReplyInvite(id MessageID, partstat string) (Invite, error) {
+	return c.AnswerInvite(id, InviteAnswer{PartStat: partstat})
+}
+
+// AnswerInvite answers the invitation in message id with a comment, as an
+// identity, or without telling the organizer; DECLINECOUNTER turns down a
+// guest's proposed new time.
+func (c *Client) AnswerInvite(id MessageID, ans InviteAnswer) (Invite, error) {
 	var inv Invite
-	err := c.call(MethodInviteReply, inviteReplyParams{ID: id, PartStat: partstat}, &inv)
+	err := c.call(MethodInviteReply, inviteReplyParams{ID: id, PartStat: ans.PartStat, Comment: ans.Comment,
+		NoSend: ans.NoSend, IdentityID: ans.IdentityID}, &inv)
 	return inv, err
 }
 

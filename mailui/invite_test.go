@@ -129,3 +129,76 @@ func TestInviteWhenAndState(t *testing.T) {
 		t.Fatal("an update should say so")
 	}
 }
+
+// Less / More folds the guest list and options on every card; a note goes
+// to the organizer, and with Tell the organizer off nothing is mailed.
+func TestInviteCardOptions(t *testing.T) {
+	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	s.invite.now = func() time.Time { return mailcore.DemoNow }
+	s.selectFolder(mailcore.FolderWorkInbox)
+	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
+	s.loadPreview()
+	c := s.invite
+	if !c.opts.Visible() || !c.tell.Checked || !c.openCal.Visible() || c.as.Visible() {
+		t.Fatalf("options %v tell %v cal %v as %v", c.opts.Visible(), c.tell.Checked, c.openCal.Visible(), c.as.Visible())
+	}
+	c.more.OnClick()
+	if c.who.Visible() || c.opts.Visible() || c.more.Text != "More" || !s.inviteCompact {
+		t.Fatal("Less should fold the guests and options away")
+	}
+	c.more.OnClick()
+	if !c.who.Visible() || !c.opts.Visible() {
+		t.Fatal("More should bring them back")
+	}
+
+	// Kept, not told.
+	c.tell.SetChecked(false)
+	c.decline.OnClick()
+	s.waitIdle()
+	if c.inv.Answer != mailcore.PartStatDeclined || !strings.Contains(c.state.Text, "not told") {
+		t.Fatalf("kept answer: %q %q", c.inv.Answer, c.state.Text)
+	}
+	if sent, _ := s.cli.ListMessages(mailcore.FolderWorkSent, mailcore.Filter{Query: "Declined: Toolkit"}); len(sent) != 0 {
+		t.Fatal("a kept answer was mailed")
+	}
+
+	// Told, with a note.
+	c.tell.SetChecked(true)
+	c.note.SetText("Running late, start without me")
+	c.accept.OnClick()
+	s.waitIdle()
+	sent, _ := s.cli.ListMessages(mailcore.FolderWorkSent, mailcore.Filter{Query: "Accepted: Toolkit"})
+	if len(sent) != 1 || !strings.Contains(sent[0].Body, "Running late") || c.note.Text != "" {
+		t.Fatalf("answer with a note: %+v", sent)
+	}
+
+	c.openCal.OnClick()
+	s.waitIdle()
+}
+
+// Invited through a list (none of the user's addresses on it), the card
+// asks which identity answers; a guest's proposal offers Decline Proposal.
+func TestInviteCardIdentityAndCounter(t *testing.T) {
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	c := s.invite
+	c.idents = []mailcore.Identity{{ID: "a", Address: "a@example.com"}, {ID: "b", Name: "B", Address: "b@example.com"}}
+	start := mailcore.DemoNow.Add(48 * time.Hour)
+	c.set(mailcore.Invite{Method: "REQUEST", UID: "u", Summary: "All hands", Start: start, End: start.Add(time.Hour),
+		Organizer: mailcore.Attendee{Email: "boss@example.com"}, Attendees: []mailcore.Attendee{{Email: "all@example.com"}}})
+	if !c.as.Visible() || len(c.as.Items) != 2 || c.as.Items[1] != "B <b@example.com>" {
+		t.Fatalf("identity picker %v %q", c.as.Visible(), c.as.Items)
+	}
+
+	c.set(mailcore.Invite{Method: "COUNTER", UID: "u", Summary: "Review", Start: start, End: start.Add(time.Hour),
+		Organizer: mailcore.Attendee{Email: "ada@codemodify.com"}, You: "ada@codemodify.com",
+		Attendees: []mailcore.Attendee{{Name: "Kai", Email: "kai@example.com"}}})
+	if !c.declineCounter.Visible() || c.accept.Visible() || !strings.HasPrefix(c.state.Text, "Kai proposes") {
+		t.Fatalf("counter: decline %v accept %v %q", c.declineCounter.Visible(), c.accept.Visible(), c.state.Text)
+	}
+	if c.what.Text != "New time proposed: Review" || c.openCal.Visible() {
+		t.Fatalf("counter heading %q cal %v", c.what.Text, c.openCal.Visible())
+	}
+}

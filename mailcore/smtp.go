@@ -1,8 +1,12 @@
 package mailcore
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -150,4 +154,26 @@ func splitAddrs(s string) []string {
 		}
 	}
 	return out
+}
+
+// QueuedError says a message could not be sent just now, for a reason that
+// may pass — the network, a server answering "try later" — and waits in the
+// Outbox to be sent again. It is not lost, and must not be sent again by
+// hand: that would send it twice.
+type QueuedError struct{ Reason string }
+
+func (e *QueuedError) Error() string {
+	return "not sent yet — it is in the Outbox and will be sent when the server answers (" + e.Reason + ")"
+}
+
+// transientSendError reports whether an SMTP failure may pass by itself:
+// the network, or a 4xx reply. A 5xx (a rejected address, a refused login)
+// or a configuration problem will not, and retrying it only repeats it.
+func transientSendError(err error) bool {
+	var te *textproto.Error
+	if errors.As(err, &te) {
+		return te.Code >= 400 && te.Code < 500
+	}
+	var ne net.Error
+	return errors.As(err, &ne) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }

@@ -2205,7 +2205,9 @@ func (s *LocalStore) OpenPart(id MessageID, partID string) (PartData, error) {
 	}
 	name := AttachFileName(p.Filename)
 	if name == "attachment" {
-		name = AttachFileName(safeID(string(id)) + "-" + safeID(partID))
+		// An unnamed part (an invite's calendar object) is named for what
+		// it is, so the desktop knows what opens it.
+		name = AttachFileName(safeID(string(id)) + "-" + safeID(partID) + extForMIME(p.MIMEType))
 	}
 	if unsafeAttachmentName(name) {
 		return p, fmt.Errorf("mail: refusing to open %q — save it and inspect it instead", name)
@@ -2227,6 +2229,29 @@ func (s *LocalStore) OpenPart(id MessageID, partID string) (PartData, error) {
 	p.Path = path
 	openCachedFile(path)
 	return p, nil
+}
+
+// extForMIME is the file extension for an unnamed part of a known type.
+func extForMIME(mt string) string {
+	switch strings.ToLower(mt) {
+	case "text/calendar", "application/ics":
+		return ".ics"
+	case "text/plain":
+		return ".txt"
+	case "text/vcard", "text/x-vcard":
+		return ".vcf"
+	case "application/pdf":
+		return ".pdf"
+	case "image/png":
+		return ".png"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/gif":
+		return ".gif"
+	case "message/rfc822":
+		return ".eml"
+	}
+	return ""
 }
 
 // unsafeAttachmentName flags extensions a desktop handler would run.
@@ -2590,6 +2615,13 @@ func idSeq(id MessageID) int {
 // failure queues it once and reports the error — it no longer both queues a
 // copy and errors, which used to send the message twice after a user retry.
 func (s *LocalStore) SendViaSMTP(accountID, identityID string, msg Message, files []AttachedFile) (MessageID, error) {
+	return s.sendViaSMTP(accountID, identityID, msg, files, false)
+}
+
+// sendViaSMTP is SendViaSMTP. From the Outbox (retry) a failure is only
+// reported: the op being retried stays queued, and queueing the message
+// again sent it twice once the network came back.
+func (s *LocalStore) sendViaSMTP(accountID, identityID string, msg Message, files []AttachedFile, retry bool) (MessageID, error) {
 	s.mu.Lock()
 	cfg, ok := s.accountCfgLocked(accountID)
 	ident := s.defaultIdentLocked(accountID)
@@ -2639,7 +2671,7 @@ func (s *LocalStore) SendViaSMTP(accountID, identityID string, msg Message, file
 		s.mu.Unlock()
 	}
 
-	if s.feat != nil && !s.feat.Online() {
+	if s.feat != nil && !s.feat.Online() && !retry {
 		id, err := s.Append(FolderOutbox, msg)
 		if err != nil {
 			s.mu.Lock()
@@ -2654,8 +2686,11 @@ func (s *LocalStore) SendViaSMTP(accountID, identityID string, msg Message, file
 		return id, nil
 	}
 	if err := SendSMTP(cfg.SMTP, ExtractAddr(msg.From), rcpts, raw); err != nil {
+		if !transientSendError(err) || retry {
+			return "", err // retrying would fail the same way, or it is a retry
+		}
 		queue("", err.Error())
-		return "", err
+		return "", &QueuedError{Reason: err.Error()}
 	}
 	sent, ok := specialFolder(s, accountID, FolderSent)
 	if !ok {
@@ -2856,7 +2891,7 @@ func (s *LocalStore) flushOne(op OutboxOp) error {
 		}
 		// Attachments are carried in the queued op, so a message composed
 		// offline still goes out with its files.
-		_, err := s.SendViaSMTP(op.AccountID, op.IdentityID, *op.Message, op.Attachments)
+		_, err := s.sendViaSMTP(op.AccountID, op.IdentityID, *op.Message, op.Attachments, true)
 		return err
 	default:
 		return nil
