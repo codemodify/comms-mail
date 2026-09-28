@@ -1,7 +1,9 @@
 package mailcore
 
 import (
+	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -304,6 +306,7 @@ func seedDemo(s *MemoryStore) {
 		Date: DemoNow.Add(-40 * time.Minute), Read: false,
 		Body: "See you there.\n",
 	})
+	s.addDemoInvite()
 	assignThreadIDs(s.messages)
 	if s.feat != nil && s.feat.index != nil {
 		s.feat.index.rebuild(s.messages)
@@ -327,3 +330,81 @@ What is demo
 
 — Mail on uitoolkit v0.10.0
 `
+
+// DemoInviteID is the calendar invitation in the demo work Inbox.
+const DemoInviteID MessageID = "m-invite"
+
+// demoInviteICS is a Google-style meeting request: a zoned start, folded
+// lines, and three guests, Ada's answer still open.
+const demoInviteICS = `BEGIN:VCALENDAR
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+VERSION:2.0
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Berlin:20260915T100000
+DTEND;TZID=Europe/Berlin:20260915T110000
+DTSTAMP:20260911T122200Z
+ORGANIZER;CN=Remy Chen:mailto:remy@clients.example
+UID:design-review-20260915@clients.example
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=
+ TRUE;CN=Ada (work);X-NUM-GUESTS=0:mailto:ada@codemodify.com
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Kai Na
+ kamura;X-NUM-GUESTS=0:mailto:kai@paintengine.example
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=OPT-PARTICIPANT;PARTSTAT=TENTATIVE;CN=Grace
+  Hopper;X-NUM-GUESTS=0:mailto:grace@compilers.example
+SEQUENCE:0
+SUMMARY:Toolkit design review
+LOCATION:Room 4\, second floor
+DESCRIPTION:Walk through the invite card and the reply flow.\nBring question
+ s.
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
+`
+
+// addDemoInvite files a calendar invitation, kept as its raw message so the
+// invite card and its replies work in the demo as on real mail.
+func (s *MemoryStore) addDemoInvite() {
+	ics := strings.ReplaceAll(demoInviteICS, "\n", "\r\n")
+	raw := strings.ReplaceAll(`From: Remy Chen <remy@clients.example>
+To: "Ada (work)" <ada@codemodify.com>
+Subject: Invitation: Toolkit design review @ Tue 15 Sep 2026 10:00 - 11:00 (CEST)
+Date: Fri, 11 Sep 2026 12:22:00 +0000
+Message-ID: <invite-design-review@clients.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mixed"
+
+--mixed
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset="UTF-8"
+
+Remy Chen has invited you to Toolkit design review.
+
+Tue 15 Sep 2026 10:00 - 11:00 (CEST), Room 4, second floor
+
+--alt
+Content-Type: text/calendar; charset="UTF-8"; method=REQUEST
+
+`, "\n", "\r\n") + ics + strings.ReplaceAll(`
+--alt--
+
+--mixed
+Content-Type: application/ics; name="invite.ics"
+Content-Disposition: attachment; filename="invite.ics"
+Content-Transfer-Encoding: base64
+
+`, "\n", "\r\n") + base64.StdEncoding.EncodeToString([]byte(ics)) + "\r\n--mixed--\r\n"
+	m, err := ParseRFC822([]byte(raw), FolderWorkInbox, AcctWork)
+	if err != nil {
+		return
+	}
+	m.ID = DemoInviteID
+	m.Date = DemoNow.Add(-5 * time.Hour)
+	m.Read = true
+	m.Tags = []string{"Work"}
+	s.raw[m.ID] = []byte(raw)
+	s.addMessage(m)
+}

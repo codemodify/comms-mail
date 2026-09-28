@@ -271,6 +271,37 @@ pre-addressed Write window instead.
 window of the stored RFC822 (`messages.getSource`). The Source tab in the
 preview pane uses the same daemon bytes — not a reconstructed header dump.
 
+### Calendar invitations
+
+A message that carries a meeting invitation — a `text/calendar` part or an
+`.ics` attachment, as Google Calendar, Outlook / Exchange, Thunderbird and
+Apple Calendar send — shows an **invite card** above its body, in the
+reading pane and in a message tab: the title, when (in your time zone) and
+where, how it repeats, the organizer, and each guest with their answer
+(yes / maybe / no). When the invite asks you, **Accept**, **Maybe** and
+**Decline** answer it.
+
+An answer is an iTIP `REPLY` (RFC 5546) mailed to the organizer the way
+calendar software expects (RFC 6047): a short text line and a
+`text/calendar; method=REPLY` alternative, carrying the event's UID,
+SEQUENCE and occurrence and your `PARTSTAT`, with times in UTC so no
+time-zone block has to travel. It goes out like any mail — from the
+identity whose address is on the guest list, through the account's SMTP,
+queued in the Outbox when offline, a copy filed in Sent. The answer you sent
+is remembered per version of the invite, so the card says *You accepted*;
+an organizer's update (a new SEQUENCE) asks again. You can change your
+answer — that sends a new reply.
+
+A **cancellation** says so with no buttons; a guest's **reply** to an
+invite you sent says who accepted, declined or said maybe; a **published**
+event (shared for information) asks nothing. Time zones are read from the
+IANA name, the Windows names Outlook uses, or the invite's own `VTIMEZONE`
+rules.
+
+Not yet: adding the event to a calendar (save the `.ics` attachment and open
+it in one), answering without sending or with a comment, and acting on a
+guest's proposed new time (`COUNTER`) — see BACKLOG.md.
+
 ## OAuth (Google + Microsoft)
 
 Real **authorization-code + PKCE loopback** (`http://127.0.0.1:<port>/oauth/callback`) or **device code** flow. IMAP/SMTP then use **AUTH XOAUTH2**. The `UITK_MAIL_XOAUTH2` bearer passthrough, inline `password`, and `passEnv` / `UITK_MAIL_PASS` still work.
@@ -514,6 +545,8 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `messages.update` | `{id, message}` |
 | `messages.getPart` | `{id, partId}` |
 | `messages.openPart` | `{id, partId}` → `{path}` on disk + `xdg-open` |
+| `messages.invite` | `{id}` → the calendar invitation in the message (`null` when none), with `you` and your `answer` |
+| `invite.reply` | `{id, partstat}` — `ACCEPTED`, `TENTATIVE` or `DECLINED`: mails the organizer an iTIP REPLY, files it in Sent, returns the invite updated |
 | `messages.fetch` | `{accountId}` |
 | `sync.run` | `{accountId?}` |
 | `unread.get` | `{folderId?}` |
@@ -627,4 +660,4 @@ UITK_SCENE=auto go run ./cmd/comms-mail
 go run ./cmd/comms-mail-demo -screenshot docs/screenshots
 ```
 
-Writes `mail-dark.png`, `mail-light.png`, `mail-classic.png`, `mail-compose.png`, `mail-prefs.png`, `mail-cards.png`, `mail-compact.png`, `mail-filters.png`, `mail-empty.png` (first-run dialog), `mail-account.png` (Add Account), `mail-smart.png` (daemon saved-search view; not a tree section).
+Writes `mail-dark.png`, `mail-light.png`, `mail-classic.png`, `mail-compose.png`, `mail-prefs.png`, `mail-cards.png`, `mail-compact.png`, `mail-filters.png`, `mail-empty.png` (first-run dialog), `mail-account.png` (Add Account), `mail-smart.png` (daemon saved-search view; not a tree section), `mail-invite.png` (a meeting invitation's card).

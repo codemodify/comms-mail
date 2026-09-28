@@ -27,6 +27,9 @@ across real messages ("👀", "🥳" in subjects, marketing copy). Mail is full
 of emoji, so this is high-impact and very visible.
 **Fix:** fall back to an installed emoji font (Noto Color Emoji / system)
 for glyphs the primary face lacks.
+*Also:* plain dingbats are missing too, not just emoji — ✓ (U+2713) and
+✗ (U+2717) render as tofu, so comms-mail's invite card writes "(yes)" /
+"(no)" beside each guest where a check mark would read better.
 
 ### 3. richtext image placeholder is an empty box with no alt text
 For an image-heavy HTML email with images unresolved (a real Apple

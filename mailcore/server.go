@@ -548,6 +548,18 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			result, err = s.Store.GetPart(p.ID, p.PartID)
 		}
+	case MethodMessagesInvite:
+		var p messageIDParams
+		p, err = decodeParams[messageIDParams](req.Params)
+		if err == nil {
+			result, err = s.invite(p.ID)
+		}
+	case MethodInviteReply:
+		var p inviteReplyParams
+		p, err = decodeParams[inviteReplyParams](req.Params)
+		if err == nil {
+			result, err = s.replyInvite(p.ID, p.PartStat)
+		}
 	case MethodMessagesOpen:
 		var p partParams
 		p, err = decodeParams[partParams](req.Params)

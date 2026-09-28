@@ -24,6 +24,8 @@ type messageTab struct {
 	view widget.Component
 	body *widgets.TextArea
 	head *widgets.Label
+	// invite is the message's calendar invitation, when it has one.
+	invite *inviteCard
 }
 
 // setupTabs makes the strip with the Mail tab showing main, and reopens the
@@ -160,8 +162,9 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	mt.head = widgets.NewLabel(messageHeaderText(m))
 	mt.body = widgets.NewTextView("", "Loading message…")
 	mt.body.MinRows = 8
+	mt.invite = newInviteCard(s)
 	col := widgets.NewColumn(
-		widgets.NewColumn(subj, mt.head).WithGap(4).WithPad(10),
+		widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10),
 		widgets.NewSeparator(),
 		widgets.NewPad(8, mt.body),
 	).WithGap(0)
@@ -178,6 +181,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 
 	if mt.full {
 		mt.body.SetText(mailcore.DisplayBody(m))
+		mt.invite.show(m)
 		return s.tabs.Len() - 1
 	}
 	id := m.ID
@@ -194,6 +198,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		mt.msg, mt.full = full, true
 		mt.head.SetText(messageHeaderText(full))
 		mt.body.SetText(mailcore.DisplayBody(full))
+		mt.invite.show(full)
 	})
 	return s.tabs.Len() - 1
 }

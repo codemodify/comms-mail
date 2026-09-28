@@ -185,7 +185,8 @@ func callTimeout(method string) time.Duration {
 	switch method {
 	case MethodSyncRun, MethodMessagesFetch, MethodOutboxFlush, MethodStatusSet:
 		return 30 * time.Minute
-	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource:
+	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
+		MethodMessagesInvite, MethodInviteReply:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
@@ -560,6 +561,21 @@ func (c *Client) GetPart(id MessageID, partID string) (PartData, error) {
 	var p PartData
 	err := c.call(MethodMessagesPart, partParams{ID: id, PartID: partID}, &p)
 	return p, err
+}
+
+// Invite returns the calendar invitation message id carries, or nil.
+func (c *Client) Invite(id MessageID) (*Invite, error) {
+	var inv *Invite
+	err := c.call(MethodMessagesInvite, messageIDParams{ID: id}, &inv)
+	return inv, err
+}
+
+// ReplyInvite answers the invitation in message id — ACCEPTED, TENTATIVE
+// or DECLINED — by mail to its organizer, and returns it updated.
+func (c *Client) ReplyInvite(id MessageID, partstat string) (Invite, error) {
+	var inv Invite
+	err := c.call(MethodInviteReply, inviteReplyParams{ID: id, PartStat: partstat}, &inv)
+	return inv, err
 }
 
 func (c *Client) OpenPart(id MessageID, partID string) (PartData, error) {

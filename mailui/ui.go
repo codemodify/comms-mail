@@ -160,6 +160,8 @@ type session struct {
 	sourceID   mailcore.MessageID
 	sourceOpen bool
 	retryBar   widget.Component
+	// invite is the calendar invitation card over the preview's body.
+	invite *inviteCard
 
 	// undo is the move or delete waiting out its undo window; its messages
 	// are hidden from the list until it is committed or undone.
@@ -391,7 +393,8 @@ func (s *session) build() widget.Component {
 	s.applyRowMetrics()
 	s.retryBar = widgets.NewRow(widgets.NewButton("Retry", s.loadPreview))
 	s.retryBar.SetVisible(false)
-	headCol := widgets.NewColumn(s.hdrSubj, s.hdrFrom, s.hdrTo, s.hdrDate, s.hdrExtra, s.attachPane, s.retryBar).WithGap(3).WithPad(10)
+	s.invite = newInviteCard(s)
+	headCol := widgets.NewColumn(s.hdrSubj, s.hdrFrom, s.hdrTo, s.hdrDate, s.hdrExtra, s.invite.view, s.attachPane, s.retryBar).WithGap(3).WithPad(10)
 	previewCol := widgets.NewColumn(headCol, widgets.NewSeparator(), tabs).WithGap(0)
 	previewCol.AddFlex(tabs, 1)
 
@@ -1293,9 +1296,15 @@ func (s *session) loadPreview() {
 		}
 		s.attNames = nil
 		s.syncAttachPane()
+		if s.invite != nil {
+			s.invite.clear()
+		}
 		return
 	}
 	s.showHeaders(m)
+	if s.invite != nil {
+		s.invite.show(m)
+	}
 	// The list row carries the text body but never the HTML part, so the
 	// full message is always fetched to fill the HTML tab. When the row
 	// already has the text it shows at once and the fetch only adds the
@@ -1328,6 +1337,9 @@ func (s *session) loadPreview() {
 		full := v.(mailcore.Message)
 		s.showHeaders(full)
 		s.showBody(full)
+		if s.invite != nil {
+			s.invite.show(full)
+		}
 	})
 }
 

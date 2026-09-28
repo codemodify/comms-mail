@@ -19,6 +19,24 @@ new ones turn up.
 - **Opened message tabs are text-only** — no HTML view when a message is
   opened in its own tab.
 
+## Calendar invitations
+- **Add to calendar** — there is no calendar here; today the `.ics`
+  attachment can be saved and opened in one. A hand-off (xdg-open the
+  `.ics`, or CalDAV) would close the loop.
+- **Answer without sending / with a comment** — Thunderbird offers "Do not
+  send a response" and a note to the organizer; every answer here sends.
+- **Proposed new times (`COUNTER`)** — shown, not actionable.
+- **Pick the identity** when none of your addresses is on the guest list
+  (an invite sent to a mailing list): today the account's default answers
+  and is added as a guest.
+- **Conflicts** — no "you are busy then" hint (needs a calendar).
+- **A failed send is also queued** — if SMTP rejects the reply the error
+  shows, but the send path also queues it in the Outbox; pressing the
+  button again queues a second reply. Same for any send; worth reconciling.
+- **Card height** — on a short window the invite card takes room from the
+  body; a collapsible card, or putting it inside the scrolling body, would
+  fix it.
+
 ## Compose
 - **Draft autosave** — a crash mid-compose loses the message.
 - **Chip/pill recipient fields** — removable recipient pills (uitoolkit

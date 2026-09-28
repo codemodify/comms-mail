@@ -969,8 +969,12 @@ func (s *MemoryStore) DeleteSmartFolder(id string) error { return s.extras().Del
 func (s *MemoryStore) MuteThread(id string, muted bool) error {
 	return s.extras().MuteThread(id, muted)
 }
-func (s *MemoryStore) MutedThreads() []string { return s.extras().MutedThreads() }
-func (s *MemoryStore) ListVIPs() []VIP        { return s.extras().ListVIPs() }
+func (s *MemoryStore) MutedThreads() []string         { return s.extras().MutedThreads() }
+func (s *MemoryStore) InviteAnswer(key string) string { return s.extras().InviteAnswer(key) }
+func (s *MemoryStore) SetInviteAnswer(key, partstat string) error {
+	return s.extras().SetInviteAnswer(key, partstat)
+}
+func (s *MemoryStore) ListVIPs() []VIP { return s.extras().ListVIPs() }
 func (s *MemoryStore) PutVIP(v VIP) (VIP, error) {
 	return s.extras().PutVIP(v)
 }

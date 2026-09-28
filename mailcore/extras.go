@@ -97,6 +97,7 @@ type featureHost struct {
 	cats     []SenderCat
 	notify   NotifyPrefs
 	outbox   []OutboxOp
+	answers  map[string]string // invite answers sent from here, by event
 	online   bool
 	index    *searchIndex
 	contacts []Contact // address book, rebuilt when the message set changes
@@ -316,6 +317,34 @@ func (f *featureHost) MutedThreads() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.muted...)
+}
+
+// InviteAnswer is the answer this user sent from here to the invitation
+// with key (InviteKey), or "".
+func (f *featureHost) InviteAnswer(key string) string {
+	if f == nil {
+		return ""
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.answers[key]
+}
+
+// SetInviteAnswer records the answer sent to an invitation.
+func (f *featureHost) SetInviteAnswer(key, partstat string) error {
+	if f == nil {
+		return fmt.Errorf("mail: no feature host")
+	}
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("mail: empty invitation key")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.answers == nil {
+		f.answers = map[string]string{}
+	}
+	f.answers[key] = partstat
+	return nil
 }
 
 func (f *featureHost) NotifyPrefs() NotifyPrefs {

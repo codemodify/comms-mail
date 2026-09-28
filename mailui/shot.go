@@ -66,6 +66,9 @@ func WriteScreenshots(dir string) error {
 	if err := writeMailFolderShot(cli, filepath.Join(dir, "mail-smart.png"), mailcore.FolderID("smart/sf-invoices")); err != nil {
 		return err
 	}
+	if err := writeInviteShot(cli, filepath.Join(dir, "mail-invite.png")); err != nil {
+		return err
+	}
 	if err := writeEmptyShot(filepath.Join(dir, "mail-empty.png")); err != nil {
 		return err
 	}
@@ -187,6 +190,34 @@ func writeMailShot(cli *mailcore.Client, path string, light bool, layout LayoutM
 	if cards {
 		PrepareShotCards(w)
 	}
+	a.PumpOnce()
+	if err := w.WritePNG(path); err != nil {
+		return err
+	}
+	fmt.Println("wrote", path)
+	w.Close()
+	return nil
+}
+
+// writeInviteShot shows the demo meeting invitation in the preview, its
+// card over the body.
+func writeInviteShot(cli *mailcore.Client, path string) error {
+	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{
+		Title: "Mail", Width: 1280, Height: 800, Headless: true,
+	})
+	if err != nil {
+		return err
+	}
+	s := newSession(a, w, cli, AppOptions{ShowFilter: true})
+	w.SetContent(s.build())
+	s.invite.now = func() time.Time { return mailcore.DemoNow }
+	a.PumpOnce()
+	s.selectFolder(mailcore.FolderWorkInbox)
+	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
+	s.syncViews()
+	s.loadPreview()
+	s.waitIdle()
 	a.PumpOnce()
 	if err := w.WritePNG(path); err != nil {
 		return err

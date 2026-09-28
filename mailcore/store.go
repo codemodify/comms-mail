@@ -391,6 +391,11 @@ type ExtraStore interface {
 
 	SetSenderCategory(address, category string) error
 	ListSenderCategories() []SenderCat
+
+	// InviteAnswer and SetInviteAnswer keep the answers sent to calendar
+	// invitations, keyed by InviteKey.
+	InviteAnswer(key string) string
+	SetInviteAnswer(key, partstat string) error
 }
 
 func asExtra(s Store) ExtraStore {

@@ -271,6 +271,11 @@ func applyTextPart(out *Message, media string, data []byte, filename string, att
 		}
 		return
 	}
+	if strings.HasPrefix(low, "text/calendar") || strings.HasPrefix(low, "text/x-vcalendar") {
+		// An invite's calendar object is shown as an invite card, never as
+		// the body text.
+		return
+	}
 	if strings.Contains(low, "html") {
 		if out.HTML == "" {
 			out.HTML = SanitizeHTML(text)
@@ -717,7 +722,21 @@ func BuildRFC822Strict(msg Message, ident Identity, files []AttachedFile) ([]byt
 			fmt.Fprintf(&b, "%s: %s\r\n", f.name, f.value)
 		}
 	}
-	if len(files) == 0 {
+	// An iTIP object rides as an alternative to the text; the rest are
+	// attachments.
+	var cal *AttachedFile
+	var attach []AttachedFile
+	for i, f := range files {
+		if f.Method != "" && cal == nil {
+			cal = &files[i]
+			continue
+		}
+		attach = append(attach, f)
+	}
+	if cal != nil && !validICSMethod(cal.Method) {
+		return nil, fmt.Errorf("mail: bad calendar method %q", cal.Method)
+	}
+	if len(attach) == 0 && cal == nil {
 		writeFields(
 			field{"Content-Type", `text/plain; charset="utf-8"`},
 			field{"Content-Transfer-Encoding", "8bit"},
@@ -729,15 +748,42 @@ func BuildRFC822Strict(msg Message, ident Identity, files []AttachedFile) ([]byt
 		}
 		return b.Bytes(), nil
 	}
+	// writeText is the body part: the text alone, or the text and the
+	// calendar object as alternatives.
+	writeText := func(alt string) {
+		if cal == nil {
+			fmt.Fprintf(&b, "Content-Type: text/plain; charset=\"utf-8\"\r\n")
+			fmt.Fprintf(&b, "Content-Transfer-Encoding: 8bit\r\n\r\n")
+			b.WriteString(toCRLF(body))
+			b.WriteString("\r\n")
+			return
+		}
+		fmt.Fprintf(&b, "Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", alt)
+		fmt.Fprintf(&b, "--%s\r\n", alt)
+		fmt.Fprintf(&b, "Content-Type: text/plain; charset=\"utf-8\"\r\n")
+		fmt.Fprintf(&b, "Content-Transfer-Encoding: 8bit\r\n\r\n")
+		b.WriteString(toCRLF(body))
+		b.WriteString("\r\n")
+		fmt.Fprintf(&b, "--%s\r\n", alt)
+		fmt.Fprintf(&b, "Content-Type: %s\r\n", calendarContentType(strings.ToUpper(cal.Method)))
+		fmt.Fprintf(&b, "Content-Transfer-Encoding: base64\r\n\r\n")
+		writeBase64(&b, cal.Data)
+		fmt.Fprintf(&b, "--%s--\r\n", alt)
+	}
 	boundary := fmt.Sprintf("uitk-%d-%s", date.UnixNano(), randID(6))
+	alt := boundary + "-alt"
+	if len(attach) == 0 {
+		// Just the text and the calendar object: the message itself is the
+		// multipart/alternative.
+		writeFields()
+		writeText(alt)
+		return b.Bytes(), nil
+	}
 	writeFields(field{"Content-Type", `multipart/mixed; boundary="` + boundary + `"`})
 	b.WriteString("\r\n")
 	fmt.Fprintf(&b, "--%s\r\n", boundary)
-	fmt.Fprintf(&b, "Content-Type: text/plain; charset=\"utf-8\"\r\n")
-	fmt.Fprintf(&b, "Content-Transfer-Encoding: 8bit\r\n\r\n")
-	b.WriteString(toCRLF(body))
-	b.WriteString("\r\n")
-	for _, f := range files {
+	writeText(alt)
+	for _, f := range attach {
 		ct := f.MIME
 		if ct == "" {
 			ct = "application/octet-stream"
@@ -758,18 +804,34 @@ func BuildRFC822Strict(msg Message, ident Identity, files []AttachedFile) ([]byt
 		fmt.Fprintf(&b, "Content-Type: %s; name=\"%s\"\r\n", ct, encName)
 		fmt.Fprintf(&b, "Content-Disposition: attachment; filename=\"%s\"\r\n", encName)
 		fmt.Fprintf(&b, "Content-Transfer-Encoding: base64\r\n\r\n")
-		enc := base64.StdEncoding.EncodeToString(f.Data)
-		for i := 0; i < len(enc); i += 76 {
-			end := i + 76
-			if end > len(enc) {
-				end = len(enc)
-			}
-			b.WriteString(enc[i:end])
-			b.WriteString("\r\n")
-		}
+		writeBase64(&b, f.Data)
 	}
 	fmt.Fprintf(&b, "--%s--\r\n", boundary)
 	return b.Bytes(), nil
+}
+
+// writeBase64 writes data base64-encoded in 76-column lines.
+func writeBase64(b *bytes.Buffer, data []byte) {
+	enc := base64.StdEncoding.EncodeToString(data)
+	for i := 0; i < len(enc); i += 76 {
+		end := min(i+76, len(enc))
+		b.WriteString(enc[i:end])
+		b.WriteString("\r\n")
+	}
+}
+
+// validICSMethod reports whether m is an iTIP method name (letters only),
+// safe to put in a header parameter.
+func validICSMethod(m string) bool {
+	if m == "" || len(m) > 20 {
+		return false
+	}
+	for _, r := range m {
+		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			return false
+		}
+	}
+	return true
 }
 
 // toCRLF normalises line endings and dot-stuffs nothing: net/smtp's DataWriter
@@ -785,6 +847,10 @@ type AttachedFile struct {
 	Name string `json:"name"`
 	MIME string `json:"mime,omitempty"`
 	Data []byte `json:"data,omitempty"`
+	// Method marks an iCalendar object sent as an iTIP message (RFC 6047):
+	// it goes beside the text body as text/calendar; method=<Method>, the
+	// part calendar software acts on, rather than as an attachment.
+	Method string `json:"method,omitempty"`
 }
 
 func guessMIME(name string) string {

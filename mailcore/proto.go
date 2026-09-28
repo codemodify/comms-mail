@@ -101,6 +101,8 @@ const (
 	MethodFiltersDel      = "filters.delete"
 	MethodFiltersApply    = "filters.apply"
 	MethodMessagesPart    = "messages.getPart"
+	MethodMessagesInvite  = "messages.invite"
+	MethodInviteReply     = "invite.reply"
 	MethodMessagesOpen    = "messages.openPart"
 	MethodSyncRun         = "sync.run"
 	MethodStatusSet       = "status.set"
@@ -307,6 +309,12 @@ type tagNameParams struct {
 
 type applyRulesParams struct {
 	FolderID FolderID `json:"folderId,omitempty"`
+}
+
+// inviteReplyParams answers the invitation in message ID.
+type inviteReplyParams struct {
+	ID       MessageID `json:"id"`
+	PartStat string    `json:"partstat"`
 }
 
 type partParams struct {
