@@ -114,6 +114,8 @@ type session struct {
 	tree                                       *widgets.TreeView
 	outboxTree                                 *widgets.TreeView
 	preview                                    *widgets.TextArea
+	previewRich                                *widgets.RichText
+	previewImg                                 *widgets.Label
 	source                                     *widgets.TextArea
 	attachHits                                 []*attachHit
 	attachAll                                  *widgets.Button
@@ -345,7 +347,17 @@ func (s *session) build() widget.Component {
 	s.qf.OnEscape = func() { s.showFilter(false) }
 	s.qf.SetVisible(s.opts.ShowFilter)
 
-	previewTab := widgets.NewPad(8, s.preview)
+	// The Message tab holds a plain-text view and an HTML view, one shown
+	// at a time (renderMessage), over a line that appears when the HTML has
+	// images the renderer will not fetch.
+	s.previewRich = newReadOnlyRich(s.openLink)
+	s.previewRich.SetVisible(false)
+	s.previewImg = widgets.NewLabel("🚫 Remote images not shown (they can tell the sender you opened this).")
+	s.previewImg.SetVisible(false)
+	previewBody := widgets.NewStack(s.preview, s.previewRich)
+	previewCol2 := widgets.NewColumn(s.previewImg, previewBody).WithGap(4)
+	previewCol2.AddFlex(previewBody, 1)
+	previewTab := widgets.NewPad(8, previewCol2)
 	sourceTab := widgets.NewPad(8, s.source)
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: previewTab},
@@ -1219,10 +1231,7 @@ func (s *session) loadPreview() {
 	}
 	m, ok := s.listPrimary()
 	if !ok {
-		if s.preview != nil {
-			s.preview.Placeholder = "Select a message (plain text)"
-			s.preview.SetText("")
-		}
+		s.showPreviewPlain("Select a message (plain text)", "")
 		if s.hdrSubj != nil {
 			s.hdrSubj.SetText("No message selected")
 			s.hdrFrom.SetText("")
@@ -1239,10 +1248,7 @@ func (s *session) loadPreview() {
 		s.showBody(m)
 		return
 	}
-	if s.preview != nil {
-		s.preview.Placeholder = "Loading message…"
-		s.preview.SetText("")
-	}
+	s.showPreviewPlain("Loading message…", "")
 	id := m.ID
 	s.loadingID = id
 	s.async(func() (any, error) {
@@ -1253,9 +1259,7 @@ func (s *session) loadPreview() {
 		}
 		s.loadingID = ""
 		if err != nil {
-			if s.preview != nil {
-				s.preview.SetText("Couldn't load this message.\n\n" + err.Error())
-			}
+			s.showPreviewPlain("", "Couldn't load this message.\n\n"+err.Error())
 			if s.retryBar != nil {
 				s.retryBar.SetVisible(true)
 			}
@@ -1293,12 +1297,29 @@ func (s *session) showHeaders(m mailcore.Message) {
 // window acts on.
 func (s *session) showBody(m mailcore.Message) {
 	s.shown, s.shownOK = m, true
-	if s.preview != nil {
-		s.preview.Placeholder = "This message has no text"
+	if s.preview != nil && s.previewRich != nil {
+		renderMessage(s.previewRich, s.preview, s.previewImg, m)
+	} else if s.preview != nil {
 		s.preview.SetText(mailcore.DisplayBody(m))
 	}
 	if s.sourceOpen {
 		s.loadSource()
+	}
+}
+
+// showPreviewPlain shows text in the plain preview and hides the HTML view:
+// for loading, errors and no selection, none of which is HTML.
+func (s *session) showPreviewPlain(placeholder, text string) {
+	if s.previewRich != nil {
+		s.previewRich.SetVisible(false)
+	}
+	if s.previewImg != nil {
+		s.previewImg.SetVisible(false)
+	}
+	if s.preview != nil {
+		s.preview.SetVisible(true)
+		s.preview.Placeholder = placeholder
+		s.preview.SetText(text)
 	}
 }
 

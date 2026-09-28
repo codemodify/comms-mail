@@ -247,9 +247,26 @@ The wizard has an explicit **IMAP** / **POP3** choice (default IMAP). It guesses
 
 Type the incoming/SMTP password (masked field); **Save account** writes `protocol` plus `password` into `mail.json` (file mode `0600`). `passEnv` is optional fallback only. Account Central and Settings → Accounts show **IMAP** or **POP3** after save.
 
-### Text-only message view
+### Message view: text and HTML
 
-The Message tab is **plain text**. comms-maild prefers the `text/plain` part; if the message is HTML-only, tags are stripped (`HTMLToText`). There is no HTML engine and no HTML tab. **Ctrl+U** (also the message context menu) opens a read-only JetBrains Mono window of the stored RFC822 (`messages.getSource`). The Source tab in the preview pane uses the same daemon bytes — not a reconstructed header dump.
+A message with a real `text/plain` part is shown as plain text. HTML-only
+mail (and mail whose text part is empty) is **rendered** in a read-only
+`RichText` — headings, lists, tables, colours and clickable links — through
+uitoolkit's HTML subset: no scripts, no external CSS, nothing executed.
+
+The renderer never touches the network. A `data:` image carried in the
+message draws; every remote (`http(s)`) or `cid:` image is left as a
+placeholder and a line above the body says *Remote images not shown* (a
+remote image is a read receipt for the sender). Loading them on request is
+a later step.
+
+A link is followed on a click, after a confirmation showing the real target
+so link text cannot disguise where it goes; a `mailto:` opens a
+pre-addressed Write window instead.
+
+**Ctrl+U** (also the message context menu) opens a read-only JetBrains Mono
+window of the stored RFC822 (`messages.getSource`). The Source tab in the
+preview pane uses the same daemon bytes — not a reconstructed header dump.
 
 ## OAuth (Google + Microsoft)
 
@@ -451,7 +468,7 @@ Implemented in comms-maild:
 Known gaps:
 
 - BODYSTRUCTURE walker covers common multipart/alternative + mixed; exotic message/rfc822 nests may miss a part id. Part ids follow RFC 3501 section numbering (`1`, `1.1`, `2`) in both the parser and the walker — they used to disagree, and nested parts could collide.
-- HTML is **stripped to text** in the Message tab (no HTML engine, no HTML tab). Scripts/iframes never run.
+- HTML mail is **rendered** (uitoolkit's HTML subset) with clickable links; scripts, external CSS and remote images never load. A `text/plain` part, when present, is shown as text instead.
 - OAuth needs **your** Google/Microsoft app registration (no bundled client IDs). OAuth accounts are **IMAP + SMTP** only (not POP3).
 - IDLE watches Inbox + Sent, not every mailbox (others poll). POP3 has no IDLE (Get Messages / periodic Sync).
 - **POP3** is inbox retrieve only: no server folders, no server-side flags (read/starred are local), no MOVE/APPEND on the server, deletes stay local (server copy remains), no TOP preview. Sent goes out SMTP and is filed locally.
@@ -530,7 +547,7 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
 - **Empty by default** — no demo accounts unless `UITK_MAIL=memory`. First-run Yes/No is only “There are no accounts, want to add one?” Password / `0600` notes are on the Add Account form.
 - **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Settings. `passEnv` remains an optional fallback.
 - **Remove account** — File menu, Account Central, and Settings → Accounts. Confirm, then drop the account from `mail.json` and the local cache. The folder tree refreshes; if none remain, the first-run “add one?” prompt returns.
-- **Text-only Message tab** — prefer `text/plain`; HTML-only mail is tag-stripped. No HTML engine / no HTML tab. The Message/Source body is a read-only `TextView` (scroll + scrollbar; not editable). Compose/Write stays an editable `TextArea`.
+- **Message tab** — a `text/plain` part shows as text; HTML-only mail is rendered read-only (uitoolkit HTML subset: formatting + links, no scripts/CSS, remote images blocked). The Source tab and Compose/Write are unchanged.
 - **3-pane splitters** — dragging folder|list or list|preview keeps exclusive pane bounds; preview chrome cannot paint over the thread list.
 - **Overflow scrollbars** — thread list, folder tree, and long message bodies show a vertical track/thumb; wheel/trackpad still scroll; offset clamps at the last row. The thread table clips rows under the sticky header (flush at the top; no paint-through while scrolling).
 - **Thread columns** — ★, 📎, Topic, Who, When. No Size. Click a column header to sort.
