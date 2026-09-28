@@ -41,6 +41,16 @@ new ones turn up.
 - **Compact folders** — `EXPUNGE` deleted messages (the menu stub was
   removed).
 
+- **Import local mail / contacts / filters** (see below) — config import (accounts, identities, signatures) is done; these remain.
+- **Import local mail** — Thunderbird Local Folders (mbox) and KMail local
+  maildir into the store, with dedup by Message-ID. IMAP accounts just
+  re-sync; this is for mail that lives only on disk.
+- **Import contacts** — Thunderbird address book (abook.sqlite / .mab) and
+  KMail/KAddressBook vCards, to seed the address book beyond what the cached
+  messages give.
+- **Import filters** — Thunderbird message filters / KMail filters into the
+  Sorting Office rules.
+
 ## Offline / sync
 - **Offline tag changes are dropped** — only read/starred are queued and
   replayed; keyword (tag) changes made offline are lost.
