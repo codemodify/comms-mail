@@ -171,7 +171,10 @@ type session struct {
 	// only while its tab is showing.
 	sourceID   mailcore.MessageID
 	sourceOpen bool
-	retryBar   widget.Component
+	// markdown is the Markdown tab's text, filled while the tab shows.
+	markdown     *widgets.TextArea
+	markdownOpen bool
+	retryBar     widget.Component
 	// invite is the calendar invitation card over the preview's body;
 	// inviteCompact folds every card's guest list and options away.
 	invite        *inviteCard
@@ -312,6 +315,8 @@ func (s *session) build() widget.Component {
 	s.source = widgets.NewMonoTextView("", "Raw source")
 	s.source.MinRows = 8
 	s.source.Wrap = false
+	s.markdown = widgets.NewMonoTextView("", "Select a message")
+	s.markdown.MinRows = 8
 
 	s.table = widgets.NewTableView([]widgets.TableColumn{
 		{Title: "★", Width: 28, MinWidth: 24, Sortable: true},
@@ -389,28 +394,34 @@ func (s *session) build() widget.Component {
 	// The Message tab holds a plain-text view and an HTML view, one shown
 	// at a time (renderMessage), over a line that appears when the HTML has
 	// images the renderer will not fetch.
-	// Three tabs: Message is the text/plain body (the default), Source the
-	// raw RFC822, and HTML the rendered HTML part when the message has one.
+	// Four tabs: Message is the text/plain body (the default), Source the
+	// raw RFC822, HTML the rendered HTML part when the message has one, and
+	// Markdown the message as Markdown text (mailcore.MessageMarkdown).
 	s.html = newHTMLPane(s)
 	s.previewRich, s.previewImg, s.imgBar, s.alwaysImgs = s.html.rich, s.html.notice, s.html.bar, s.html.always
 	s.loadImageSenders()
 	previewTab := widgets.NewPad(8, s.preview)
 	sourceTab := widgets.NewPad(8, s.source)
 	htmlTab := widgets.NewPad(8, s.html.view)
+	markdownTab := widgets.NewPad(8, s.markdown)
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: previewTab},
 		widgets.Tab{Title: "Source", Content: sourceTab},
 		widgets.Tab{Title: "HTML", Content: htmlTab},
+		widgets.Tab{Title: "Markdown", Content: markdownTab},
 	)
-	s.sourceOpen = false
+	s.sourceOpen, s.markdownOpen = false, false
 	tabs.OnChange = func(i int) {
-		s.sourceOpen = i == 1
+		s.sourceOpen, s.markdownOpen = i == 1, i == 3
 		switch i {
 		case 1:
 			s.mark("Source  ·  JetBrains Mono")
 			s.loadSource()
 		case 2:
 			s.mark("HTML")
+		case 3:
+			s.mark("Markdown")
+			s.loadMarkdown()
 		default:
 			s.mark("Message")
 		}
@@ -1488,6 +1499,23 @@ func (s *session) showBody(m mailcore.Message) {
 	if s.sourceOpen {
 		s.loadSource()
 	}
+	if s.markdownOpen {
+		s.loadMarkdown()
+	}
+}
+
+// loadMarkdown fills the Markdown tab with the message shown, converted
+// here from the text and HTML the reading pane already has. It runs when
+// the tab is shown, not on every click.
+func (s *session) loadMarkdown() {
+	if s.markdown == nil {
+		return
+	}
+	if !s.shownOK {
+		s.markdown.SetText("")
+		return
+	}
+	s.markdown.SetText(mailcore.MessageMarkdown(s.shown))
 }
 
 // renderHTMLView fills the HTML tab with m's HTML part, or leaves its

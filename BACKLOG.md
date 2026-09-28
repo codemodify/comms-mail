@@ -87,7 +87,4 @@ new ones turn up.
   on send.
 - **Search inside encrypted mail** — a setting, off by default.
 
-## Reading
-- **Markdown view** — a tab beside Message / Source / HTML showing the
-  message converted to Markdown text (asked for 2026-09-28; next after the
-  passphrase work).
+
