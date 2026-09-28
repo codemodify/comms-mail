@@ -3045,6 +3045,10 @@ func (s *LocalStore) loadLocked() {
 			break
 		}
 	}
+	// Fold the write-ahead log into the database and cut it back, so a log
+	// grown by a large write before (a first index, a big sync) does not
+	// keep its size on disk until SQLite happens to reset it.
+	_, _ = c.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	s.tags = mergeTagStore(s.tags)
 	assignThreadIDs(s.Messages)
 	s.feat.setContacts(buildContacts(s.Messages))
