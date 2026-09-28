@@ -318,7 +318,7 @@ func (s *Server) dispatch(req Request) Response {
 			if !ok {
 				err = fmt.Errorf("mail: no message %s", p.ID)
 			} else {
-				result = plainMessage(m)
+				result = fullMessage(m)
 			}
 		}
 	case MethodMessagesSource:
@@ -336,6 +336,12 @@ func (s *Server) dispatch(req Request) Response {
 		p, err = decodeParams[searchParams](req.Params)
 		if err == nil {
 			result = s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter})
+		}
+	case MethodContactsSuggest:
+		var p contactsSuggestParams
+		p, err = decodeParams[contactsSuggestParams](req.Params)
+		if err == nil {
+			result = s.Store.SuggestContacts(p.Query, p.Limit)
 		}
 	case MethodMessagesFlags:
 		var p setFlagsParams

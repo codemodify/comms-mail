@@ -1220,7 +1220,9 @@ func hasBody(m mailcore.Message) bool { return m.Body != "" || m.HTML != "" }
 // with "Loading message…" in its place, so a click on a new message never
 // freezes the window, however slow or broken the network.
 func (s *session) loadPreview() {
-	if m, ok := s.listPrimary(); ok && !hasBody(m) && m.ID == s.loadingID {
+	if m, ok := s.listPrimary(); ok && m.ID == s.loadingID {
+		// A fetch for this message is already in flight (a refresh landed
+		// mid-load); let it finish rather than start another.
 		s.showHeaders(m)
 		return
 	}
@@ -1250,11 +1252,17 @@ func (s *session) loadPreview() {
 		return
 	}
 	s.showHeaders(m)
-	if hasBody(m) {
+	// The list row carries the text body but never the HTML part, so the
+	// full message is always fetched to fill the HTML tab. When the row
+	// already has the text it shows at once and the fetch only adds the
+	// HTML; otherwise the fetch brings both. It is fast and local for a
+	// cached message, a download for one not yet fetched.
+	hadBody := hasBody(m)
+	if hadBody {
 		s.showBody(m)
-		return
+	} else {
+		s.showPreviewPlain("Loading message…", "")
 	}
-	s.showPreviewPlain("Loading message…", "")
 	id := m.ID
 	s.loadingID = id
 	s.async(func() (any, error) {
@@ -1265,9 +1273,11 @@ func (s *session) loadPreview() {
 		}
 		s.loadingID = ""
 		if err != nil {
-			s.showPreviewPlain("", "Couldn't load this message.\n\n"+err.Error())
-			if s.retryBar != nil {
-				s.retryBar.SetVisible(true)
+			if !hadBody {
+				s.showPreviewPlain("", "Couldn't load this message.\n\n"+err.Error())
+				if s.retryBar != nil {
+					s.retryBar.SetVisible(true)
+				}
 			}
 			return
 		}
