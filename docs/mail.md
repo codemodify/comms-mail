@@ -550,7 +550,7 @@ Daemon-side inverted index over subject / from / to / body (AND of tokens). Quic
 
 **All folders:** the **All folders** toggle beside the Quick Filter turns the message list into a search across every folder (and account) rather than the current one — over the daemon's index, so it covers every synced header and the bodies already downloaded. Results are a flat, date-sorted list; picking a folder (or toggling off) returns to the folder view.
 
-**On server:** every message's headers are cached, but only some bodies (the recent ones and any opened), so a word in the body of older mail is not in the index. With **On server** on, a query that has rested for a moment is also sent to the mail server — `UID SEARCH TEXT` in the current folder, or in every folder with All folders (`messages.searchServer`) — and the messages it finds join the list; the status line says how many came from the server. The local results show at once; the server's are merged when they arrive. Each word must match (a "quoted phrase" is one word); a query outside ASCII is sent as a UTF-8 literal. Not while working offline, and not for POP or imported mail.
+**On server:** every message's headers are cached, but only some bodies (the recent ones and any opened), so a word in the body of older mail is not in the index. With **On server** on, a query that has rested for a moment is also sent to the mail server — `UID SEARCH TEXT` in the current folder, or in every folder with All folders (`messages.searchServer`) — and the messages it finds join the list; the status line says how many came from the server. The local results show at once; the server's are merged when they arrive. Each word must match (a "quoted phrase" is one word); a query outside ASCII is sent as a UTF-8 literal. On Gmail (a server that advertises `X-GM-EXT-1`) the query goes whole as `X-GM-RAW`, so Gmail's own operators work: `has:attachment`, `older_than:1y`, `from:`, `label:`, `larger:5M`. Not while working offline, and not for POP or imported mail.
 
 **Smart / Search folders:** still exist on the daemon (`smart.*` RPC) but are **not shown** in the folder tree or File/Tools menus as of v0.10.4. Use Quick Filter for ad-hoc search.
 
@@ -670,7 +670,7 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `messages.list` | `{folderId, filter?}` (virtual ids ok) |
 | `messages.get` | `{id}` (disk raw / in-memory body if already fetched; no extra IMAP) |
 | `messages.search` | `{accountId?, folderId?, filter}` |
-| `messages.searchServer` | `{folderId?, query}` — IMAP `UID SEARCH TEXT` in the folder or every folder; the cached messages it names |
+| `messages.searchServer` | `{folderId?, query}` — IMAP `UID SEARCH TEXT` (Gmail: `X-GM-RAW`) in the folder or every folder; the cached messages it names |
 | `messages.setFlags` | `{id, patch}` |
 | `messages.move` | `{ids, dest}` |
 | `messages.delete` | `{ids}` |

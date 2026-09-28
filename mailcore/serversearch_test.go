@@ -64,3 +64,18 @@ func TestSearchServerSendsUTF8AsALiteral(t *testing.T) {
 		t.Fatal("searched the server while offline")
 	}
 }
+
+// On Gmail the query goes whole, in Gmail's own search language.
+func TestSearchServerUsesGmailSyntaxOnGmail(t *testing.T) {
+	fs := newFolderServer(t, "/", map[string][]uint32{"INBOX": {1}})
+	fs.caps = "IMAP4rev1 UIDPLUS MOVE X-GM-EXT-1"
+	st := newFolderStore(t, fs)
+	inbox, _ := folderByRemote(st, "INBOX")
+	if _, err := st.SearchServer(inbox.ID, `has:attachment older_than:1y "quarterly report"`); err != nil {
+		t.Fatal(err)
+	}
+	l := fs.takeLog()
+	if want := `INBOX: UID SEARCH X-GM-RAW "has:attachment older_than:1y \"quarterly report\""`; len(l) == 0 || l[len(l)-1] != want {
+		t.Fatalf("server saw %q, want %q", l, want)
+	}
+}

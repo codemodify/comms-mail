@@ -34,8 +34,6 @@ new ones turn up.
 ## Folders / search
 - **Drag a folder onto another** to move it — Move Folder To does it from
   the menu; the tree has no drag for its own nodes (uitoolkit).
-- **Gmail search syntax** — On server uses IMAP TEXT; Gmail's `X-GM-RAW`
-  would allow its own operators (`has:attachment`, `older_than:`).
 
 - **Import: Apple Mail on macOS 10.11+** — accounts live in
   `~/Library/Accounts/Accounts4.sqlite` (NSKeyedArchiver blobs), not read;

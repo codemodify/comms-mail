@@ -58,6 +58,12 @@ func isASCII(s string) bool {
 // query, and returns those the cache has. A folder the server cannot search
 // is skipped; the first error is returned with what was found.
 func (s *LocalStore) SearchServer(folder FolderID, query string) ([]Message, error) {
+	query = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, query)
 	terms := searchTerms(query)
 	if len(terms) == 0 {
 		return nil, nil
@@ -87,7 +93,7 @@ func (s *LocalStore) SearchServer(folder FolderID, query string) ([]Message, err
 	var out []Message
 	var firstErr error
 	for _, f := range folders {
-		uids, err := s.searchFolderOnServer(f, terms)
+		uids, err := s.searchFolderOnServer(f, terms, strings.TrimSpace(query))
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
@@ -105,10 +111,11 @@ func (s *LocalStore) SearchServer(folder FolderID, query string) ([]Message, err
 	return out, firstErr
 }
 
-// searchFolderOnServer runs one UID SEARCH in f. ASCII words go as quoted
+// searchFolderOnServer runs one UID SEARCH in f. On Gmail the query goes
+// whole in its own syntax (X-GM-RAW). Elsewhere ASCII words go as quoted
 // strings, TEXT each; a query with other characters goes as one UTF-8
 // literal (quoted strings are 7-bit), the words as a phrase.
-func (s *LocalStore) searchFolderOnServer(f Folder, terms []string) ([]uint32, error) {
+func (s *LocalStore) searchFolderOnServer(f Folder, terms []string, raw string) ([]uint32, error) {
 	cli, err := s.client(f.AccountID)
 	if err != nil {
 		return nil, err
@@ -120,6 +127,16 @@ func (s *LocalStore) searchFolderOnServer(f Folder, terms []string) ([]uint32, e
 	var uids []uint32
 	err = cli.inBox(func() error {
 		if _, err := cli.selectBox(remoteName(f), true); err != nil {
+			return err
+		}
+		if cli.has("X-GM-EXT-1") {
+			// Gmail: its own search language, as in its web search box
+			// (has:attachment, older_than:1y, from:, "phrases"…).
+			if isASCII(raw) {
+				uids, err = cli.search("X-GM-RAW " + imapQuote(raw))
+			} else {
+				uids, err = cli.searchLiteral("CHARSET UTF-8 X-GM-RAW", raw)
+			}
 			return err
 		}
 		if ascii {
