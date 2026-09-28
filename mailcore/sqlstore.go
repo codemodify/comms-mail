@@ -343,6 +343,7 @@ func messageStamp(m *Message) uint64 {
 	strs(h, m.Attachments)
 	flag(m.SignatureInBody)
 	strs(h, m.Keywords)
+	flag(m.Answered)
 	return h.Sum64()
 }
 

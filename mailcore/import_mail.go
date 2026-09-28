@@ -203,7 +203,7 @@ func (s *LocalStore) ImportLocalMail(stores []LocalMailStore) (ImportResult, err
 			// mail, read.
 			m.Read, m.Starred = true, false
 			if fl.known {
-				m.Read, m.Starred = fl.read, fl.starred
+				m.Read, m.Starred, m.Answered = fl.read, fl.starred, fl.answered
 			}
 			applyAutomaticTags(&m)
 			if m.Date.IsZero() {

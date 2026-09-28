@@ -867,6 +867,9 @@ func (c *Client) patchCachedBody(id MessageID, patch FlagPatch) {
 	if patch.Read != nil {
 		m.Read = *patch.Read
 	}
+	if patch.Answered != nil {
+		m.Answered = *patch.Answered
+	}
 	if patch.Starred != nil {
 		m.Starred = *patch.Starred
 	}

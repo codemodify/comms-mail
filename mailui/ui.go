@@ -1425,6 +1425,12 @@ func (s *session) showHeaders(m mailcore.Message) {
 		if m.HasAttach {
 			extra += fmt.Sprintf("%d attachment(s)", len(m.Attachments))
 		}
+		if m.Answered {
+			if extra != "" {
+				extra += "  ·  "
+			}
+			extra += "You replied"
+		}
 		s.hdrExtra.SetText(extra)
 	}
 	s.attNames = append([]string(nil), m.Attachments...)

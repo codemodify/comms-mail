@@ -326,3 +326,16 @@ func TestUIDSetString(t *testing.T) {
 		}
 	}
 }
+
+// Replying marks the message answered, on the server too.
+func TestReplyMarksTheOriginalAnswered(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	orig, _ := st.CachedMessage("home/inbox:7")
+	srv := NewServer(st, filepath.Join(t.TempDir(), "s.sock"))
+	srv.markAnswered("home", orig.RFCMessageID)
+	if m, _ := st.CachedMessage("home/inbox:7"); !m.Answered {
+		t.Fatal("not answered")
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Answered)`)
+}

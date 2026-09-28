@@ -761,6 +761,14 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 			rem = append(rem, `\Seen`)
 		}
 	}
+	if patch.Answered != nil {
+		m.Answered = *patch.Answered
+		if *patch.Answered {
+			add = append(add, `\Answered`)
+		} else {
+			rem = append(rem, `\Answered`)
+		}
+	}
 	if patch.Starred != nil {
 		m.Starred = *patch.Starred
 		if *patch.Starred {
@@ -2064,7 +2072,7 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 			ID: id, Folder: f.ID, AccountID: f.AccountID,
 			From: im.From, To: im.To, Cc: im.Cc, Subject: im.Subject,
 			Date: im.Date, Size: im.Size, UID: im.UID,
-			Read: imapFlagSeen(im.Flags), Starred: imapFlagStar(im.Flags),
+			Read: imapFlagSeen(im.Flags), Starred: imapFlagStar(im.Flags), Answered: imapFlagAnswered(im.Flags),
 			Tags: keywordTags(im.Flags, s.tags), Parts: im.Parts,
 			RFCMessageID: im.RFCMessageID, InReplyTo: im.InReplyTo,
 		}
@@ -2127,6 +2135,7 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 			if i, ok := s.indexLocked(id); ok {
 				s.Messages[i].Read = imapFlagSeen(im.Flags)
 				s.Messages[i].Starred = imapFlagStar(im.Flags)
+				s.Messages[i].Answered = imapFlagAnswered(im.Flags)
 				mergeServerTags(&s.Messages[i], keywordTags(im.Flags, s.tags))
 			}
 		}

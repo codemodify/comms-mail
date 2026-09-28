@@ -43,9 +43,9 @@ new ones turn up.
   `~/Library/Accounts/Accounts4.sqlite` (NSKeyedArchiver blobs), not read;
   the import says to add them by hand. Evolution's `_2E`-escaped Maildir++
   folder names are shown escaped.
-- **Import: answered / forwarded state** — read and starred carry over;
-  replied / forwarded (maildir R/P, mbox X-Status A, emlx bits 2/8) have no
-  field here yet.
+- **Forwarded state** — answered is tracked ($Forwarded / maildir P /
+  emlx bit 8 are not), and neither shows in the message list yet (the UI
+  font has no ↩ glyph; the reading pane says "You replied").
 - **Import: KMail filters and Apple Mail contacts** — Thunderbird's filters
   and the address books of Thunderbird, Evolution, KAddressBook, Claws Mail
   and mutt import; these two do not yet.

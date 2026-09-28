@@ -49,7 +49,8 @@ func TestHeaderFlags(t *testing.T) {
 		{"Status: RO\n", mailFlags{known: true, read: true}},
 		{"Status: O\n", mailFlags{known: true}}, // old, not read
 		{"Status: O\nX-Status: F\n", mailFlags{known: true, starred: true}},
-		{"X-Status: AD\n", mailFlags{known: true, deleted: true}},
+		{"X-Status: AD\n", mailFlags{known: true, answered: true, deleted: true}},
+		{"X-Mozilla-Status: 0003\n", mailFlags{known: true, read: true, answered: true}},
 		{"Subject: none\n", mailFlags{}},
 	} {
 		raw := "From: a@ex\n" + c.head + "\nStatus: R\n" // a body line never counts
@@ -153,4 +154,21 @@ func TestImportKeepsEMLXFlags(t *testing.T) {
 		"unread":   {present: true},
 		"deleted":  {},
 	})
+}
+
+func TestImportKeepsAnswered(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "cur", "1.host:2,RS"), msg("1@ex", "replied"))
+	mustWrite(t, filepath.Join(dir, "cur", "2.host:2,S"), msg("2@ex", "not"))
+	ls := newImportStore(t)
+	if _, err := ls.ImportLocalMail([]LocalMailStore{{Source: "T", Name: "Inbox", Path: dir, Kind: StoreMaildir}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range ls.ListFolders(LocalAccountID) {
+		for _, m := range ls.ListMessages(f.ID) {
+			if m.Answered != (m.Subject == "replied") {
+				t.Fatalf("%s answered=%v", m.Subject, m.Answered)
+			}
+		}
+	}
 }

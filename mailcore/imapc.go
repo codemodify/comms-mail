@@ -1538,6 +1538,15 @@ func imapFlagSeen(flags []string) bool {
 	return false
 }
 
+func imapFlagAnswered(flags []string) bool {
+	for _, f := range flags {
+		if strings.EqualFold(f, `\Answered`) {
+			return true
+		}
+	}
+	return false
+}
+
 func imapFlagStar(flags []string) bool {
 	for _, f := range flags {
 		if strings.EqualFold(f, `\Flagged`) {

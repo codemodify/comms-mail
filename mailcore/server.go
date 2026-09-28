@@ -991,6 +991,7 @@ func (s *Server) send(p ComposeParams) (appendResult, error) {
 		if p.ID != "" {
 			_ = s.Store.Delete([]MessageID{p.ID})
 		}
+		s.markAnswered(accountID, msg.InReplyTo)
 		s.broadcast(EventChanged, eventParams{Reason: "send"})
 		r := appendResult{ID: id}
 		if queued != nil {
@@ -1009,8 +1010,24 @@ func (s *Server) send(p ComposeParams) (appendResult, error) {
 	if p.ID != "" {
 		_ = s.Store.Delete([]MessageID{p.ID})
 	}
+	s.markAnswered(accountID, msg.InReplyTo)
 	s.broadcast(EventChanged, eventParams{FolderID: sent.ID, Reason: "send"})
 	return appendResult{ID: id}, nil
+}
+
+// markAnswered sets \Answered on the message a reply answers — here and on
+// the server, where other clients show it too.
+func (s *Server) markAnswered(accountID, inReplyTo string) {
+	id := strings.TrimSpace(inReplyTo)
+	if id == "" {
+		return
+	}
+	for _, m := range s.Store.Search(SearchQuery{AccountID: accountID}) {
+		if strings.TrimSpace(m.RFCMessageID) == id && !m.Answered {
+			_ = s.Store.SetFlags(m.ID, FlagPatch{Answered: BoolPtr(true)})
+			return
+		}
+	}
 }
 
 func (s *Server) saveDraft(p ComposeParams) (appendResult, error) {

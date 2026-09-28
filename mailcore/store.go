@@ -233,6 +233,8 @@ type Message struct {
 	// tags added or removed in another client arrive without undoing tags
 	// that exist only here (a filter rule's).
 	Keywords []string `json:"keywords,omitempty"`
+	// Answered is IMAP's \Answered: the user replied (here or elsewhere).
+	Answered bool `json:"answered,omitempty"`
 }
 
 func messageHasBody(m Message) bool {
@@ -285,9 +287,10 @@ func FirstAddr(s string) string {
 
 // FlagPatch is a partial flag update (nil pointer = leave unchanged).
 type FlagPatch struct {
-	Read    *bool     `json:"read,omitempty"`
-	Starred *bool     `json:"starred,omitempty"`
-	Tags    *[]string `json:"tags,omitempty"`
+	Read     *bool     `json:"read,omitempty"`
+	Starred  *bool     `json:"starred,omitempty"`
+	Answered *bool     `json:"answered,omitempty"`
+	Tags     *[]string `json:"tags,omitempty"`
 }
 
 // SearchQuery is a daemon-side scan (Quick Filter or global search).
