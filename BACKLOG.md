@@ -59,9 +59,6 @@ new ones turn up.
   watched; the rest poll every 2 minutes (one connection a folder would
   pass servers' per-user connection limits; NOTIFY, RFC 5465, would not).
 
-- **Filter-rule tags stay local** — a tag a filter rule adds is not pushed
-  to the server (other clients do not see it); it is kept here through
-  syncs.
 
 ## Message list / actions
 - **Undo for tag changes** — Undo covers move/delete/archive/junk, not

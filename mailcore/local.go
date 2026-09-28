@@ -1420,6 +1420,11 @@ func (s *LocalStore) Sync(accountID string) (SyncResult, error) {
 	s.feat.setContacts(buildContacts(s.Messages))
 	health := s.health
 	s.mu.Unlock()
+	// What rules did to new mail (moves, marks, tags) reaches the server
+	// now, not at the next tick.
+	if s.feat != nil && s.feat.Online() {
+		_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" || op.Kind == "move" })
+	}
 	s.prefetchBodies()
 	return res, health
 }
@@ -2406,7 +2411,6 @@ func (s *LocalStore) DeleteRule(id string) error {
 
 func (s *LocalStore) ApplyRules(folder FolderID) (int, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	n := 0
 	for i := range s.Messages {
 		if folder != "" && s.Messages[i].Folder != folder && !IsVirtual(folder) {
@@ -2417,10 +2421,21 @@ func (s *LocalStore) ApplyRules(folder FolderID) (int, error) {
 		}
 	}
 	s.saveLocked()
+	s.mu.Unlock()
+	if n > 0 && s.feat != nil && s.feat.Online() {
+		_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" || op.Kind == "move" })
+	}
 	return n, nil
 }
 
+// applyRulesOnLocked runs the rules on m. What they change goes to the
+// server too — a move as a server move, flags and tags as a flag change —
+// queued, since this runs under the store lock in the middle of a sync;
+// the queue is replayed when the sync ends. (A rule's move and marks used
+// to stay in the cache: the server kept the message in the Inbox, and a
+// later delete addressed its UID in the wrong folder.)
 func (s *LocalStore) applyRulesOnLocked(m *Message) bool {
+	before := m.Clone()
 	changed := false
 	for _, r := range s.rules {
 		if !r.match(*m) {
@@ -2434,10 +2449,54 @@ func (s *LocalStore) applyRulesOnLocked(m *Message) bool {
 			break
 		}
 	}
-	if changed {
-		applyAutomaticTags(m)
+	if !changed {
+		return false
 	}
-	return changed
+	applyAutomaticTags(m)
+	if m.UID != 0 && m.AccountID != LocalAccountID {
+		if patch, add, rem := flagChanges(before, *m); len(add)+len(rem) > 0 {
+			s.queueFlagsLocked(*m, patch, add, rem, "")
+		}
+	}
+	return true
+}
+
+// flagChanges is the flag change from a to b: the patch and the IMAP flags
+// and keywords it sets and clears.
+func flagChanges(a, b Message) (FlagPatch, []string, []string) {
+	var patch FlagPatch
+	var add, rem []string
+	set := func(was, now bool, flag string, p **bool) {
+		if was == now {
+			return
+		}
+		*p = BoolPtr(now)
+		if now {
+			add = append(add, flag)
+		} else {
+			rem = append(rem, flag)
+		}
+	}
+	set(a.Read, b.Read, `\Seen`, &patch.Read)
+	set(a.Starred, b.Starred, `\Flagged`, &patch.Starred)
+	var tagsChanged bool
+	for _, t := range b.Tags {
+		if !IsSystemTag(t) && !HasTag(a.Tags, t) {
+			add = append(add, tagKeyword(t))
+			tagsChanged = true
+		}
+	}
+	for _, t := range a.Tags {
+		if !IsSystemTag(t) && !HasTag(b.Tags, t) {
+			rem = append(rem, tagKeyword(t))
+			tagsChanged = true
+		}
+	}
+	if tagsChanged {
+		tags := append([]string(nil), b.Tags...)
+		patch.Tags = &tags
+	}
+	return patch, add, rem
 }
 
 func (s *LocalStore) deleteOne(id MessageID) error {
@@ -2460,10 +2519,27 @@ func (s *LocalStore) deleteOne(id MessageID) error {
 	}
 	return nil
 }
+
+// moveOne is a rule's move: the cache now, the server by a queued move
+// (replayed from where the server has the message, which re-keys it).
+// The caller holds s.mu.
 func (s *LocalStore) moveOne(id MessageID, dest FolderID) error {
 	i, ok := s.indexLocked(id)
 	if !ok {
 		return fmt.Errorf("mail: no message %s", id)
+	}
+	m := s.Messages[i]
+	df, ok := s.folderLocked(dest)
+	if !ok || df.Virtual {
+		return fmt.Errorf("mail: no folder %s", dest)
+	}
+	if df.AccountID != m.AccountID {
+		return fmt.Errorf("mail: a rule cannot move mail to another account's folder")
+	}
+	if m.UID != 0 && s.feat != nil && m.AccountID != LocalAccountID {
+		s.feat.mu.Lock()
+		s.feat.enqueueLocked(s.serverMoveOpLocked(m, dest))
+		s.feat.mu.Unlock()
 	}
 	s.Messages[i].Folder = dest
 	return nil

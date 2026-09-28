@@ -339,3 +339,35 @@ func TestReplyMarksTheOriginalAnswered(t *testing.T) {
 	}
 	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Answered)`)
 }
+
+// What a rule does reaches the server: its marks as a flag change, its move
+// as a server move (the message re-keyed to its new UID) — not only the
+// cache, which left the server's copy in the Inbox.
+func TestRuleMovesAndMarksOnTheServer(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	if _, err := st.PutRule(FilterRule{Name: "archive m7", Enabled: true,
+		Conditions: []RuleCondition{{Field: "subject", Op: "is", Value: "m7"}},
+		Actions:    []RuleAction{{Type: "star"}, {Type: "move", Folder: "home/archive"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := st.ApplyRules("home/inbox"); err != nil || n != 1 {
+		t.Fatalf("applied %d %v", n, err)
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Flagged)`, `INBOX: UID MOVE 7 "Archive"`)
+	m, ok := st.CachedMessage("home/archive:70")
+	if !ok || !m.Starred {
+		t.Fatalf("after the rule: %+v %v", m, ok)
+	}
+	if n := len(st.ListOutbox()); n != 0 {
+		t.Fatalf("%d ops left", n)
+	}
+	// Another account's folder is refused, not faked in the cache.
+	st.mu.Lock()
+	st.Folders = append(st.Folders, Folder{ID: "other/inbox", AccountID: "other", Name: "Inbox", Kind: FolderInbox})
+	err := st.moveOne("home/archive:70", "other/inbox")
+	st.mu.Unlock()
+	if err == nil {
+		t.Fatal("a rule moved mail to another account")
+	}
+}
