@@ -966,7 +966,7 @@ func assertTagsTree(t *testing.T, tree *widgets.TreeView) {
 		if n == nil {
 			continue
 		}
-		label := strings.TrimPrefix(n.Label, "✓ ")
+		label := strings.TrimPrefix(n.Label, "• ")
 		if i := strings.Index(label, " ("); i > 0 {
 			label = label[:i]
 		}
@@ -1329,7 +1329,7 @@ func findFilterPin(tree *widgets.TreeView, name string) *widgets.TreeNode {
 			if n == nil || found != nil {
 				continue
 			}
-			if _, ok := n.Data.(filterPin); ok && strings.TrimPrefix(n.Label, "✓ ") == name {
+			if _, ok := n.Data.(filterPin); ok && strings.TrimPrefix(n.Label, "• ") == name {
 				found = n
 				return
 			}

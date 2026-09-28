@@ -1,8 +1,12 @@
 package mailcore
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"strings"
 	"time"
 )
@@ -307,6 +311,7 @@ func seedDemo(s *MemoryStore) {
 		Body: "See you there.\n",
 	})
 	s.addDemoInvite()
+	s.addDemoNewsletter()
 	assignThreadIDs(s.messages)
 	if s.feat != nil && s.feat.index != nil {
 		s.feat.index.rebuild(s.messages)
@@ -405,6 +410,74 @@ Content-Transfer-Encoding: base64
 	m.Date = DemoNow.Add(-5 * time.Hour)
 	m.Read = true
 	m.Tags = []string{"Work"}
+	s.raw[m.ID] = []byte(raw)
+	s.addMessage(m)
+}
+
+// DemoNewsletterID is the HTML newsletter in the demo Inbox: an inline
+// (cid:) logo that shows at once, and a remote banner that waits to be
+// asked for.
+const DemoNewsletterID MessageID = "m-newsletter"
+
+// DemoNewsletterBanner is the newsletter's remote image.
+const DemoNewsletterBanner = "https://images.example/uitoolkit/banner.png"
+
+func (s *MemoryStore) addDemoNewsletter() {
+	logo := image.NewNRGBA(image.Rect(0, 0, 96, 32))
+	for y := 0; y < 32; y++ {
+		for x := 0; x < 96; x++ {
+			logo.Set(x, y, color.NRGBA{R: uint8(40 + x), G: 110, B: uint8(200 - y*2), A: 255})
+		}
+	}
+	var pic bytes.Buffer
+	_ = png.Encode(&pic, logo)
+	b64 := base64.StdEncoding.EncodeToString(pic.Bytes())
+	var lines []string
+	for len(b64) > 76 {
+		lines, b64 = append(lines, b64[:76]), b64[76:]
+	}
+	lines = append(lines, b64)
+	raw := strings.ReplaceAll(`From: uitoolkit Weekly <weekly@news.example>
+To: Ada Lovelace <ada@example.com>
+Subject: uitoolkit Weekly — richtext images
+Date: Thu, 10 Sep 2026 08:00:00 +0000
+Message-ID: <weekly-37@news.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset=utf-8
+
+This week: images in richtext. Read it in the HTML tab.
+
+--alt
+Content-Type: multipart/related; boundary="rel"
+
+--rel
+Content-Type: text/html; charset=utf-8
+
+<h1><img src="cid:logo@news.example" alt="uitoolkit" width="96" height="32"> Weekly</h1>
+<p>This week: <b>images in richtext</b>. The logo above is part of this
+message; the banner below is on a server and waits for you to ask.</p>
+<p><img src="`+DemoNewsletterBanner+`" alt="banner" width="480" height="120"></p>
+--rel
+Content-Type: image/png
+Content-ID: <logo@news.example>
+Content-Disposition: inline; filename="logo.png"
+Content-Transfer-Encoding: base64
+
+`+strings.Join(lines, "\n")+`
+--rel--
+
+--alt--
+`, "\n", "\r\n")
+	m, err := ParseRFC822([]byte(raw), FolderAdaInbox, AcctAda)
+	if err != nil {
+		return
+	}
+	m.ID = DemoNewsletterID
+	m.Date = DemoNow.Add(-33 * time.Hour)
+	m.Read = true
 	s.raw[m.ID] = []byte(raw)
 	s.addMessage(m)
 }

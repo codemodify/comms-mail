@@ -186,11 +186,11 @@ func callTimeout(method string) time.Duration {
 	case MethodSyncRun, MethodMessagesFetch, MethodOutboxFlush, MethodStatusSet:
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
-		MethodMessagesInvite, MethodInviteReply:
+		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
-	case MethodAccountsTest, MethodHostsProbe, MethodImportScan, MethodImportScanPath:
+	case MethodAccountsTest, MethodHostsProbe, MethodImportScan, MethodImportScanPath, MethodImagesFetch:
 		return 2 * time.Minute
 	default:
 		return 30 * time.Second
@@ -572,6 +572,36 @@ func (c *Client) GetPart(id MessageID, partID string) (PartData, error) {
 	var p PartData
 	err := c.call(MethodMessagesPart, partParams{ID: id, PartID: partID}, &p)
 	return p, err
+}
+
+// InlineImages returns message id's image parts by Content-ID, for the
+// HTML view's cid: images.
+func (c *Client) InlineImages(id MessageID) ([]InlineImage, error) {
+	var out []InlineImage
+	err := c.call(MethodMessagesImages, messageIDParams{ID: id}, &out)
+	return out, err
+}
+
+// FetchImages has the daemon download remote images (public addresses
+// only, bounded in size and time).
+func (c *Client) FetchImages(urls []string) ([]RemoteImage, error) {
+	var out []RemoteImage
+	err := c.call(MethodImagesFetch, imagesFetchParams{URLs: urls}, &out)
+	return out, err
+}
+
+// RemoteImageSenders lists the senders whose remote images load without
+// asking.
+func (c *Client) RemoteImageSenders() ([]string, error) {
+	var out []string
+	err := c.call(MethodImagesSenders, nil, &out)
+	return out, err
+}
+
+// AllowRemoteImages remembers (or forgets) a sender whose remote images
+// load without asking.
+func (c *Client) AllowRemoteImages(address string, allow bool) error {
+	return c.call(MethodImagesAllow, imagesAllowParams{Address: address, Allow: allow}, nil)
 }
 
 // Invite returns the calendar invitation message id carries, or nil.

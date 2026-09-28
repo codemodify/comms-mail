@@ -6,12 +6,11 @@ that make the difference in daily use. Grouped, roughly by area. Append as
 new ones turn up.
 
 ## Reading / HTML
-- **Load remote images on request**, with a per-sender "always show". Real
-  newsletters are image-heavy and unreadable with images blocked (renders as
-  a wall of empty boxes). High value. Needs a daemon fetch (so the request
-  comes from the daemon, on the user's say-so) + a remember-per-sender store.
-- **Inline `cid:` images** — resolve from the message's own parts (safe, no
-  network). Needs the MIME parser to record Content-ID and a fetch-by-cid.
+- **Manage trusted image senders** — "Always from This Sender" can be
+  given but not taken back in the UI (the daemon's `images.allowSender`
+  with allow=false does it); a list in Settings would.
+- **CSS background images and SVG** are not drawn (the renderer handles
+  `<img>` in PNG / JPEG / GIF / WebP only).
 - **Emoji show as ▯** (tofu) — blocked on a uitoolkit font-fallback gap
   (uitoolkit-gaps.md #2), but very visible in subjects and bodies.
 - **HTML tab only when there is HTML** (or auto-select it for HTML-only

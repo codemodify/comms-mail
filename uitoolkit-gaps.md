@@ -27,9 +27,14 @@ across real messages ("👀", "🥳" in subjects, marketing copy). Mail is full
 of emoji, so this is high-impact and very visible.
 **Fix:** fall back to an installed emoji font (Noto Color Emoji / system)
 for glyphs the primary face lacks.
-*Also:* plain dingbats are missing too, not just emoji — ✓ (U+2713) and
-✗ (U+2717) render as tofu, so comms-mail's invite card writes "(yes)" /
-"(no)" beside each guest where a check mark would read better.
+*Precisely (checked against uitoolkit v0.20.1 dev):* there is no font
+fallback at all — `style/symbols.go` draws hand-made vector stand-ins for
+exactly four runes (★ 📎 ● 🔇); every other glyph Titillium lacks is tofu.
+That includes plain arrows and dingbats, not just emoji: ↳ (U+21B3), →,
+✓ (U+2713), ✗ (U+2717), ⊘, └. JetBrains Mono has several of them (✓ ✗ →
+└) but is not consulted for UI text. comms-mail works around it with
+glyphs Titillium has: › for thread replies, • for an active filter pin,
+"(yes)" / "(no)" beside invite guests.
 
 ### 3. richtext image placeholder is an empty box with no alt text
 For an image-heavy HTML email with images unresolved (a real Apple

@@ -400,6 +400,11 @@ type ExtraStore interface {
 	// invitations, keyed by InviteKey.
 	InviteAnswer(key string) string
 	SetInviteAnswer(key, partstat string) error
+
+	// RemoteImageSenders and AllowRemoteImages keep the senders whose
+	// remote images load without asking.
+	RemoteImageSenders() []string
+	AllowRemoteImages(address string, allow bool) error
 }
 
 func asExtra(s Store) ExtraStore {

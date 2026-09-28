@@ -122,6 +122,7 @@ func (s *LocalStore) kvSlots() []struct {
 		{"notify", &s.feat.notify},
 		{"outbox", &s.feat.outbox},
 		{"invites", &s.feat.answers},
+		{"imageSenders", &s.feat.imageSenders},
 	}
 }
 

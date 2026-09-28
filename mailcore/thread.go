@@ -164,7 +164,9 @@ func GroupThreaded(msgs []Message, kind FolderKind, col int, asc bool) []Message
 		SortMessages(g.msgs, 4, true, kind) // oldest first inside thread
 		for i, m := range g.msgs {
 			if i > 0 {
-				m.Subject = "  ↳ " + strings.TrimPrefix(m.Subject, "  ↳ ")
+				// "›", not "↳": the UI font has no ↳ and the toolkit draws
+				// no stand-in for it (uitoolkit-gaps.md #2).
+				m.Subject = "  › " + strings.TrimPrefix(m.Subject, "  › ")
 			} else if len(g.msgs) > 1 {
 				m.Subject = m.Subject + "  (" + itoa(len(g.msgs)) + ")"
 			}

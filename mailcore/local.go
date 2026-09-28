@@ -2707,6 +2707,14 @@ func (s *LocalStore) MuteThread(id string, muted bool) error {
 }
 func (s *LocalStore) MutedThreads() []string         { return s.extras().MutedThreads() }
 func (s *LocalStore) InviteAnswer(key string) string { return s.extras().InviteAnswer(key) }
+func (s *LocalStore) RemoteImageSenders() []string   { return s.extras().RemoteImageSenders() }
+func (s *LocalStore) AllowRemoteImages(address string, allow bool) error {
+	err := s.extras().AllowRemoteImages(address, allow)
+	s.mu.Lock()
+	s.saveLocked()
+	s.mu.Unlock()
+	return err
+}
 func (s *LocalStore) SetInviteAnswer(key, partstat string) error {
 	err := s.extras().SetInviteAnswer(key, partstat)
 	s.mu.Lock()

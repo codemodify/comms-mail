@@ -257,11 +257,18 @@ scripts, no external CSS, nothing executed. Most mail is
 `multipart/alternative` and carries both, so Message shows the text and HTML
 shows the render.
 
-The renderer never touches the network. A `data:` image carried in the
-message draws; every remote (`http(s)`) or `cid:` image is left as a
-placeholder and a line above the body says *Remote images not shown* (a
-remote image is a read receipt for the sender). Loading them on request is
-a later step.
+Images: a `data:` image draws as it is, and an inline `cid:` image — a
+picture carried in the message itself, a logo or a chart — is read from its
+part (by Content-ID, `messages.inlineImages`) and drawn at once; nothing
+leaves the machine. A remote (`http(s)`) image is a read receipt for the
+sender, so it stays a placeholder and a line above the body says so, with
+**Show Images** (this message) and **Always from This Sender** (remembered;
+`images.allowSender`). comms-maild does the fetching (`images.fetch`): http
+and https only, public addresses only — a message cannot make your machine
+call `localhost`, your router or a cloud metadata address, checked on the
+address actually dialled — at most 100 images of 8 MB each and 48 MB in
+all, 15 s each, no cookies, no proxy, not while working offline. PNG, JPEG,
+GIF and WebP are drawn; pictures seen once are kept for the session.
 
 A link is followed on a click, after a confirmation showing the real target
 so link text cannot disguise where it goes; a `mailto:` opens a
@@ -582,6 +589,9 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `messages.update` | `{id, message}` |
 | `messages.getPart` | `{id, partId}` |
 | `messages.openPart` | `{id, partId}` → `{path}` on disk + `xdg-open` |
+| `messages.inlineImages` | `{id}` → `[{cid, mime, data}]`, the message's image parts by Content-ID |
+| `images.fetch` | `{urls}` → `[{url, mime?, data?, error?}]` — public http(s) addresses only, size and time bounded |
+| `images.senders` / `images.allowSender` | senders whose remote images load without asking / `{address, allow}` |
 | `messages.invite` | `{id}` → the calendar invitation in the message (`null` when none), with `you` and your `answer` |
 | `invite.reply` | `{id, partstat}` — `ACCEPTED`, `TENTATIVE` or `DECLINED`: mails the organizer an iTIP REPLY, files it in Sent, returns the invite updated |
 | `messages.fetch` | `{accountId}` |

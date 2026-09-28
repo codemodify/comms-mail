@@ -116,6 +116,8 @@ type session struct {
 	preview                                    *widgets.TextArea
 	previewRich                                *widgets.RichText
 	previewImg                                 *widgets.Label
+	imgBar                                     *widgets.FlexBox
+	alwaysImgs                                 *widgets.Button
 	source                                     *widgets.TextArea
 	attachHits                                 []*attachHit
 	attachAll                                  *widgets.Button
@@ -162,6 +164,12 @@ type session struct {
 	retryBar   widget.Component
 	// invite is the calendar invitation card over the preview's body.
 	invite *inviteCard
+	// images holds the pictures HTML mail showed (cid: parts by message,
+	// remote ones by URL) and the senders whose remote images load
+	// without asking.
+	images     map[string]*paintengine2d.Image
+	imgSenders map[string]bool
+	imgGen     uint64
 
 	// undo is the move or delete waiting out its undo window; its messages
 	// are hidden from the list until it is committed or undone.
@@ -358,11 +366,16 @@ func (s *session) build() widget.Component {
 	// raw RFC822, and HTML the rendered HTML part when the message has one.
 	s.previewRich = newReadOnlyRich(s.openLink)
 	s.previewRich.Placeholder = "This message has no HTML part."
-	s.previewImg = widgets.NewLabel("🚫 Remote images not shown (they can tell the sender you opened this).")
-	s.previewImg.SetVisible(false)
+	s.previewImg = widgets.NewLabel("Remote images are not shown — loading them tells the sender you opened this.")
+	s.previewImg.Wrap = true
+	s.alwaysImgs = widgets.NewButton("Always from This Sender", s.alwaysShowImages)
+	s.imgBar = widgets.NewColumn(s.previewImg,
+		widgets.NewRow(widgets.NewButton("Show Images", s.showRemoteImages), s.alwaysImgs).WithGap(8)).WithGap(4)
+	s.imgBar.SetVisible(false)
+	s.loadImageSenders()
 	previewTab := widgets.NewPad(8, s.preview)
 	sourceTab := widgets.NewPad(8, s.source)
-	htmlCol := widgets.NewColumn(s.previewImg, s.previewRich).WithGap(4)
+	htmlCol := widgets.NewColumn(s.imgBar, s.previewRich).WithGap(4)
 	htmlCol.AddFlex(s.previewRich, 1)
 	htmlTab := widgets.NewPad(8, htmlCol)
 	tabs := widgets.NewTabView(
@@ -1390,16 +1403,16 @@ func (s *session) renderHTMLView(m mailcore.Message) {
 	if s.previewRich == nil {
 		return
 	}
+	s.imgGen++
 	if strings.TrimSpace(m.HTML) != "" {
+		s.previewRich.ResolveImage = s.imageResolver(m.ID)
 		s.previewRich.SetHTML(m.HTML)
-		if s.previewImg != nil {
-			s.previewImg.SetVisible(htmlHasRemoteImages(m.HTML))
-		}
+		s.loadMessageImages(m)
 		return
 	}
 	s.previewRich.SetHTML("")
-	if s.previewImg != nil {
-		s.previewImg.SetVisible(false)
+	if s.imgBar != nil {
+		s.imgBar.SetVisible(false)
 	}
 }
 
@@ -1411,10 +1424,11 @@ func (s *session) showPreviewPlain(placeholder, text string) {
 		s.preview.SetText(text)
 	}
 	if s.previewRich != nil {
+		s.imgGen++
 		s.previewRich.SetHTML("")
 	}
-	if s.previewImg != nil {
-		s.previewImg.SetVisible(false)
+	if s.imgBar != nil {
+		s.imgBar.SetVisible(false)
 	}
 }
 
@@ -2282,9 +2296,11 @@ func (s *session) toggleFilterPin(p filterPin) {
 	s.refreshList()
 }
 
+// filterPinLabel marks a pin that is on. "•", not "✓": the UI font has no
+// check mark and the toolkit draws no stand-in for it (uitoolkit-gaps.md #2).
 func filterPinLabel(name string, on bool) string {
 	if on {
-		return "✓ " + name
+		return "• " + name
 	}
 	return name
 }

@@ -1,12 +1,19 @@
 package mailui
 
 import (
+	"bytes"
+	"html"
+	"image"
+	_ "image/gif"  // images in HTML mail
+	_ "image/jpeg" // images in HTML mail
+	_ "image/png"  // images in HTML mail
 	"regexp"
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit/widgets"
+	_ "golang.org/x/image/webp" // images in HTML mail
 )
 
 // HTML mail is shown formatted, not stripped to text: comms-maild hands the
@@ -15,18 +22,71 @@ import (
 // followed on a click, after the real target is shown, so link text cannot
 // disguise where it goes.
 //
-// Images are the one thing HTML mail fetches from the network, and a remote
-// image is how a sender learns a message was opened. So the renderer never
-// reaches the network: an inline `data:` image (a small logo carried in the
-// message) draws, and every `cid:` or `http(s)` image is left as a
-// placeholder. A message with such images shows a line saying so.
+// Images: an inline `data:` image draws as it is; a `cid:` image is a part
+// of the message itself and is drawn from it (nothing leaves the machine);
+// a remote `http(s)` image is how a sender learns a message was opened, so
+// it stays a placeholder until the user asks — Show Images for this
+// message, or Always for everything from its sender. comms-maild does the
+// fetching, from public addresses only.
 
-var remoteImgRe = regexp.MustCompile(`(?i)<img\b[^>]*\bsrc\s*=\s*["']?\s*(https?:|//|cid:)`)
+var imgSrcRe = regexp.MustCompile(`(?is)<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
 
-// htmlHasRemoteImages reports whether html references an image the renderer
-// will not draw: a remote URL, or a cid: part it does not fetch.
-func htmlHasRemoteImages(html string) bool {
-	return remoteImgRe.MatchString(html)
+// htmlImageSources lists html's <img> sources, entity-decoded as the
+// renderer sees them, each once.
+func htmlImageSources(src string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range imgSrcRe.FindAllStringSubmatch(src, -1) {
+		v := html.UnescapeString(m[1] + m[2] + m[3])
+		if v != "" && !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// splitImageSources sorts image sources into cid: parts and remote URLs;
+// data: images need neither.
+func splitImageSources(srcs []string) (cids, remote []string) {
+	for _, v := range srcs {
+		t := strings.TrimSpace(v)
+		switch {
+		case hasPrefixFold(t, "cid:"):
+			cids = append(cids, v)
+		case hasPrefixFold(t, "http:"), hasPrefixFold(t, "https:"), strings.HasPrefix(t, "//"):
+			remote = append(remote, v)
+		}
+	}
+	return
+}
+
+// htmlHasRemoteImages reports whether html references a remote image.
+func htmlHasRemoteImages(src string) bool {
+	_, remote := splitImageSources(htmlImageSources(src))
+	return len(remote) > 0
+}
+
+func hasPrefixFold(s, prefix string) bool {
+	_, ok := cutFold(s, prefix)
+	return ok
+}
+
+// maxImagePixels is the largest image decoded for the HTML view; a bigger
+// one stays a placeholder rather than cost hundreds of megabytes.
+const maxImagePixels = 4096 * 4096
+
+// decodeImage turns PNG, JPEG, GIF or WebP bytes into pixels, or nil.
+func decodeImage(data []byte) *paintengine2d.Image {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > maxImagePixels {
+		return nil
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+	return paintengine2d.NewImageFromNRGBA(img)
 }
 
 // blockedImageResolver is a RichText.ResolveImage that draws nothing:

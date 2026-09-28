@@ -103,6 +103,10 @@ const (
 	MethodFiltersApply    = "filters.apply"
 	MethodMessagesPart    = "messages.getPart"
 	MethodMessagesInvite  = "messages.invite"
+	MethodMessagesImages  = "messages.inlineImages"
+	MethodImagesFetch     = "images.fetch"
+	MethodImagesSenders   = "images.senders"
+	MethodImagesAllow     = "images.allowSender"
 	MethodInviteReply     = "invite.reply"
 	MethodMessagesOpen    = "messages.openPart"
 	MethodSyncRun         = "sync.run"
@@ -315,6 +319,15 @@ type tagNameParams struct {
 
 type applyRulesParams struct {
 	FolderID FolderID `json:"folderId,omitempty"`
+}
+
+type imagesFetchParams struct {
+	URLs []string `json:"urls"`
+}
+
+type imagesAllowParams struct {
+	Address string `json:"address"`
+	Allow   bool   `json:"allow"`
 }
 
 // inviteReplyParams answers the invitation in message ID.

@@ -1001,6 +1001,10 @@ func (s *MemoryStore) MuteThread(id string, muted bool) error {
 }
 func (s *MemoryStore) MutedThreads() []string         { return s.extras().MutedThreads() }
 func (s *MemoryStore) InviteAnswer(key string) string { return s.extras().InviteAnswer(key) }
+func (s *MemoryStore) RemoteImageSenders() []string   { return s.extras().RemoteImageSenders() }
+func (s *MemoryStore) AllowRemoteImages(address string, allow bool) error {
+	return s.extras().AllowRemoteImages(address, allow)
+}
 func (s *MemoryStore) SetInviteAnswer(key, partstat string) error {
 	return s.extras().SetInviteAnswer(key, partstat)
 }

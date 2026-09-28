@@ -557,6 +557,51 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			result, err = s.Store.GetPart(p.ID, p.PartID)
 		}
+	case MethodMessagesImages:
+		var p messageIDParams
+		p, err = decodeParams[messageIDParams](req.Params)
+		if err == nil {
+			var raw []byte
+			if raw, err = s.Store.GetRaw(p.ID); err == nil {
+				imgs := InlineImages(raw)
+				if imgs == nil {
+					imgs = []InlineImage{}
+				}
+				result = imgs
+			}
+		}
+	case MethodImagesFetch:
+		var p imagesFetchParams
+		p, err = decodeParams[imagesFetchParams](req.Params)
+		if err == nil {
+			if ex := asExtra(s.Store); ex != nil && !ex.Online() {
+				err = fmt.Errorf("mail: working offline — images are not fetched")
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				result = FetchRemoteImages(ctx, p.URLs)
+				cancel()
+			}
+		}
+	case MethodImagesSenders:
+		if ex := asExtra(s.Store); ex != nil {
+			out := ex.RemoteImageSenders()
+			if out == nil {
+				out = []string{}
+			}
+			result = out
+		} else {
+			result = []string{}
+		}
+	case MethodImagesAllow:
+		var p imagesAllowParams
+		p, err = decodeParams[imagesAllowParams](req.Params)
+		if err == nil {
+			if ex := asExtra(s.Store); ex != nil {
+				err = ex.AllowRemoteImages(p.Address, p.Allow)
+			} else {
+				err = fmt.Errorf("mail: not supported")
+			}
+		}
 	case MethodMessagesInvite:
 		var p messageIDParams
 		p, err = decodeParams[messageIDParams](req.Params)

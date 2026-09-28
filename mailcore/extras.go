@@ -98,6 +98,8 @@ type featureHost struct {
 	notify   NotifyPrefs
 	outbox   []OutboxOp
 	answers  map[string]string // invite answers sent from here, by event
+	// imageSenders are the senders whose remote images load without asking.
+	imageSenders []string
 	online   bool
 	index    *searchIndex
 	contacts []Contact // address book, rebuilt when the message set changes
