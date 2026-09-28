@@ -337,6 +337,15 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			result = s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter})
 		}
+	case MethodImportScan:
+		var all []ImportedAccount
+		if a, e := ImportThunderbird(); e == nil {
+			all = append(all, a...)
+		}
+		if a, e := ImportKMail(); e == nil {
+			all = append(all, a...)
+		}
+		result = all
 	case MethodFoldersDelete:
 		var p folderIDParams
 		p, err = decodeParams[folderIDParams](req.Params)

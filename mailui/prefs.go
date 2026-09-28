@@ -126,9 +126,18 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 			}
 		})
 	})
+	importBtn := widgets.NewButton("Import…", func() {
+		startImport(a, win, cli, accounts, func() {
+			refresh()
+			if onChange != nil {
+				onChange()
+			}
+		})
+	})
+	importBtn.Tip = "Bring accounts in from Thunderbird or KMail"
 	return widgets.NewColumn(
 		widgets.NewTitle("Accounts (stores / transports)"),
-		info, table, widgets.NewRow(add, remove).WithGap(8),
+		info, table, widgets.NewRow(add, remove, importBtn).WithGap(8),
 	).WithGap(8)
 }
 

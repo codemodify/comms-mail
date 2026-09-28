@@ -319,6 +319,14 @@ func (c *Client) GetMessage(id MessageID) (Message, bool, error) {
 	return m, m.ID != "", nil
 }
 
+// ImportScan finds accounts configured in Thunderbird and KMail, passwords
+// blank, to be confirmed and saved.
+func (c *Client) ImportScan() ([]ImportedAccount, error) {
+	var out []ImportedAccount
+	err := c.call(MethodImportScan, nil, &out)
+	return out, err
+}
+
 // DeleteFolder removes a user-created folder.
 func (c *Client) DeleteFolder(id FolderID) error {
 	return c.call(MethodFoldersDelete, folderIDParams{FolderID: id}, nil)

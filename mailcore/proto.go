@@ -76,6 +76,7 @@ const (
 	MethodContactsSuggest = "contacts.suggest"
 	MethodFoldersDelete   = "folders.delete"
 	MethodFoldersMarkRead = "folders.markRead"
+	MethodImportScan      = "import.scan"
 	MethodMessagesFlags   = "messages.setFlags"
 	MethodMessagesMove    = "messages.move"
 	MethodMessagesDelete  = "messages.delete"
