@@ -327,6 +327,20 @@ func (c *Client) ImportScan() ([]ImportedAccount, error) {
 	return out, err
 }
 
+// ImportMailScan lists the local mail folders found in Thunderbird and KMail.
+func (c *Client) ImportMailScan() ([]LocalMailStore, error) {
+	var out []LocalMailStore
+	err := c.call(MethodImportMailScan, nil, &out)
+	return out, err
+}
+
+// ImportMail reads on-disk mail into the local account.
+func (c *Client) ImportMail() (ImportResult, error) {
+	var r ImportResult
+	err := c.call(MethodImportMail, nil, &r)
+	return r, err
+}
+
 // DeleteFolder removes a user-created folder.
 func (c *Client) DeleteFolder(id FolderID) error {
 	return c.call(MethodFoldersDelete, folderIDParams{FolderID: id}, nil)

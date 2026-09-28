@@ -67,6 +67,9 @@ type Account struct {
 
 // ProtocolLabel is IMAP / POP3 for chrome (prefs, account central).
 func ProtocolLabel(a Account) string {
+	if a.ID == LocalAccountID || strings.EqualFold(a.Protocol, "local") {
+		return "Local (no server)"
+	}
 	p := NormalizeProtocol(a.Protocol)
 	if a.Protocol == "" && (a.Transport == "pop3" || a.Transport == "pop") {
 		p = ProtoPOP3
@@ -313,6 +316,9 @@ type Store interface {
 	DeleteFolder(id FolderID) error
 	// MarkFolderRead marks every message in a real folder read.
 	MarkFolderRead(id FolderID) error
+	// ImportLocalMail reads on-disk mail (Thunderbird/KMail) into the local
+	// "On This Computer" account.
+	ImportLocalMail() (ImportResult, error)
 
 	ListMessages(folder FolderID) []Message
 	GetMessage(id MessageID) (Message, bool)

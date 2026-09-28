@@ -77,6 +77,8 @@ const (
 	MethodFoldersDelete   = "folders.delete"
 	MethodFoldersMarkRead = "folders.markRead"
 	MethodImportScan      = "import.scan"
+	MethodImportMailScan  = "import.mailScan"
+	MethodImportMail      = "import.mail"
 	MethodMessagesFlags   = "messages.setFlags"
 	MethodMessagesMove    = "messages.move"
 	MethodMessagesDelete  = "messages.delete"

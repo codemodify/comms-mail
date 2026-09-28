@@ -364,6 +364,10 @@ func sendIdentities(cli *mailcore.Client) []mailcore.Identity {
 	}
 	accts, _ := cli.Accounts()
 	for _, a := range accts {
+		// The imported-mail account has no server and cannot send.
+		if a.ID == mailcore.LocalAccountID {
+			continue
+		}
 		if !has[a.ID] {
 			idents = append(idents, mailcore.Identity{ID: a.ID, AccountID: a.ID, Name: a.Name, Address: a.Address, Default: true})
 		}

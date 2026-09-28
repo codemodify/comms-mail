@@ -97,6 +97,11 @@ func (s *MemoryStore) MarkFolderRead(id FolderID) error {
 	return nil
 }
 
+// ImportLocalMail is only implemented by the on-disk LocalStore.
+func (s *MemoryStore) ImportLocalMail() (ImportResult, error) {
+	return ImportResult{}, fmt.Errorf("mail: local mail import needs the on-disk backend")
+}
+
 func (s *MemoryStore) Health() error { return nil }
 
 func (s *MemoryStore) Accounts() []Account {

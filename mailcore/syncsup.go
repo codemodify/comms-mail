@@ -79,6 +79,9 @@ func (s *LocalStore) rewatch(ctx context.Context, watched map[string]context.Can
 
 	live := map[string]bool{}
 	for _, a := range accts {
+		if a.ID == LocalAccountID {
+			continue // no server to watch
+		}
 		live[a.ID] = true
 		if _, ok := watched[a.ID]; ok {
 			continue

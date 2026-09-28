@@ -256,6 +256,11 @@ func (s *IMAPStore) MarkFolderRead(id FolderID) error {
 	return nil
 }
 
+// ImportLocalMail is only implemented by the on-disk LocalStore.
+func (s *IMAPStore) ImportLocalMail() (ImportResult, error) {
+	return ImportResult{}, fmt.Errorf("mail: local mail import needs the on-disk backend")
+}
+
 // SuggestContacts builds a small address book from the cached messages.
 func (s *IMAPStore) SuggestContacts(query string, limit int) []Contact {
 	s.mu.Lock()

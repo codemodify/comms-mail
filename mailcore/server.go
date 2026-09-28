@@ -346,6 +346,15 @@ func (s *Server) dispatch(req Request) Response {
 			all = append(all, a...)
 		}
 		result = all
+	case MethodImportMailScan:
+		result = DiscoverLocalMail()
+	case MethodImportMail:
+		var r ImportResult
+		r, err = s.Store.ImportLocalMail()
+		if err == nil {
+			result = r
+			s.broadcast(EventChanged, eventParams{Reason: "import"})
+		}
 	case MethodFoldersDelete:
 		var p folderIDParams
 		p, err = decodeParams[folderIDParams](req.Params)

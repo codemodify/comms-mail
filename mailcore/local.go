@@ -1151,6 +1151,12 @@ func (s *LocalStore) Sync(accountID string) (SyncResult, error) {
 	return res, health
 }
 func (s *LocalStore) syncAccount(accountID string) (int, error) {
+	if accountID == LocalAccountID {
+		return 0, nil // imported local mail has no server to sync
+	}
+	if cfg, ok := s.accountCfg(accountID); ok && cfg.IsLocal() {
+		return 0, nil
+	}
 	if cfg, ok := s.accountCfg(accountID); ok && cfg.IsPOP3() {
 		return s.syncPOP3(accountID)
 	}
