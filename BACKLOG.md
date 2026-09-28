@@ -53,10 +53,9 @@ new ones turn up.
 
 
 ## Storage / perf
-- **List payloads carry the text body** for downloaded messages; a
-  headers-only list query would shrink them on large folders.
-- **Search index is in-memory**, rebuilt on load; SQLite FTS would scale
-  further and persist.
+- **Every message is held in memory** by the daemon, text included (the
+  database is where it persists): fine for thousands, heavy for hundreds of
+  thousands. Loading the text from `mail.db` on demand would fix it.
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header

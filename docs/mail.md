@@ -178,7 +178,7 @@ What lives in it:
 
 | Path | Holds |
 | --- | --- |
-| `mail.db` (+ `-wal`, `-shm`) | SQLite, mode `0600`. `messages`: one row per message — headers, flags, tags, thread, parts — plus its decoded text once downloaded. `folder_meta`: each folder's UIDVALIDITY / UIDNEXT / HIGHESTMODSEQ. `kv`: accounts, identities and signatures, folders, tags, filter rules, smart folders, VIPs, muted threads, categories, notification settings, the offline outbox. |
+| `mail.db` (+ `-wal`, `-shm`) | SQLite, mode `0600`. `messages`: one row per message — headers, flags, tags, thread, parts — plus its decoded text once downloaded. `message_text`: the search index — each downloaded message's text in trigrams (FTS5, no copy of the text). `folder_meta`: each folder's UIDVALIDITY / UIDNEXT / HIGHESTMODSEQ. `kv`: accounts, identities and signatures, folders, tags, filter rules, smart folders, VIPs, muted threads, categories, notification settings, the offline outbox. |
 | `raw/<account>/<message>.eml` | The message exactly as the server sent it, once downloaded (a click, or the background prefetch). Source view, attachments and re-parsing read it. |
 | `open/` | Attachment copies written for **Open** to hand to the desktop. |
 | `secrets/` | OAuth refresh tokens, encrypted. |
@@ -504,6 +504,10 @@ before the save or after it — never half of one. Marking a message read
 writes one row; it used to rewrite every cache file, the message list
 included (30 MB on a real mailbox), with the store lock held.
 
+The schema has a version (`PRAGMA user_version`, 2 since the search index).
+A newer comms-maild upgrades an older cache in place; an older one refuses a
+newer cache rather than misread it.
+
 A `mail.db` that will not open is moved aside as `mail.db.corrupt` and a
 fresh one is created; `status.get` reports it in `health` so you know the
 next sync is refilling the cache from the server. Other files — `mail.json`,
@@ -546,7 +550,11 @@ could not be opened.
 
 ## Fast search + Smart folders
 
-Daemon-side inverted index over subject / from / to / body (AND of tokens). Quick Filter and `messages.search` use it when a query is present, then apply pins.
+A query is a case-insensitive piece of text — part of a word, or several words as they appear — looked for in the subject, the addresses and the message text. The text is what the Message tab shows, so words in HTML-only mail are found, and markup is not.
+
+The text is looked up in a full-text index in `mail.db` (`message_text`, SQLite FTS5 with trigrams), written in the same transaction as the message: it lasts across restarts and is not rebuilt. A cache from before it is indexed once, at the first start (under a second for ~700 downloaded messages). Text downloaded but not yet saved is read directly, and a query of one or two characters (too short for trigrams) looks in the plain-text part only. Quick Filter (`messages.list` with a filter) and `messages.search` both use it, then apply the pins.
+
+A list (`messages.list`, `messages.search`, `messages.searchServer`) carries each message's headers, flags, parts and snippet, but not its text — on a real Inbox that is 0.6 MB a refresh instead of 3.7 MB. The reading pane fetches the text of the message it shows (`messages.get`), and shows it at once when this window has read it before.
 
 **All folders:** the **All folders** toggle beside the Quick Filter turns the message list into a search across every folder (and account) rather than the current one — over the daemon's index, so it covers every synced header and the bodies already downloaded. Results are a flat, date-sorted list; picking a folder (or toggling off) returns to the folder view.
 

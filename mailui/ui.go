@@ -1340,6 +1340,10 @@ func (s *session) getMessage(id mailcore.MessageID) (mailcore.Message, error) {
 
 func hasBody(m mailcore.Message) bool { return m.Body != "" || m.HTML != "" }
 
+// loadingNoteDelay is how long a message may take to load before the
+// reading pane says it is loading.
+const loadingNoteDelay = 150 * time.Millisecond
+
 // loadPreview shows the primary message. The headers come from the list
 // row at once; a body not yet downloaded is fetched off the UI goroutine
 // with "Loading message…" in its place, so a click on a new message never
@@ -1383,18 +1387,29 @@ func (s *session) loadPreview() {
 	if s.invite != nil {
 		s.invite.show(m)
 	}
-	// The list row carries the text body but never the HTML part, so the
-	// full message is always fetched to fill the HTML tab. When the row
-	// already has the text it shows at once and the fetch only adds the
-	// HTML; otherwise the fetch brings both. It is fast and local for a
-	// cached message, a download for one not yet fetched.
+	// A list row carries no text (a large folder's list stays small), so
+	// the message is fetched: fast and local for a cached one, a download
+	// for one not yet fetched. A message read before in this window shows
+	// at once from the client's copy. "Loading message…" waits a moment,
+	// so a local fetch does not flash it.
+	if cm, ok := s.cli.CachedMessage(m.ID); ok && !hasBody(m) {
+		m.Body, m.HTML = cm.Body, cm.HTML
+	}
 	hadBody := hasBody(m)
+	id := m.ID
 	if hadBody {
 		s.showBody(m)
 	} else {
-		s.showPreviewPlain("Loading message…", "")
+		s.showPreviewPlain("", "")
+		time.AfterFunc(loadingNoteDelay, func() {
+			s.post(func() {
+				if gen == s.previewGen && s.loadingID == id && s.preview != nil {
+					s.preview.Placeholder = "Loading message…"
+					s.preview.SetText("")
+				}
+			})
+		})
 	}
-	id := m.ID
 	s.loadingID = id
 	s.async(func() (any, error) {
 		return s.getMessage(id)

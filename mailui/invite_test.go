@@ -170,8 +170,11 @@ func TestInviteCardOptions(t *testing.T) {
 	c.accept.OnClick()
 	s.waitIdle()
 	sent, _ := s.cli.ListMessages(mailcore.FolderWorkSent, mailcore.Filter{Query: "Accepted: Toolkit"})
-	if len(sent) != 1 || !strings.Contains(sent[0].Body, "Running late") || c.note.Text != "" {
+	if len(sent) != 1 || c.note.Text != "" {
 		t.Fatalf("answer with a note: %+v", sent)
+	}
+	if m, _, err := s.cli.GetMessage(sent[0].ID); err != nil || !strings.Contains(m.Body, "Running late") {
+		t.Fatalf("answer with a note: %+v %v", m, err)
 	}
 
 	c.openCal.OnClick()

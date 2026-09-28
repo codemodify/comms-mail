@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite" // pure Go: comms-maild stays cgo-free
 )
@@ -26,11 +27,19 @@ import (
 // collections (accounts, folders, tags, …) are rewritten only when their
 // encoding differs. All of one save is a single transaction, so a crash
 // leaves either the old state or the new one.
+//
+// Search reads a full-text index, message_text: each downloaded message's
+// display text (the HTML rendered to text for HTML-only mail) in trigrams,
+// so any substring of three or more characters is looked up, not scanned.
+// It is written in the same transaction as the message row, which records
+// in "indexed" which text the index holds for it. The index keeps no copy
+// of the text (contentless); the messages table has it.
 
 const (
 	dbFileName = "mail.db"
-	// dbVersion is PRAGMA user_version for the schema below.
-	dbVersion = 1
+	// dbVersion is PRAGMA user_version for the schema below. 2 added the
+	// search index (message_text, messages.indexed).
+	dbVersion = 2
 )
 
 const dbSchema = `
@@ -43,12 +52,16 @@ CREATE TABLE IF NOT EXISTS messages (
 	folder TEXT NOT NULL,
 	data   BLOB NOT NULL,
 	body   TEXT NOT NULL DEFAULT '',
-	html   TEXT NOT NULL DEFAULT ''
+	html   TEXT NOT NULL DEFAULT '',
+	indexed INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS messages_folder ON messages(folder);
 CREATE TABLE IF NOT EXISTS folder_meta (
 	folder TEXT PRIMARY KEY,
 	data   BLOB NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS message_text USING fts5(
+	text, content='', contentless_delete=1, tokenize='trigram'
 );
 `
 
@@ -59,6 +72,9 @@ type sqlCache struct {
 	stamps map[MessageID]uint64
 	// kv is each collection's encoding as last written.
 	kv map[string][]byte
+	// text is, for each message, which text the search index holds for it
+	// (textStamp; 0 or absent: none).
+	text map[MessageID]int64
 }
 
 // openSQLCache opens (creating) dir/mail.db with the schema in place. The
@@ -92,13 +108,27 @@ func openSQLCache(dir string) (*sqlCache, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("mail: %s has schema %d, newer than this comms-maild (%d)", path, v, dbVersion)
 	}
+	var hasIndexed int
+	if err := db.QueryRow("SELECT count(*) FROM pragma_table_info('messages') WHERE name = 'indexed'").Scan(&hasIndexed); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("mail: %s: %w", path, err)
+	}
+	if hasIndexed == 0 {
+		// From schema 1. The rows are kept; the index fills on the next
+		// save, as every message with text then differs from what it
+		// holds (nothing).
+		if _, err := db.Exec("ALTER TABLE messages ADD COLUMN indexed INTEGER NOT NULL DEFAULT 0"); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("mail: %s: %w", path, err)
+		}
+	}
 	if v < dbVersion {
 		if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", dbVersion)); err != nil {
 			_ = db.Close()
 			return nil, err
 		}
 	}
-	return &sqlCache{db: db, stamps: map[MessageID]uint64{}, kv: map[string][]byte{}}, nil
+	return &sqlCache{db: db, stamps: map[MessageID]uint64{}, kv: map[string][]byte{}, text: map[MessageID]int64{}}, nil
 }
 
 // kvSlots are LocalStore's small collections and where each lives.
@@ -147,7 +177,7 @@ func (s *LocalStore) loadSQL() error {
 		}
 		c.kv[sl.key] = raw
 	}
-	rows, err := c.db.Query("SELECT id, data, body, html FROM messages ORDER BY rowid")
+	rows, err := c.db.Query("SELECT id, data, body, html, indexed FROM messages ORDER BY rowid")
 	if err != nil {
 		return err
 	}
@@ -158,7 +188,8 @@ func (s *LocalStore) loadSQL() error {
 		var id string
 		var data []byte
 		var body, html string
-		if err := rows.Scan(&id, &data, &body, &html); err != nil {
+		var indexed int64
+		if err := rows.Scan(&id, &data, &body, &html, &indexed); err != nil {
 			return err
 		}
 		var m Message
@@ -168,6 +199,9 @@ func (s *LocalStore) loadSQL() error {
 		}
 		m.Body, m.HTML = body, html
 		c.stamps[m.ID] = messageStamp(&m) // as stored
+		if indexed != 0 {
+			c.text[m.ID] = indexed
+		}
 		// Older syncs made other clients' bookkeeping keywords ($Forwarded,
 		// NonJunk, $label1…) into tags; tidied after stamping, so the next
 		// save writes the change.
@@ -211,7 +245,7 @@ func (s *LocalStore) saveSQL() error {
 		live[m.ID] = true
 		st := messageStamp(m)
 		stamps[i] = st
-		if old, ok := c.stamps[m.ID]; !ok || old != st {
+		if old, ok := c.stamps[m.ID]; !ok || old != st || c.text[m.ID] != textStamp(m) {
 			changed = append(changed, i)
 		}
 	}
@@ -236,38 +270,81 @@ func (s *LocalStore) saveSQL() error {
 		}
 	}
 	if len(gone) > 0 {
-		del, err := tx.Prepare("DELETE FROM messages WHERE id = ?")
+		del, err := tx.Prepare("DELETE FROM messages WHERE id = ? RETURNING rowid")
+		if err != nil {
+			return err
+		}
+		unindex, err := tx.Prepare("DELETE FROM message_text WHERE rowid = ?")
 		if err != nil {
 			return err
 		}
 		for _, id := range gone {
-			if _, err := del.Exec(string(id)); err != nil {
+			var rowid int64
+			switch err := del.QueryRow(string(id)).Scan(&rowid); err {
+			case nil:
+			case sql.ErrNoRows:
+				continue
+			default:
 				return err
+			}
+			if c.text[id] != 0 {
+				if _, err := unindex.Exec(rowid); err != nil {
+					return err
+				}
 			}
 		}
 		_ = del.Close()
+		_ = unindex.Close()
 	}
 	if len(changed) > 0 {
 		// ON CONFLICT … DO UPDATE keeps a row's rowid, so the table keeps
 		// the order messages arrived in.
-		up, err := tx.Prepare(`INSERT INTO messages(id, folder, data, body, html) VALUES(?, ?, ?, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET folder = excluded.folder, data = excluded.data, body = excluded.body, html = excluded.html`)
+		up, err := tx.Prepare(`INSERT INTO messages(id, folder, data, body, html, indexed) VALUES(?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET folder = excluded.folder, data = excluded.data, body = excluded.body, html = excluded.html, indexed = excluded.indexed
+			RETURNING rowid`)
+		if err != nil {
+			return err
+		}
+		index, err := tx.Prepare("INSERT OR REPLACE INTO message_text(rowid, text) VALUES(?, ?)")
+		if err != nil {
+			return err
+		}
+		unindex, err := tx.Prepare("DELETE FROM message_text WHERE rowid = ?")
 		if err != nil {
 			return err
 		}
 		for _, i := range changed {
 			m := s.Messages[i]
+			ts := textStamp(&m)
+			var text string
+			if ts != c.text[m.ID] && ts != 0 {
+				text = DisplayBody(m)
+			}
 			body, html := m.Body, m.HTML
 			m.Body, m.HTML = "", ""
 			data, err := json.Marshal(m)
 			if err != nil {
 				return err
 			}
-			if _, err := up.Exec(string(m.ID), string(m.Folder), data, body, html); err != nil {
+			var rowid int64
+			if err := up.QueryRow(string(m.ID), string(m.Folder), data, body, html, ts).Scan(&rowid); err != nil {
 				return err
+			}
+			switch {
+			case ts == c.text[m.ID]:
+			case ts == 0:
+				if _, err := unindex.Exec(rowid); err != nil {
+					return err
+				}
+			default:
+				if _, err := index.Exec(rowid, text); err != nil {
+					return err
+				}
 			}
 		}
 		_ = up.Close()
+		_ = index.Close()
+		_ = unindex.Close()
 	}
 	if err := tx.Commit(); err != nil {
 		return err
@@ -277,11 +354,48 @@ func (s *LocalStore) saveSQL() error {
 	}
 	for _, id := range gone {
 		delete(c.stamps, id)
+		delete(c.text, id)
 	}
 	for _, i := range changed {
-		c.stamps[s.Messages[i].ID] = stamps[i]
+		m := &s.Messages[i]
+		c.stamps[m.ID] = stamps[i]
+		if ts := textStamp(m); ts != 0 {
+			c.text[m.ID] = ts
+		} else {
+			delete(c.text, m.ID)
+		}
 	}
 	return nil
+}
+
+// textStamp says which text of m the search index should hold: 0 for none
+// (not downloaded). A message's text does not change once parsed, so the
+// lengths tell one text from another.
+func textStamp(m *Message) int64 {
+	if !messageHasBody(*m) {
+		return 0
+	}
+	return int64(len(m.Body))<<32 ^ int64(len(m.HTML))
+}
+
+// textHits returns the messages whose indexed text contains q, ignoring
+// case (q of three or more characters: the index holds trigrams).
+func (c *sqlCache) textHits(q string) (map[MessageID]bool, error) {
+	rows, err := c.db.Query(`SELECT m.id FROM message_text t JOIN messages m ON m.rowid = t.rowid
+		WHERE message_text MATCH ?`, `"`+strings.ReplaceAll(q, `"`, `""`)+`"`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	hits := map[MessageID]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		hits[MessageID(id)] = true
+	}
+	return hits, rows.Err()
 }
 
 // messageStamp fingerprints every field of m that is stored. Body and HTML

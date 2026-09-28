@@ -104,7 +104,7 @@ func ParseRFC822(raw []byte, folder FolderID, accountID string) (Message, error)
 		})
 	}
 	if out.Snippet == "" {
-		out.Snippet = SnippetOf(out.Body)
+		out.Snippet = SnippetOf(DisplayBody(out))
 	}
 	return out, nil
 }
@@ -332,6 +332,15 @@ func decodeCharset(b []byte, charset string) []byte {
 
 // SnippetOf is the one-line preview of a message body.
 func SnippetOf(s string) string {
+	if len(s) > 4096 {
+		// Enough for 140 characters after the spaces fold; the rest of a
+		// long text is not walked for them.
+		n := 4096
+		for n > 0 && !utf8.RuneStart(s[n]) {
+			n--
+		}
+		s = s[:n]
+	}
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\n", " ")
 	for strings.Contains(s, "  ") {
@@ -376,13 +385,24 @@ func looksLikeHTML(s string) bool {
 		strings.Contains(low, "<table") || strings.Contains(low, "<!doctype")
 }
 
-func plainMessage(m Message) Message {
-	m.Body = DisplayBody(m)
-	m.HTML = ""
-	if m.Snippet == "" {
-		m.Snippet = SnippetOf(m.Body)
+// listRow is a message as a list shows it: headers, flags, parts and a
+// snippet, without the text. A list of a large folder is sent whole on
+// every refresh; the text is fetched for the message being read
+// (messages.get).
+func listRow(m Message) Message {
+	if m.Snippet == "" && messageHasBody(m) {
+		m.Snippet = SnippetOf(DisplayBody(m))
 	}
+	m.Body, m.HTML = "", ""
 	return m
+}
+
+func listRows(msgs []Message) []Message {
+	out := make([]Message, len(msgs))
+	for i, m := range msgs {
+		out[i] = listRow(m)
+	}
+	return out
 }
 
 // fullMessage is a single message for the preview: the text body for the

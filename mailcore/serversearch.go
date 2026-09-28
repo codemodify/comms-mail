@@ -103,7 +103,7 @@ func (s *LocalStore) SearchServer(folder FolderID, query string) ([]Message, err
 		s.mu.Lock()
 		for _, u := range uids {
 			if i, ok := s.indexLocked(MessageID(fmt.Sprintf("%s:%d", f.ID, u))); ok {
-				out = append(out, plainMessage(s.Messages[i].Clone()))
+				out = append(out, s.Messages[i].Clone())
 			}
 		}
 		s.mu.Unlock()

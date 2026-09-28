@@ -309,9 +309,6 @@ func (s *LocalStore) dropAccountLocked(id string) {
 	msgs := s.Messages[:0]
 	for _, m := range s.Messages {
 		if m.AccountID == id {
-			if s.feat != nil && s.feat.index != nil {
-				s.feat.index.remove(m.ID)
-			}
 			continue
 		}
 		msgs = append(msgs, m)
@@ -459,9 +456,6 @@ func (s *LocalStore) DeleteFolder(id FolderID) error {
 			continue
 		}
 		s.removeRawLocked(s.Messages[i])
-		if s.feat != nil && s.feat.index != nil {
-			s.feat.index.remove(s.Messages[i].ID)
-		}
 		s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 	}
 	out := s.Folders[:0]
@@ -550,6 +544,21 @@ func (s *LocalStore) ListMessages(folder FolderID) []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.listLocked(folder)
+}
+
+// ListMatching is ListMessages narrowed to the messages f passes, the text
+// looked up in the search index.
+func (s *LocalStore) ListMatching(folder FolderID, f Filter) []Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inText := s.textMatcherLocked(f.Query)
+	var out []Message
+	for _, m := range s.listLocked(folder) {
+		if f.MatchText(m, inText) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func (s *LocalStore) listLocked(folder FolderID) []Message {
@@ -721,11 +730,7 @@ func (s *LocalStore) Search(q SearchQuery) []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap := s.feat.snap()
-	var idx *searchIndex
-	if s.feat != nil {
-		idx = s.feat.index
-	}
-	hits := searchMessages(s.Messages, SearchQuery{AccountID: q.AccountID, Filter: q.Filter}, idx)
+	hits := searchMessages(s.Messages, SearchQuery{AccountID: q.AccountID, Filter: q.Filter}, s.textMatcherLocked(q.Filter.Query))
 	if q.Folder == "" {
 		return hits
 	}
@@ -1048,9 +1053,6 @@ func (s *LocalStore) rekeyMovedLocked(i int, dest FolderID, newUID uint32) {
 	old := s.Messages[i]
 	if newUID == 0 {
 		s.removeRawLocked(old)
-		if s.feat != nil && s.feat.index != nil {
-			s.feat.index.remove(old.ID)
-		}
 		s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 		return
 	}
@@ -1064,10 +1066,6 @@ func (s *LocalStore) rekeyMovedLocked(i int, dest FolderID, newUID uint32) {
 		s.rekeyed = map[MessageID]MessageID{}
 	}
 	s.rekeyed[old.ID] = m.ID
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.remove(old.ID)
-		s.feat.index.add(m)
-	}
 	s.Messages[i] = m
 	if len(raw) > 0 {
 		s.WriteRawLocked(m, raw)
@@ -1123,9 +1121,6 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 				}{m, cur})
 			}
 			s.removeRawLocked(m)
-			if s.feat != nil && s.feat.index != nil {
-				s.feat.index.remove(m.ID)
-			}
 			s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 			continue
 		}
@@ -1266,9 +1261,6 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	}
 	s.WriteRawLocked(msg, raw)
 	s.Messages = append(s.Messages, msg)
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.add(msg)
-	}
 	s.saveLocked()
 	accountID := f.AccountID
 	s.mu.Unlock()
@@ -1437,10 +1429,6 @@ func (s *LocalStore) update(id MessageID, msg Message) (MessageID, error) {
 	}
 	s.Messages[i] = msg
 	s.WriteRawLocked(msg, raw)
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.remove(msg.ID)
-		s.feat.index.add(msg)
-	}
 	f, hasFolder := s.folderLocked(msg.Folder)
 	s.saveLocked()
 	s.mu.Unlock()
@@ -2038,9 +2026,6 @@ func (s *LocalStore) syncPOP3(accountID string) (int, error) {
 		applyAutomaticTags(&msg)
 		s.WriteRawLocked(msg, raw)
 		s.Messages = append(s.Messages, msg)
-		if s.feat != nil && s.feat.index != nil {
-			s.feat.index.add(msg)
-		}
 		s.mu.Unlock()
 		if msg.RFCMessageID != "" {
 			haveRFC[strings.TrimSpace(msg.RFCMessageID)] = true
@@ -2220,9 +2205,6 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 		}
 		applyAutomaticTags(&m)
 		s.Messages = append(s.Messages, m)
-		if s.feat != nil && s.feat.index != nil {
-			s.feat.index.add(m)
-		}
 		s.applyRulesOnLocked(&s.Messages[len(s.Messages)-1])
 		added++
 	}
@@ -2251,9 +2233,6 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 				continue
 			}
 			s.removeRawLocked(m)
-			if s.feat != nil && s.feat.index != nil {
-				s.feat.index.remove(m.ID)
-			}
 			s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 		}
 	}
@@ -2269,9 +2248,6 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 				if i, ok := s.indexLocked(id); ok {
 					m := s.Messages[i]
 					s.removeRawLocked(m)
-					if s.feat != nil && s.feat.index != nil {
-						s.feat.index.remove(m.ID)
-					}
 					s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 				}
 				continue
@@ -2343,9 +2319,6 @@ func (s *LocalStore) dropUIDLocked(folder FolderID, uid uint32) {
 		return
 	}
 	s.removeRawLocked(s.Messages[i])
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.remove(id)
-	}
 	s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 }
 func (s *LocalStore) dropFolderMessagesLocked(id FolderID) {
@@ -2645,9 +2618,6 @@ func (s *LocalStore) deleteOne(id MessageID) error {
 	m := s.Messages[i].Clone()
 	f, _ := s.folderLocked(m.Folder)
 	s.removeRawLocked(m)
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.remove(id)
-	}
 	s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 	s.mu.Unlock()
 	if err := s.expungeOne(m, f); err != nil {
@@ -3067,12 +3037,17 @@ func (s *LocalStore) loadLocked() {
 	if err := s.loadSQL(); err != nil {
 		s.health = fmt.Errorf("mail: reading the cache database: %w; re-sync to refill", err)
 	}
+	for i := range s.Messages {
+		if c.text[s.Messages[i].ID] != textStamp(&s.Messages[i]) {
+			// Text the search index does not have yet (a cache from before
+			// it, or one saved without it): indexed now, once.
+			s.saveLocked()
+			break
+		}
+	}
 	s.tags = mergeTagStore(s.tags)
 	assignThreadIDs(s.Messages)
-	if s.feat.index != nil {
-		s.feat.index.rebuild(s.Messages)
-		s.feat.setContacts(buildContacts(s.Messages))
-	}
+	s.feat.setContacts(buildContacts(s.Messages))
 	for _, m := range s.Messages {
 		if n := idSeq(m.ID); n >= s.nextID {
 			s.nextID = n + 1

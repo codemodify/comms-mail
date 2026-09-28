@@ -50,19 +50,6 @@ func TestTokenStoreRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSearchIndexAND(t *testing.T) {
-	idx := newSearchIndex()
-	idx.add(Message{ID: "1", Subject: "Invoice September", From: "ap@vendor.example", Body: "please pay"})
-	idx.add(Message{ID: "2", Subject: "Lunch plans", From: "kai@paintengine.example", Body: "12:30"})
-	hit := idx.query("invoice pay")
-	if len(hit) != 1 || hit[0] != "1" {
-		t.Fatalf("%v", hit)
-	}
-	if len(idx.query("zzzznope")) != 0 {
-		t.Fatal("miss")
-	}
-}
-
 func TestThreadGroupingAndMute(t *testing.T) {
 	s := NewDemoStore()
 	var lunch []Message

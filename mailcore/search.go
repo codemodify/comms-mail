@@ -2,163 +2,62 @@ package mailcore
 
 import (
 	"strings"
-	"unicode"
+	"unicode/utf8"
 )
 
-// searchIndex is a process-local inverted index (subject/from/to/body).
-// Fast enough for dogfood + typical personal caches; rebuild is cheap.
-type searchIndex struct {
-	tokens map[string][]MessageID
-}
+// Search looks for the query as Filter.Match does — a case-insensitive
+// substring of the subject, the addresses or the text. A message's text is
+// its display text (DisplayBody), so words in HTML-only mail are found too.
+//
+// LocalStore answers the text part from a full-text index in mail.db
+// (sqlstore.go), kept as messages are saved; the rest is a scan of the
+// headers in memory, which is cheap. MemoryStore scans.
 
-func newSearchIndex() *searchIndex {
-	return &searchIndex{tokens: map[string][]MessageID{}}
-}
+// minIndexedQuery is the shortest query the index answers: it holds
+// trigrams, so one or two characters would need a scan of every text.
+const minIndexedQuery = 3
 
-func (idx *searchIndex) rebuild(msgs []Message) {
-	if idx == nil {
-		return
-	}
-	idx.tokens = map[string][]MessageID{}
-	for _, m := range msgs {
-		idx.add(m)
-	}
-}
-
-func (idx *searchIndex) add(m Message) {
-	if idx == nil || m.ID == "" {
-		return
-	}
-	idx.remove(m.ID)
-	seen := map[string]bool{}
-	for _, tok := range tokenizeMail(m) {
-		if seen[tok] {
-			continue
-		}
-		seen[tok] = true
-		idx.tokens[tok] = append(idx.tokens[tok], m.ID)
-	}
-}
-
-func (idx *searchIndex) remove(id MessageID) {
-	if idx == nil {
-		return
-	}
-	for tok, ids := range idx.tokens {
-		out := ids[:0]
-		for _, x := range ids {
-			if x != id {
-				out = append(out, x)
-			}
-		}
-		if len(out) == 0 {
-			delete(idx.tokens, tok)
-		} else {
-			idx.tokens[tok] = out
-		}
-	}
-}
-
-// query returns candidate ids (AND of tokens). nil means "no query / scan all".
-func (idx *searchIndex) query(q string) []MessageID {
-	if idx == nil {
-		return nil
-	}
-	toks := tokenize(q)
-	if len(toks) == 0 {
-		return nil
-	}
-	var hit []MessageID
-	for i, tok := range toks {
-		ids := idx.tokens[tok]
-		if i == 0 {
-			hit = append([]MessageID(nil), ids...)
-			continue
-		}
-		set := map[MessageID]bool{}
-		for _, id := range ids {
-			set[id] = true
-		}
-		out := hit[:0]
-		for _, id := range hit {
-			if set[id] {
-				out = append(out, id)
-			}
-		}
-		hit = out
-	}
-	return hit
-}
-
-func tokenizeMail(m Message) []string {
-	var b strings.Builder
-	b.WriteString(m.Subject)
-	b.WriteByte(' ')
-	b.WriteString(m.From)
-	b.WriteByte(' ')
-	b.WriteString(m.To)
-	b.WriteByte(' ')
-	b.WriteString(m.Cc)
-	b.WriteByte(' ')
-	body := m.Body
-	if len(body) > 8192 {
-		body = body[:8192]
-	}
-	b.WriteString(body)
-	return tokenize(b.String())
-}
-
-func tokenize(s string) []string {
-	s = strings.ToLower(s)
-	var out []string
-	var cur strings.Builder
-	flush := func() {
-		if cur.Len() < 2 {
-			cur.Reset()
-			return
-		}
-		out = append(out, cur.String())
-		cur.Reset()
-	}
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			cur.WriteRune(r)
-			continue
-		}
-		flush()
-	}
-	flush()
-	return out
-}
-
-func searchMessages(all []Message, q SearchQuery, idx *searchIndex) []Message {
-	var cand []Message
-	if strings.TrimSpace(q.Filter.Query) != "" && idx != nil {
-		ids := idx.query(q.Filter.Query)
-		if ids != nil {
-			set := map[MessageID]bool{}
-			for _, id := range ids {
-				set[id] = true
-			}
-			for _, m := range all {
-				if set[m.ID] {
-					cand = append(cand, m)
-				}
-			}
-		} else {
-			cand = all
-		}
-	} else {
-		cand = all
-	}
+func searchMessages(all []Message, q SearchQuery, inText func(Message) bool) []Message {
 	var out []Message
-	for _, m := range cand {
+	for _, m := range all {
 		if q.AccountID != "" && m.AccountID != q.AccountID {
 			continue
 		}
-		if q.Filter.Match(m) {
+		if q.Filter.MatchText(m, inText) {
 			out = append(out, m.Clone())
 		}
 	}
 	return out
+}
+
+// textMatcherLocked answers "is q in the text of m" for a search: from the
+// index for the messages it holds, by reading the text of those not yet
+// saved to it. A query too short for the index looks in the text part only
+// (m.Body), as before there was an index, so a first keystroke never makes
+// every HTML message be rendered to text. The caller holds s.mu.
+func (s *LocalStore) textMatcherLocked(q string) func(Message) bool {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil
+	}
+	if utf8.RuneCountInString(q) < minIndexedQuery {
+		return func(m Message) bool { return containsFold(m.Body, q) }
+	}
+	c := s.sqlc
+	var hits map[MessageID]bool
+	if c != nil {
+		var err error
+		if hits, err = c.textHits(q); err != nil {
+			c = nil // no index: read every text instead
+		}
+	}
+	return func(m Message) bool {
+		if hits[m.ID] {
+			return true
+		}
+		if c != nil && c.text[m.ID] == textStamp(&m) {
+			return false // indexed, and the index says no
+		}
+		return messageHasBody(m) && containsFold(DisplayBody(m), q)
+	}
 }

@@ -104,7 +104,6 @@ type featureHost struct {
 	// imageSenders are the senders whose remote images load without asking.
 	imageSenders []string
 	online       bool
-	index        *searchIndex
 	contacts     []Contact // address book, rebuilt when the message set changes
 	saved        []Contact // contacts imported from other clients' address books
 	book         []Contact // contacts + saved, as suggestions use them (nil: rebuild)
@@ -130,7 +129,6 @@ func newFeatureHost() *featureHost {
 	return &featureHost{
 		online: true,
 		notify: NotifyPrefs{Enabled: true, Desktop: true},
-		index:  newSearchIndex(),
 	}
 }
 

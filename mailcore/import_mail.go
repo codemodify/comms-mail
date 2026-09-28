@@ -211,9 +211,6 @@ func (s *LocalStore) ImportLocalMail(stores []LocalMailStore) (ImportResult, err
 			}
 			m.ThreadID = ThreadIDOf(m)
 			s.Messages = append(s.Messages, m)
-			if s.feat != nil && s.feat.index != nil {
-				s.feat.index.add(m)
-			}
 			s.mu.Unlock()
 			s.writeRaw(m, raw)
 			added++

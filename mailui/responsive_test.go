@@ -129,6 +129,12 @@ func TestClickDoesNotWaitForTheBody(t *testing.T) {
 	if took > 200*time.Millisecond {
 		t.Fatalf("clickRow took %v with the body fetch stuck", took)
 	}
+	// The pane says it is loading once the fetch has taken a moment (not
+	// at once: a local fetch would only flash it).
+	for wait := time.Now().Add(2 * time.Second); placeholder != "Loading message…" && time.Now().Before(wait); {
+		time.Sleep(20 * time.Millisecond)
+		onUI(func() { placeholder = s.preview.Placeholder })
+	}
 	if placeholder != "Loading message…" {
 		t.Fatalf("preview placeholder %q while loading", placeholder)
 	}

@@ -54,8 +54,11 @@ func TestInviteAnswerCommentAndNoSend(t *testing.T) {
 		t.Fatal(err)
 	}
 	sent := sentWith(t, cli, "Tentatively accepted: Toolkit design review")
-	if len(sent) != 1 || !strings.Contains(sent[0].Body, "Late by 10 min") {
+	if len(sent) != 1 {
 		t.Fatalf("reply with comment: %+v", sent)
+	}
+	if m, _, err := cli.GetMessage(sent[0].ID); err != nil || !strings.Contains(m.Body, "Late by 10 min") {
+		t.Fatalf("reply with comment: %+v %v", m, err)
 	}
 }
 

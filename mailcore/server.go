@@ -298,22 +298,20 @@ func (s *Server) dispatch(req Request) Response {
 		var p messagesListParams
 		p, err = decodeParams[messagesListParams](req.Params)
 		if err == nil {
-			all := s.Store.ListMessages(p.FolderID)
-			if p.Filter != nil {
-				var hit []Message
-				for _, m := range all {
+			var all []Message
+			switch ls, ok := s.Store.(*LocalStore); {
+			case p.Filter != nil && ok:
+				all = ls.ListMatching(p.FolderID, *p.Filter)
+			case p.Filter != nil:
+				for _, m := range s.Store.ListMessages(p.FolderID) {
 					if p.Filter.Match(m) {
-						hit = append(hit, plainMessage(m))
+						all = append(all, m)
 					}
 				}
-				result = hit
-			} else {
-				out := make([]Message, len(all))
-				for i, m := range all {
-					out[i] = plainMessage(m)
-				}
-				result = out
+			default:
+				all = s.Store.ListMessages(p.FolderID)
 			}
+			result = listRows(all)
 		}
 	case MethodMessagesGet:
 		var p messageIDParams
@@ -349,7 +347,7 @@ func (s *Server) dispatch(req Request) Response {
 		var p searchParams
 		p, err = decodeParams[searchParams](req.Params)
 		if err == nil {
-			result = s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter})
+			result = listRows(s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter}))
 		}
 	case MethodSearchServer:
 		var p searchServerParams
@@ -366,7 +364,7 @@ func (s *Server) dispatch(req Request) Response {
 				}
 			}
 			if err == nil {
-				result = hits
+				result = listRows(hits)
 			}
 		}
 	case MethodImportScan:

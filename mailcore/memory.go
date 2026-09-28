@@ -404,9 +404,6 @@ func (s *MemoryStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	applyAutomaticTags(&msg)
 	s.messages = append(s.messages, msg)
 	s.storeRawLocked(msg)
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.add(msg)
-	}
 	return msg.ID, nil
 }
 
@@ -541,11 +538,7 @@ func (s *MemoryStore) Search(q SearchQuery) []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap := s.feat.snap()
-	var idx *searchIndex
-	if s.feat != nil {
-		idx = s.feat.index
-	}
-	hits := searchMessages(s.messages, SearchQuery{AccountID: q.AccountID, Filter: q.Filter}, idx)
+	hits := searchMessages(s.messages, SearchQuery{AccountID: q.AccountID, Filter: q.Filter}, nil)
 	if q.Folder == "" {
 		return hits
 	}
@@ -626,9 +619,6 @@ func (s *MemoryStore) addMessage(m Message) {
 	applyAutomaticTags(&m)
 	s.messages = append(s.messages, m)
 	s.storeRawLocked(m)
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.add(m)
-	}
 }
 
 func folderRank(k FolderKind) int {
@@ -730,8 +720,7 @@ func (s *MemoryStore) DeleteAccount(id string) error {
 		}
 	}
 	s.messages = msgs
-	if s.feat != nil && s.feat.index != nil {
-		s.feat.index.rebuild(s.messages)
+	if s.feat != nil {
 		s.feat.setContacts(buildContacts(s.messages))
 	}
 	return nil

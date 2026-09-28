@@ -21,7 +21,12 @@ func (f Filter) Active() bool {
 }
 
 // Match reports whether m passes the Quick Filter pins and query.
-func (f Filter) Match(m Message) bool {
+func (f Filter) Match(m Message) bool { return f.MatchText(m, nil) }
+
+// MatchText is Match with the text test given: inText reports whether the
+// query is in m's text (the search index answers it for LocalStore). nil
+// looks in m.Body.
+func (f Filter) MatchText(m Message, inText func(Message) bool) bool {
 	if f.Unread && m.Read {
 		return false
 	}
@@ -56,6 +61,9 @@ func (f Filter) Match(m Message) bool {
 		}
 	}
 	if useDefault || f.Body {
+		if inText != nil {
+			return inText(m)
+		}
 		if containsFold(m.Body, q) {
 			return true
 		}

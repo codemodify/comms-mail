@@ -847,6 +847,10 @@ func filterEmpty(f Filter) bool {
 		!f.Sender && !f.Recipients && !f.SubjectOnly && !f.Body
 }
 
+// CachedMessage is the message with its text as this client last fetched
+// it, without asking the daemon; false when it has not fetched it.
+func (c *Client) CachedMessage(id MessageID) (Message, bool) { return c.cachedBody(id) }
+
 func (c *Client) cachedBody(id MessageID) (Message, bool) {
 	c.bodyMu.Lock()
 	defer c.bodyMu.Unlock()
