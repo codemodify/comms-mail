@@ -407,6 +407,93 @@ func (s *LocalStore) CreateFolder(accountID, name string, parent FolderID) (Fold
 	s.saveLocked()
 	return f, nil
 }
+
+// DeleteFolder removes a user-created folder from the server and the cache.
+// System folders (Inbox, Sent, …) and virtual folders are refused.
+func (s *LocalStore) DeleteFolder(id FolderID) error {
+	s.mu.Lock()
+	f, ok := s.folderLocked(id)
+	if !ok {
+		s.mu.Unlock()
+		return fmt.Errorf("mail: no folder %s", id)
+	}
+	if f.Virtual || f.Kind != FolderCustom {
+		s.mu.Unlock()
+		return fmt.Errorf("mail: %q is a system folder and cannot be deleted", f.Name)
+	}
+	accountID, remote := f.AccountID, remoteName(f)
+	s.mu.Unlock()
+
+	// DELETE on the server first; if that fails the local folder stays.
+	if cli, err := s.client(accountID); err == nil {
+		if err := cli.deleteMailbox(remote); err != nil {
+			return err
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.Messages) - 1; i >= 0; i-- {
+		if s.Messages[i].Folder != id {
+			continue
+		}
+		s.removeRawLocked(s.Messages[i])
+		if s.feat != nil && s.feat.index != nil {
+			s.feat.index.remove(s.Messages[i].ID)
+		}
+		s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
+	}
+	out := s.Folders[:0]
+	for _, x := range s.Folders {
+		if x.ID != id {
+			out = append(out, x)
+		}
+	}
+	s.Folders = out
+	s.dropFolderMetaLocked(id)
+	s.saveLocked()
+	return nil
+}
+
+// MarkFolderRead marks every message in a real folder read, in the cache and
+// on the server. A virtual folder is left alone.
+func (s *LocalStore) MarkFolderRead(id FolderID) error {
+	s.mu.Lock()
+	f, ok := s.folderLocked(id)
+	if !ok || f.Virtual {
+		s.mu.Unlock()
+		return nil
+	}
+	changed := 0
+	for i := range s.Messages {
+		if s.Messages[i].Folder == id && !s.Messages[i].Read {
+			s.Messages[i].Read = true
+			changed++
+		}
+	}
+	accountID, remote := f.AccountID, remoteName(f)
+	offline := s.feat != nil && !s.feat.Online()
+	s.saveLocked()
+	s.mu.Unlock()
+	if changed > 0 {
+		s.Emit(StoreEvent{Reason: "flags", AccountID: accountID, FolderID: id, Count: changed})
+	}
+	if changed == 0 || offline || remote == "" {
+		return nil
+	}
+	cli, err := s.client(accountID)
+	if err != nil {
+		return err
+	}
+	err = cli.inBox(func() error {
+		if _, err := cli.selectBox(remote, false); err != nil {
+			return err
+		}
+		return cli.markAllSeen()
+	})
+	s.noteNetwork(accountID, err)
+	return err
+}
 func (s *LocalStore) ListMessages(folder FolderID) []Message {
 	s.mu.Lock()
 	defer s.mu.Unlock()

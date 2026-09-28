@@ -911,21 +911,35 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 		}
 	}
 	tv.OnContext = func(n *widgets.TreeNode, p paintengine2d.Point) {
+		var folder mailcore.Folder
+		haveFolder := false
 		if n != nil {
 			if id, ok := n.Data.(mailcore.FolderID); ok && id != "" {
 				s.folder = id
 				s.selected = nil
 				s.refreshAll()
+				if f, ok, _ := s.cli.GetFolder(id); ok {
+					folder, haveFolder = f, true
+				}
 			}
 		}
-		widgets.ShowContextMenu(tv, p,
+		items := []*widgets.MenuItem{
 			widgets.Item("Fetch", s.getMessages),
 			widgets.Item("New Folder…", s.newFolder),
-			widgets.Item("Remove Account…", s.removeCurrentAccount),
+		}
+		if haveFolder && !folder.Virtual {
+			f := folder
+			items = append(items, widgets.Item("Mark Folder Read", func() { s.markFolderRead(f.ID) }))
+			if folder.Kind == mailcore.FolderCustom {
+				items = append(items, widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
+			}
+		}
+		items = append(items,
 			widgets.Sep(),
+			widgets.Item("Remove Account…", s.removeCurrentAccount),
 			widgets.Item("Empty Trash", s.emptyTrash),
-			widgets.Item("Compact Folders", func() { s.mark("Compact Folders (stub)") }),
 		)
+		widgets.ShowContextMenu(tv, p, items...)
 	}
 }
 
@@ -2047,6 +2061,47 @@ func (s *session) emptyTrash() {
 				}
 				s.selected = nil
 				s.refreshAll()
+			})
+		})
+}
+
+// markFolderRead marks every message in a folder read, off the UI goroutine.
+func (s *session) markFolderRead(id mailcore.FolderID) {
+	s.mark("Marking read…")
+	s.async(func() (any, error) {
+		return nil, s.cli.MarkFolderRead(id)
+	}, func(_ any, err error) {
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Mark Folder Read", err.Error(), nil)
+			return
+		}
+		s.refreshAll()
+		s.mark("Folder marked read")
+	})
+}
+
+// confirmDeleteFolder asks before deleting a user folder and its messages.
+func (s *session) confirmDeleteFolder(f mailcore.Folder) {
+	widgets.Confirm(s.win.Content(), "Delete folder?",
+		fmt.Sprintf("Delete %q and its messages from the server? This cannot be undone.", f.Name),
+		func(yes bool) {
+			if !yes {
+				return
+			}
+			s.async(func() (any, error) {
+				return nil, s.cli.DeleteFolder(f.ID)
+			}, func(_ any, err error) {
+				if err != nil {
+					widgets.Warn(s.win.Content(), "Delete Folder", err.Error(), nil)
+					return
+				}
+				if s.folder == f.ID {
+					s.central = false
+					s.ensureUsableFolder()
+				}
+				s.selected = nil
+				s.refreshAll()
+				s.mark("Deleted " + f.Name)
 			})
 		})
 }

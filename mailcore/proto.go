@@ -74,6 +74,8 @@ const (
 	MethodMessagesSource  = "messages.getSource"
 	MethodMessagesSearch  = "messages.search"
 	MethodContactsSuggest = "contacts.suggest"
+	MethodFoldersDelete   = "folders.delete"
+	MethodFoldersMarkRead = "folders.markRead"
 	MethodMessagesFlags   = "messages.setFlags"
 	MethodMessagesMove    = "messages.move"
 	MethodMessagesDelete  = "messages.delete"
@@ -196,6 +198,10 @@ type searchParams struct {
 	AccountID string   `json:"accountId,omitempty"`
 	FolderID  FolderID `json:"folderId,omitempty"`
 	Filter    Filter   `json:"filter"`
+}
+
+type folderIDParams struct {
+	FolderID FolderID `json:"folderId"`
 }
 
 type contactsSuggestParams struct {

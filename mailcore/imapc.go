@@ -276,6 +276,40 @@ func (c *imapClient) createMailbox(name string) error {
 	return err
 }
 
+func (c *imapClient) deleteMailbox(name string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.connectLocked(); err != nil {
+		return err
+	}
+	box, err := IMAPMailbox(name)
+	if err != nil {
+		return err
+	}
+	// A mailbox cannot be deleted while it is selected on some servers.
+	if c.selected != "" {
+		_, _ = c.cmdLocked("CLOSE")
+		c.selected = ""
+	}
+	_, err = c.cmdLocked("DELETE %s", box)
+	return err
+}
+
+// markAllSeen sets \Seen on every message in the selected mailbox. The
+// caller selects the mailbox read-write first.
+func (c *imapClient) markAllSeen() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.selected == "" {
+		return fmt.Errorf("imap: no mailbox selected")
+	}
+	if c.exists == 0 {
+		return nil
+	}
+	_, err := c.cmdLocked("UID STORE 1:* +FLAGS.SILENT (\\Seen)")
+	return err
+}
+
 func (c *imapClient) list() ([]imapListBox, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

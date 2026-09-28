@@ -319,6 +319,16 @@ func (c *Client) GetMessage(id MessageID) (Message, bool, error) {
 	return m, m.ID != "", nil
 }
 
+// DeleteFolder removes a user-created folder.
+func (c *Client) DeleteFolder(id FolderID) error {
+	return c.call(MethodFoldersDelete, folderIDParams{FolderID: id}, nil)
+}
+
+// MarkFolderRead marks every message in a folder read.
+func (c *Client) MarkFolderRead(id FolderID) error {
+	return c.call(MethodFoldersMarkRead, folderIDParams{FolderID: id}, nil)
+}
+
 // SuggestContacts completes a recipient from the address book.
 func (c *Client) SuggestContacts(query string, limit int) ([]Contact, error) {
 	var out []Contact

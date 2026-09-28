@@ -238,6 +238,24 @@ func (s *IMAPStore) CachedMessage(id MessageID) (Message, bool) {
 	return m.Clone(), true
 }
 
+// DeleteFolder is not implemented by the IMAPStore skeleton.
+func (s *IMAPStore) DeleteFolder(id FolderID) error {
+	return fmt.Errorf("mail: folder delete is not available on this backend")
+}
+
+// MarkFolderRead marks the cached messages of a folder read.
+func (s *IMAPStore) MarkFolderRead(id FolderID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k, m := range s.cache {
+		if m.Folder == id {
+			m.Read = true
+			s.cache[k] = m
+		}
+	}
+	return nil
+}
+
 // SuggestContacts builds a small address book from the cached messages.
 func (s *IMAPStore) SuggestContacts(query string, limit int) []Contact {
 	s.mu.Lock()

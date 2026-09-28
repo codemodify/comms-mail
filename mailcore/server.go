@@ -337,6 +337,24 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			result = s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter})
 		}
+	case MethodFoldersDelete:
+		var p folderIDParams
+		p, err = decodeParams[folderIDParams](req.Params)
+		if err == nil {
+			err = s.Store.DeleteFolder(p.FolderID)
+			if err == nil {
+				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
+			}
+		}
+	case MethodFoldersMarkRead:
+		var p folderIDParams
+		p, err = decodeParams[folderIDParams](req.Params)
+		if err == nil {
+			err = s.Store.MarkFolderRead(p.FolderID)
+			if err == nil {
+				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "flags"})
+			}
+		}
 	case MethodContactsSuggest:
 		var p contactsSuggestParams
 		p, err = decodeParams[contactsSuggestParams](req.Params)

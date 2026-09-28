@@ -309,6 +309,10 @@ type Store interface {
 	ListFolders(accountID string) []Folder
 	GetFolder(id FolderID) (Folder, bool)
 	CreateFolder(accountID, name string, parent FolderID) (Folder, error)
+	// DeleteFolder removes a user-created folder from the server and cache.
+	DeleteFolder(id FolderID) error
+	// MarkFolderRead marks every message in a real folder read.
+	MarkFolderRead(id FolderID) error
 
 	ListMessages(folder FolderID) []Message
 	GetMessage(id MessageID) (Message, bool)

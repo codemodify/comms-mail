@@ -54,6 +54,49 @@ func (s *MemoryStore) SuggestContacts(query string, limit int) []Contact {
 	return s.feat.suggest(query, limit)
 }
 
+// DeleteFolder removes a user-created folder and its messages.
+func (s *MemoryStore) DeleteFolder(id FolderID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := memFolder(s.folders, id)
+	if !ok {
+		return fmt.Errorf("mail: no folder %s", id)
+	}
+	if f.Virtual || f.Kind != FolderCustom {
+		return fmt.Errorf("mail: %q is a system folder and cannot be deleted", f.Name)
+	}
+	msgs := s.messages[:0]
+	for _, m := range s.messages {
+		if m.Folder != id {
+			msgs = append(msgs, m)
+		}
+	}
+	s.messages = msgs
+	folders := s.folders[:0]
+	for _, x := range s.folders {
+		if x.ID != id {
+			folders = append(folders, x)
+		}
+	}
+	s.folders = folders
+	return nil
+}
+
+// MarkFolderRead marks every message in a real folder read.
+func (s *MemoryStore) MarkFolderRead(id FolderID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if f, ok := memFolder(s.folders, id); !ok || f.Virtual {
+		return nil
+	}
+	for i := range s.messages {
+		if s.messages[i].Folder == id {
+			s.messages[i].Read = true
+		}
+	}
+	return nil
+}
+
 func (s *MemoryStore) Health() error { return nil }
 
 func (s *MemoryStore) Accounts() []Account {
@@ -453,6 +496,15 @@ func (s *MemoryStore) Folders(accountID string) []Folder { return s.ListFolders(
 func (s *MemoryStore) Folder(id FolderID) (Folder, bool) { return s.GetFolder(id) }
 func (s *MemoryStore) List(folder FolderID) []Message    { return s.ListMessages(folder) }
 func (s *MemoryStore) Get(id MessageID) (Message, bool)  { return s.GetMessage(id) }
+
+func memFolder(folders []Folder, id FolderID) (Folder, bool) {
+	for _, f := range folders {
+		if f.ID == id {
+			return f, true
+		}
+	}
+	return Folder{}, false
+}
 
 func (s *MemoryStore) indexLocked(id MessageID) (int, bool) {
 	for i, m := range s.messages {
