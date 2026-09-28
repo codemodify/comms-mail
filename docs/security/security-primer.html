@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>comms-mail Security Primer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root {
+  --bg: #F4F6F7;
+  --surface: #FFFFFF;
+  --sunk: #EAEFF2;
+  --ink: #17212B;
+  --muted: #56656F;
+  --rule: #D3DCE2;
+  --accent: #1D5F86;
+  --accent-soft: #DFEBF3;
+  --good: #2C7449;
+  --good-soft: #E1F0E6;
+  --warn: #8C5F0E;
+  --warn-soft: #F5E9CF;
+  --bad: #A33A2E;
+  --bad-soft: #F5DFDA;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0F151A;
+    --surface: #161E25;
+    --sunk: #1C2630;
+    --ink: #E2E8ED;
+    --muted: #9AA7B3;
+    --rule: #2A3642;
+    --accent: #7DB8DE;
+    --accent-soft: #1B3242;
+    --good: #72C193;
+    --good-soft: #183024;
+    --warn: #E2B75E;
+    --warn-soft: #382C12;
+    --bad: #EF8E80;
+    --bad-soft: #3A1E1A;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0F151A;
+  --surface: #161E25;
+  --sunk: #1C2630;
+  --ink: #E2E8ED;
+  --muted: #9AA7B3;
+  --rule: #2A3642;
+  --accent: #7DB8DE;
+  --accent-soft: #1B3242;
+  --good: #72C193;
+  --good-soft: #183024;
+  --warn: #E2B75E;
+  --warn-soft: #382C12;
+  --bad: #EF8E80;
+  --bad-soft: #3A1E1A;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  padding-inline: 20px;
+  padding-block: 0 64px;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+code { background: var(--sunk); padding: 0.1em 0.35em; border-radius: 4px; }
+
+.page {
+  max-width: 1060px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 56px;
+}
+.toc {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 28px);
+  align-self: start;
+  padding-top: 40px;
+  font-size: 14px;
+}
+.toc p {
+  font-family: var(--cond);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a {
+  display: block;
+  padding: 4px 10px;
+  border-left: 2px solid var(--rule);
+  color: var(--muted);
+  text-decoration: none;
+}
+.toc a:hover { color: var(--ink); border-left-color: var(--accent); }
+
+main { min-width: 0; max-width: 740px; }
+header.intro { padding-block: 40px 8px; }
+.eyebrow {
+  font-family: var(--cond);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12.5px;
+  color: var(--accent);
+  margin: 0 0 8px;
+}
+h1, h2, h3 { font-family: var(--cond); text-wrap: balance; line-height: 1.2; }
+h1 { font-size: clamp(30px, 5vw, 42px); font-weight: 600; margin: 0 0 14px; letter-spacing: -0.01em; }
+h2 { font-size: 27px; font-weight: 600; margin: 0 0 12px; }
+h3 { font-size: 19px; font-weight: 600; margin: 28px 0 8px; }
+.lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 62ch; }
+section { padding-top: 44px; margin-top: 44px; border-top: 1px solid var(--rule); scroll-margin-top: 16px; }
+p { margin: 0 0 14px; max-width: 66ch; }
+ul, ol { padding-left: 1.2em; margin: 0 0 14px; max-width: 64ch; }
+li { margin-bottom: 6px; }
+.small { font-size: 14px; color: var(--muted); }
+
+/* the four questions */
+.questions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 22px 0 8px; }
+.q {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 16px 18px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.q .ask { font-weight: 600; font-size: 16.5px; line-height: 1.35; }
+.q .by { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+.q .stops { font-size: 14.5px; color: var(--muted); }
+
+/* diagrams */
+.figure { margin: 22px 0; }
+.scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.figure svg { display: block; width: 100%; min-width: 640px; height: auto; }
+.figure figcaption { font-size: 13.5px; color: var(--muted); margin-top: 8px; }
+.svg-node { fill: var(--surface); stroke: var(--rule); stroke-width: 1.2; }
+.svg-node-you { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+.svg-label { fill: var(--ink); font-family: var(--sans); font-size: 13.5px; font-weight: 500; }
+.svg-note { fill: var(--muted); font-family: var(--sans); font-size: 12.5px; }
+.svg-row { fill: var(--ink); font-family: var(--cond); font-size: 13.5px; font-weight: 600; }
+.svg-arrow { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+.svg-guide { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 3 4; }
+.bar-tls { stroke: var(--muted); stroke-width: 8; stroke-linecap: round; }
+.bar-e2e { stroke: var(--accent); stroke-width: 8; stroke-linecap: round; }
+.bar-dom { stroke: var(--warn); stroke-width: 8; stroke-linecap: round; }
+.bar-auth { stroke: var(--good); stroke-width: 8; stroke-linecap: round; }
+.dot { fill: var(--bg); stroke: var(--ink); stroke-width: 1.5; }
+.arrowhead { fill: var(--muted); }
+
+/* flows (HTML) */
+.flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 16px 0 20px; }
+.step {
+  flex: 1 1 150px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+.step b { display: block; font-family: var(--cond); font-weight: 600; font-size: 15px; margin-bottom: 3px; }
+.step.key { border-color: var(--accent); background: var(--accent-soft); }
+.arrow { align-self: center; color: var(--muted); font-family: var(--mono); font-size: 15px; }
+
+/* callouts */
+.note {
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+  margin: 18px 0;
+  max-width: 66ch;
+  font-size: 15px;
+}
+.note.warn { border-left-color: var(--warn); }
+.note b:first-child { font-family: var(--cond); font-weight: 600; }
+
+/* tables */
+.table-wrap { overflow-x: auto; margin: 16px 0 20px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; min-width: 560px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+thead th {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--sunk);
+}
+tbody th { font-weight: 600; width: 26%; }
+
+/* status chips */
+.chip {
+  display: inline-block;
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.chip.good { color: var(--good); background: var(--good-soft); }
+.chip.warn { color: var(--warn); background: var(--warn-soft); }
+.chip.bad { color: var(--bad); background: var(--bad-soft); }
+.chip.none { color: var(--muted); background: var(--sunk); }
+
+/* oauth steps: a real sequence, so numbered */
+.seq { list-style: none; padding: 0; margin: 18px 0; counter-reset: s; max-width: 66ch; }
+.seq li {
+  counter-increment: s;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+.seq li:last-child { border-bottom: 0; }
+.seq li::before {
+  content: counter(s);
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+}
+.who { font-family: var(--cond); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); display: block; }
+
+/* decisions */
+.decisions { display: grid; gap: 14px; margin: 20px 0; }
+.decision {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+.decision h3 { margin: 0 0 6px; }
+.decision p { margin: 0 0 8px; }
+.decision .rec { font-size: 15px; border-top: 1px solid var(--rule); padding-top: 10px; margin-top: 10px; }
+.decision .rec b { color: var(--accent); font-family: var(--cond); font-weight: 600; }
+
+/* glossary */
+dl.words { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 18px; margin: 16px 0; max-width: 70ch; }
+dl.words dt { font-weight: 600; font-family: var(--cond); font-size: 15.5px; }
+dl.words dd { margin: 0; font-size: 15px; color: var(--ink); }
+
+
+tr.group th {
+  font-family: var(--cond);
+  font-weight: 600;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  background: var(--sunk);
+  padding-block: 7px;
+}
+td.state { width: 1%; white-space: nowrap; }
+.verdict { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 18px 0 6px; }
+.verdict div { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-size: 14.5px; line-height: 1.45; }
+.verdict .chip { margin-bottom: 6px; }
+.fixes li { margin-bottom: 8px; }
+@media (max-width: 560px) { .verdict { grid-template-columns: minmax(0, 1fr); } }
+
+@media (max-width: 860px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .toc { position: static; padding-top: 24px; }
+  .toc ol { display: flex; flex-wrap: wrap; gap: 6px; }
+  .toc a { border-left: 0; border: 1px solid var(--rule); border-radius: 999px; padding: 3px 10px; background: var(--surface); }
+  header.intro { padding-top: 24px; }
+}
+@media (max-width: 560px) {
+  body { font-size: 15.5px; }
+  .questions { grid-template-columns: minmax(0, 1fr); }
+  dl.words { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  dl.words dd { margin-bottom: 10px; }
+  .arrow { flex-basis: 100%; text-align: center; transform: rotate(90deg); }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+
+<style>
+@page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+@media print {
+  body { background: #fff; font-size: 10.5pt; padding: 0; }
+  .page { display: block; max-width: none; }
+  main { max-width: none; }
+  .toc { position: static; padding: 0 0 6mm; }
+  .toc ol { display: block; columns: 2; }
+  .toc a { border-left: 0; padding: 1px 0; color: var(--ink); }
+  header.intro { padding-top: 0; }
+  section { margin-top: 8mm; padding-top: 8mm; }
+  #tls, #smime, #oauth, #today, #decide, #words { break-before: page; margin-top: 0; padding-top: 0; border-top: 0; }
+  h2, h3 { break-after: avoid; }
+  .q, .step, .decision, .note, tr, .verdict div, .seq li, .figure, dl.words dt, dl.words dd { break-inside: avoid; }
+  .scroll-x, .table-wrap { overflow: visible; }
+  .figure svg { min-width: 0; }
+  table { min-width: 0; }
+  a { color: inherit; text-decoration: none; }
+  .arrow { transform: none; flex-basis: auto; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <nav class="toc" aria-label="Contents">
+    <p>Contents</p>
+    <ol>
+      <li><a href="#questions">Four questions</a></li>
+      <li><a href="#tls">The pipe: TLS</a></li>
+      <li><a href="#pgp">PGP</a></li>
+      <li><a href="#smime">S/MIME</a></li>
+      <li><a href="#compare">PGP or S/MIME?</a></li>
+      <li><a href="#oauth">OAuth</a></li>
+      <li><a href="#rest">Everything else</a></li>
+      <li><a href="#today">comms-mail today</a></li>
+      <li><a href="#decide">Decisions to make</a></li>
+      <li><a href="#words">Words you'll meet</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="intro">
+      <p class="eyebrow">A primer for the comms-mail owner</p>
+      <h1>How mail gets secured, and what comms-mail should do about it</h1>
+      <p class="lede">PGP, S/MIME, OAuth, TLS and the domain checks behind them each protect a different thing. This page explains each one plainly, shows where comms-mail stands today, and ends with the decisions that are yours to make.</p>
+    </header>
+
+    <!-- ============================================================ -->
+    <section id="questions">
+      <h2>Four questions</h2>
+      <p>Email was designed with no security at all. Everything that protects it now was added later, in layers, and each layer answers a different question. Most confusion comes from mixing them up, so keep them apart:</p>
+      <div class="questions">
+        <div class="q">
+          <span class="ask">Can someone on the network read or change it?</span>
+          <span class="by">TLS</span>
+          <span class="stops">Stops a snooping Wi-Fi, a hostile network, anyone sitting between you and your server.</span>
+        </div>
+        <div class="q">
+          <span class="ask">Can the mail servers read it?</span>
+          <span class="by">PGP or S/MIME encryption</span>
+          <span class="stops">Stops your provider, the recipient's provider, anyone who breaks into either mailbox, old backups.</span>
+        </div>
+        <div class="q">
+          <span class="ask">Did it really come from them, unchanged?</span>
+          <span class="by">PGP or S/MIME signatures · SPF, DKIM, DMARC</span>
+          <span class="stops">Signatures prove the person; SPF, DKIM and DMARC prove only the domain. Together they fight forgery and phishing.</span>
+        </div>
+        <div class="q">
+          <span class="ask">Who can sign in to your mailbox?</span>
+          <span class="by">A password, or OAuth</span>
+          <span class="stops">OAuth keeps your password out of the app and lets you cut off one app without changing it.</span>
+        </div>
+      </div>
+
+      <figure class="figure">
+        <div class="scroll-x">
+          <svg viewBox="0 0 760 330" role="img" aria-labelledby="journey-title">
+            <title id="journey-title">Where each protection applies along a message's journey from your app to the recipient's app</title>
+            <defs>
+              <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" class="arrowhead"/>
+              </marker>
+            </defs>
+            <!-- the four stops -->
+            <rect x="20" y="16" width="150" height="50" rx="7" class="svg-node-you"/>
+            <text x="95" y="46" text-anchor="middle" class="svg-label">You · comms-mail</text>
+            <rect x="210" y="16" width="150" height="50" rx="7" class="svg-node"/>
+            <text x="285" y="46" text-anchor="middle" class="svg-label">Your mail server</text>
+            <rect x="400" y="16" width="150" height="50" rx="7" class="svg-node"/>
+            <text x="475" y="46" text-anchor="middle" class="svg-label">Their mail server</text>
+            <rect x="590" y="16" width="150" height="50" rx="7" class="svg-node"/>
+            <text x="665" y="46" text-anchor="middle" class="svg-label">Their mail app</text>
+            <line x1="172" y1="41" x2="206" y2="41" class="svg-arrow" marker-end="url(#ah)"/>
+            <line x1="362" y1="41" x2="396" y2="41" class="svg-arrow" marker-end="url(#ah)"/>
+            <line x1="552" y1="41" x2="586" y2="41" class="svg-arrow" marker-end="url(#ah)"/>
+            <!-- guides down from each stop -->
+            <line x1="95" y1="70" x2="95" y2="318" class="svg-guide"/>
+            <line x1="285" y1="70" x2="285" y2="318" class="svg-guide"/>
+            <line x1="475" y1="70" x2="475" y2="318" class="svg-guide"/>
+            <line x1="665" y1="70" x2="665" y2="318" class="svg-guide"/>
+
+            <!-- TLS: each hop, opened at every server -->
+            <text x="20" y="100" class="svg-row">TLS</text>
+            <text x="58" y="100" class="svg-note">each hop on its own; every server holds the message readable</text>
+            <line x1="103" y1="118" x2="277" y2="118" class="bar-tls"/>
+            <line x1="293" y1="118" x2="467" y2="118" class="bar-tls" stroke-dasharray="1 13"/>
+            <line x1="483" y1="118" x2="657" y2="118" class="bar-tls"/>
+            <circle cx="285" cy="118" r="6" class="dot"/>
+            <circle cx="475" cy="118" r="6" class="dot"/>
+            <text x="380" y="140" text-anchor="middle" class="svg-note">between servers: only if both agree</text>
+
+            <!-- end to end -->
+            <text x="20" y="176" class="svg-row">PGP / S/MIME</text>
+            <text x="120" y="176" class="svg-note">sealed in your app, opened only in theirs</text>
+            <line x1="95" y1="194" x2="665" y2="194" class="bar-e2e"/>
+
+            <!-- domain checks -->
+            <text x="20" y="232" class="svg-row">SPF · DKIM · DMARC</text>
+            <text x="164" y="232" class="svg-note">their server checks your domain on arrival</text>
+            <line x1="285" y1="250" x2="475" y2="250" class="bar-dom"/>
+            <circle cx="475" cy="250" r="6" class="dot"/>
+
+            <!-- sign-in -->
+            <text x="20" y="288" class="svg-row">Password / OAuth</text>
+            <text x="148" y="288" class="svg-note">only your app signing in to your own server</text>
+            <line x1="95" y1="306" x2="285" y2="306" class="bar-auth"/>
+          </svg>
+        </div>
+        <figcaption>One message, four protections. Only PGP and S/MIME cover the whole path; TLS is opened and re-sealed at every server along the way.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="tls">
+      <p class="eyebrow">Protects the pipe</p>
+      <h2>The pipe: TLS</h2>
+      <p>TLS is the same encryption that puts the padlock on <code>https://</code> sites. For mail it protects each hop separately: your app to your server, and one server to the next. Every server along the way decrypts the message, stores it, and forwards it. TLS protects a message while it travels, not where it sits.</p>
+      <h3>Two ways to start it</h3>
+      <ul>
+        <li><b>Implicit TLS</b>: encrypted from the very first byte. Ports <code>993</code> for IMAP and <code>465</code> for sending. The current standard (RFC&nbsp;8314, 2018) recommends this one.</li>
+        <li><b>STARTTLS</b>: the app connects in plain text, then asks to switch to TLS (ports <code>143</code> and <code>587</code>). If an attacker deletes the server's offer to switch and the app carries on anyway, your password crosses the network readable. A careful app refuses to continue without TLS.</li>
+      </ul>
+      <h3>Checking the server is the server</h3>
+      <p>The server proves its identity with a certificate. The app must check that the name matches, that a trusted authority signed it, and that it has not expired. An app that skips the check still encrypts, but to whoever answered, which may be an attacker.</p>
+      <p>Between two mail servers, TLS is used only if both support it; otherwise they fall back to plain text. Domains can insist on TLS by publishing MTA-STS or DANE records. That is set up by whoever runs the domain, not by the mail app.</p>
+      <div class="note"><b>Your account.</b> It reads mail from <span class="mono">mail.nchip.com:993</span> and sends through <span class="mono">mail.nchip.com:465</span>, both implicit TLS: the recommended setup.</div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="pgp">
+      <p class="eyebrow">Protects the message, end to end</p>
+      <h2>PGP</h2>
+      <p>PGP gives every person two keys that belong together. The <b>public key</b> is handed out freely. The <b>private key</b> never leaves your computer. What the public key locks, only the private key opens; what the private key signs, anyone with the public key can check.</p>
+
+      <h3>Encrypting</h3>
+      <div class="flow" aria-label="How encryption works">
+        <div class="step"><b>Your message</b>Text and attachments, as written.</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step"><b>A one-time key</b>The app makes a random key for this message only and encrypts the message with it (fast, AES).</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step key"><b>Locked for each reader</b>The one-time key is locked with each recipient's public key, and with yours so you can read your own Sent copy.</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step"><b>What travels</b>The encrypted message plus one locked copy of the key per reader. Nobody else can open it, including the servers.</div>
+      </div>
+
+      <h3>Signing</h3>
+      <div class="flow" aria-label="How signing works">
+        <div class="step"><b>A fingerprint</b>The app computes a short hash of the message. Change one byte and the hash changes completely.</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step key"><b>Sealed with your private key</b>Only you can make this seal.</div>
+        <div class="arrow" aria-hidden="true">→</div>
+        <div class="step"><b>Checked with your public key</b>The reader's app recomputes the hash and checks the seal. Valid means: from you, and unchanged.</div>
+      </div>
+      <p>Signing hides nothing. It proves who wrote the message and that nobody altered it on the way.</p>
+
+      <h3>The hard part: whose key is this?</h3>
+      <p>Encryption itself is solved. Knowing that a public key really belongs to Bob, and not to someone pretending to be Bob, is the difficult part, and PGP has no central authority to vouch for keys. The ways people handle it:</p>
+      <ul>
+        <li><b>Compare fingerprints</b> in person or over a channel you already trust. A fingerprint is a 40-character summary of the key.</li>
+        <li><b>WKD (Web Key Directory)</b>: the domain owner publishes keys on its own website at a standard address. Strong, because only the domain controls it.</li>
+        <li><b>keys.openpgp.org</b>: a key server that publishes a key only after its owner confirms the email address.</li>
+        <li><b>Autocrypt</b>: apps attach your public key to the headers of every mail you send, so the other side collects it automatically. Easy, but it trusts the first key it sees.</li>
+        <li><b>Web of trust</b>: people sign each other's keys. The original idea, now largely abandoned in practice.</li>
+      </ul>
+
+      <h3>What it looks like, and what it leaves visible</h3>
+      <p>Modern PGP mail is <b>PGP/MIME</b> (RFC&nbsp;3156): the message becomes a <code>multipart/encrypted</code> or <code>multipart/signed</code> part. An older style, inline PGP, puts <code>-----BEGIN PGP MESSAGE-----</code> blocks in the text and copes badly with attachments and HTML.</p>
+      <p>PGP never hides who wrote to whom and when: From, To, Cc, the date and the servers stay readable. The subject is traditionally left readable too; newer apps move it inside the encryption ("protected headers") and show <code>...</code> outside.</p>
+
+      <h3>Keys to keep safe</h3>
+      <p>A private key is protected by a passphrase, or kept on a hardware key (YubiKey, Nitrokey, an OpenPGP smart card) that uses the key without ever giving it out. Lose the private key and old encrypted mail can never be read again. A <b>revocation certificate</b>, made once and stored somewhere safe, tells everyone a lost or stolen key must no longer be used.</p>
+      <p class="small">The standard is OpenPGP: RFC&nbsp;4880 from 2007, replaced in 2024 by RFC&nbsp;9580 with modern algorithms. Well-known implementations: GnuPG (<code>gpg</code>), Sequoia, RNP (built into Thunderbird since version 78), and Proton's Go library, <code>go-crypto</code>.</p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="smime">
+      <p class="eyebrow">Protects the message, end to end</p>
+      <h2>S/MIME</h2>
+      <p>S/MIME uses the same idea as PGP: a public key to lock and check, a private key to open and sign, the same one-time-key trick for encryption. On the wire a signed message carries an <code>application/pkcs7-signature</code> part (often shown as <code>smime.p7s</code>) and an encrypted one is an <code>application/pkcs7-mime</code> part. The difference is who vouches for a key.</p>
+
+      <h3>Certificates and the authorities that issue them</h3>
+      <p>Your public key comes inside a <b>certificate</b>: a small signed document saying "this key belongs to ada@example.com", issued by a <b>certificate authority</b> (CA), the same kind of company that issues certificates for websites. Operating systems and mail apps ship with a list of CAs they trust, so a signed message shows as verified without anyone comparing fingerprints.</p>
+      <ul>
+        <li><b>Where you get one</b>: from a public CA (some give free email-only certificates, most charge), or from your employer's own CA. Companies, governments and the military often issue them on smart cards.</li>
+        <li><b>What you receive</b>: a <code>.p12</code> / <code>.pfx</code> file holding your certificate and private key, protected by a password.</li>
+        <li><b>How long it lasts</b>: a certificate always expires. Public CAs follow the CA/Browser Forum's S/MIME rules (since 2023), which cap it at about two years. Keep old private keys: they still open old mail.</li>
+        <li><b>How you get someone else's</b>: their certificate rides along in every message they sign. The usual first step is that they send you a signed mail; your app keeps their certificate, and from then on you can encrypt to them. There is no global directory, though companies may publish certificates internally.</li>
+      </ul>
+      <p>S/MIME is built into Outlook, Apple Mail and iPhone Mail, Thunderbird, and KMail (through GnuPG's <code>gpgsm</code>). Gmail supports it for some Google Workspace editions.</p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="compare">
+      <h2>PGP or S/MIME?</h2>
+      <p>They do the same job and do not work together: a PGP user and an S/MIME user cannot exchange encrypted mail. Supporting both lets comms-mail talk to both worlds. Which to build first depends on who you write to.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col"></th><th scope="col">PGP</th><th scope="col">S/MIME</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Who vouches for a key</th><td>You: fingerprints, WKD, key servers, Autocrypt</td><td>A certificate authority</td></tr>
+            <tr><th scope="row">Cost</th><td>Free</td><td>Free to paid; issued by the employer at work</td></tr>
+            <tr><th scope="row">Getting started</th><td>Make a key pair in the app</td><td>Get a certificate from a CA, import the .p12</td></tr>
+            <tr><th scope="row">Common among</th><td>Open-source and security people, journalists, Proton Mail users</td><td>Companies, government, Outlook and Apple users</td></tr>
+            <tr><th scope="row">Other people's keys</th><td>Key servers, WKD, Autocrypt, or they send it</td><td>From a signed message they send you</td></tr>
+            <tr><th scope="row">Expiry</th><td>Optional</td><td>Always, about 1–2 years</td></tr>
+            <tr><th scope="row">Hides who talks to whom</th><td>No (subject: optionally)</td><td>No</td></tr>
+            <tr><th scope="row">Hardware keys</th><td>OpenPGP cards, YubiKey</td><td>Smart cards (PIV), YubiKey</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn"><b>EFAIL, the lesson for both.</b> In 2018 researchers showed that a mail app which decrypts a message and then renders it as HTML while loading remote content can leak the decrypted text to an attacker. The defences: never load remote content in decrypted mail, never stitch a decrypted part together with unencrypted parts into one HTML view, and treat any decryption or integrity error as a hard failure. comms-mail already blocks remote content by default, which is the most important of the three.</div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="oauth">
+      <p class="eyebrow">Protects your account</p>
+      <h2>OAuth</h2>
+      <p>With a password, every mail app you use holds the key to your whole account. If one leaks it, the thief has your mail, and often everything else that password opens. OAuth lets an app use your mailbox without ever seeing your password. Google and Microsoft have been switching password sign-in off for mail apps for exactly this reason.</p>
+
+      <h3>What happens when you sign in</h3>
+      <ol class="seq">
+        <li><div><span class="who">comms-mail</span>You press Sign in; comms-mail opens your browser at Google's or Microsoft's own sign-in page.</div></li>
+        <li><div><span class="who">You, in the browser</span>You sign in there with your password and second factor. comms-mail never sees either.</div></li>
+        <li><div><span class="who">Google or Microsoft</span>It asks whether comms-mail may read and send your mail. You approve.</div></li>
+        <li><div><span class="who">Browser → comms-mail</span>The browser hands comms-mail a one-time code on a local address such as <code>http://127.0.0.1:port</code>.</div></li>
+        <li><div><span class="who">comms-mail → Google or Microsoft</span>comms-mail trades the code for two tokens: an <b>access token</b> that works for about an hour, and a <b>refresh token</b> that lasts and fetches new access tokens.</div></li>
+        <li><div><span class="who">comms-mail → mail server</span>It signs in to IMAP and SMTP with the access token instead of a password (the <code>XOAUTH2</code> or <code>OAUTHBEARER</code> sign-in methods).</div></li>
+      </ol>
+      <p><b>PKCE</b> makes the code from step 4 useless to anyone else: in step 5 comms-mail proves it is the same app that started the sign-in. That matters on a desktop, where another program could see the code go by.</p>
+      <p>After sign-in, the <b>refresh token</b> is the valuable secret. It must be stored encrypted, and you can revoke it at any time from your Google or Microsoft account page without changing your password.</p>
+
+      <h3>The client ID: the pinned decision</h3>
+      <p>Google and Microsoft only talk to apps they know. Every app is registered with them and gets a <b>client ID</b>. A desktop app cannot keep a secret, so the client ID is public; PKCE is what protects the sign-in. The question is whose registration comms-mail uses.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Route</th><th scope="col">How it works</th><th scope="col">Catch</th></tr></thead>
+          <tbody>
+            <tr>
+              <th scope="row">Your own registration</th>
+              <td>You register an app in Google Cloud Console or Microsoft Entra and paste its client ID into comms-mail, which already supports this. Free, no review.</td>
+              <td>A Google app left in "Testing" issues refresh tokens that expire after 7 days, so you sign in again weekly. Publishing it means Google's verification for full mail access. A Google Workspace organisation can mark it Internal and skip review. Some Microsoft 365 organisations require an admin to approve new apps.</td>
+            </tr>
+            <tr>
+              <th scope="row">One built into comms-mail</th>
+              <td>comms-mail ships its own registration, as Thunderbird does. Best for anyone else who uses comms-mail.</td>
+              <td>Google treats full Gmail access as a restricted permission: the app must pass verification and a yearly independent security assessment (CASA), which costs time and money. Microsoft asks for publisher verification, which is free.</td>
+            </tr>
+            <tr>
+              <th scope="row">App passwords</th>
+              <td>A personal Google account with 2-Step Verification can make a password just for one app.</td>
+              <td>It is still a password with full access. Workspace admins can turn it off, and Microsoft 365 no longer offers it for mail.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note"><b>Which accounts need it.</b> Gmail and Google Workspace, Microsoft 365 and Outlook.com. Microsoft turned off password sign-in for IMAP and POP in Exchange Online in 2022 and announced the same for sending (SMTP) during 2026. Your current account on <span class="mono">mail.nchip.com</span> signs in with a password and offers no OAuth, so none of this applies to it today.</div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="rest">
+      <h2>Everything else</h2>
+      <h3>Is the sender who they claim? SPF, DKIM, DMARC</h3>
+      <p>Three records a domain publishes so receiving servers can check mail that claims to come from it:</p>
+      <ul>
+        <li><b>SPF</b>: which servers may send mail for the domain.</li>
+        <li><b>DKIM</b>: the sending server signs each message with the domain's key.</li>
+        <li><b>DMARC</b>: what to do when those fail, and whether they match the From address you actually see.</li>
+      </ul>
+      <p>Your server runs these checks on arrival and writes the outcome into an <code>Authentication-Results</code> header. A mail app can read that header and warn you: "claims to be from paypal.com but failed the check". These prove the domain, not the person, and cannot catch a look-alike domain (<code>paypa1.com</code>) or a display name like "PayPal" in front of a stranger's address. An app can flag those separately.</p>
+      <h3>Tracking and remote content</h3>
+      <p>An image loaded from the sender's server tells them when you opened the message, from which IP address, and roughly with what. Newsletters use invisible one-pixel images for exactly this. Blocking remote content until you ask is also the main EFAIL defence.</p>
+      <h3>Links and attachments</h3>
+      <p>The text of a link and where it goes can differ, so a good app shows the real destination before opening it. Opening an attachment hands it to another program; some file types (desktop launchers, scripts, installers) run code when opened, and should be refused.</p>
+      <h3>On your disk</h3>
+      <p>A mail app keeps copies of your mail, and some secret (a password or a token) to sign in with. File permissions keep other users of the machine out. They do not stop a program that runs as you, which can read everything you can. Full-disk encryption protects a lost or stolen laptop; nothing in a mail app protects against malware already running under your account. The desktop keyring (GNOME Keyring, KWallet) keeps secrets encrypted until you log in, which protects them in backups and copied files.</p>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="today">
+      <h2>Where comms-mail stands today</h2>
+      <p>Read from the code on 28 September 2026. comms-mail is strict where the network is concerned and careful when showing mail. Its weak spot is the secrets it keeps on disk, and it has nothing yet for end-to-end encryption or for telling you whether a sender is genuine.</p>
+      <div class="verdict">
+        <div><span class="chip good">Strong</span><br>The pipe (TLS), reading HTML, remote content, the local daemon.</div>
+        <div><span class="chip warn">Weak</span><br>Secrets at rest: passwords in plain text, the token key beside the tokens.</div>
+        <div><span class="chip bad">Missing</span><br>PGP, S/MIME, signature checks, sender warnings.</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Area</th><th scope="col">What comms-mail does</th><th scope="col">State</th></tr></thead>
+          <tbody>
+            <tr class="group"><th colspan="3" scope="rowgroup">The pipe</th></tr>
+            <tr><th scope="row">Certificate checks</th><td>Always on, TLS 1.2 or newer, with no way to switch them off.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">STARTTLS stripping</th><td>If a server does not offer TLS the connection is refused, never continued in plain text. A password is never sent unencrypted (except to this machine itself).</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">New accounts</th><td>Chooses implicit TLS from the port (993, 995, 465); STARTTLS for 143, 110, 587.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr class="group"><th colspan="3" scope="rowgroup">Signing in</th></tr>
+            <tr><th scope="row">Passwords</th><td>Stored in plain text in <code>~/.config/comms-mail/mail.json</code> (readable only by you, mode 0600). The Add Account screen says so. No keyring.</td><td class="state"><span class="chip bad">Weak</span></td></tr>
+            <tr><th scope="row">OAuth sign-in</th><td>Google and Microsoft, with PKCE and a local redirect, device-code as a fallback. IMAP and SMTP use <code>XOAUTH2</code>. POP has no OAuth.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">OAuth tokens</th><td>Encrypted (AES-256-GCM), but the key is written to <code>master.key</code> right beside them as well as to the keyring, so they are only as safe as a plain file.</td><td class="state"><span class="chip warn">Partial</span></td></tr>
+            <tr><th scope="row">Client ID</th><td>You supply it (wizard or environment). None is built in.</td><td class="state"><span class="chip none">Your call</span></td></tr>
+            <tr class="group"><th colspan="3" scope="rowgroup">End to end</th></tr>
+            <tr><th scope="row">PGP</th><td>Not supported. An encrypted PGP message shows an empty body with <code>encrypted.asc</code> as an attachment.</td><td class="state"><span class="chip bad">Missing</span></td></tr>
+            <tr><th scope="row">S/MIME</th><td>Not supported. An S/MIME-encrypted message (<code>smime.p7m</code>) shows its binary contents as the message text.</td><td class="state"><span class="chip bad">Missing</span></td></tr>
+            <tr><th scope="row">Signed mail</th><td>Shows normally, with <code>signature.asc</code> or <code>smime.p7s</code> as an attachment. Never checked.</td><td class="state"><span class="chip bad">Missing</span></td></tr>
+            <tr class="group"><th colspan="3" scope="rowgroup">Who sent it</th></tr>
+            <tr><th scope="row">SPF, DKIM, DMARC</th><td>The server's results are never read or shown.</td><td class="state"><span class="chip bad">Missing</span></td></tr>
+            <tr><th scope="row">Look-alike senders</th><td>No warning for a display name that does not match its address, or for a Reply-To that differs from From. The list shows only the display name.</td><td class="state"><span class="chip bad">Missing</span></td></tr>
+            <tr class="group"><th colspan="3" scope="rowgroup">Reading</th></tr>
+            <tr><th scope="row">Scripts</th><td>Never run: the HTML view has no script engine, and scripts, styles and frames are stripped first.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">Remote images</th><td>Blocked until you ask; Always for a sender. The sender allow-list trusts the From address, which can be forged.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">Image fetching</th><td>Only public addresses (the check is made on the address actually connected to), size and count limits, no cookies.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">Links</th><td>A confirmation shows the real destination first.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">Attachments</th><td>Launchers, scripts, installers and HTML are refused by file name; everything else goes to the desktop's opener. Opened copies in <code>~/.data/comms-mail/open</code> and printed pages in <code>/tmp</code> are never cleaned up.</td><td class="state"><span class="chip warn">Partial</span></td></tr>
+            <tr class="group"><th colspan="3" scope="rowgroup">This machine</th></tr>
+            <tr><th scope="row">Mail on disk</th><td><code>mail.db</code>, message files and the log are readable only by you, and not encrypted; that relies on full-disk encryption.</td><td class="state"><span class="chip warn">As designed</span></td></tr>
+            <tr><th scope="row">The log</th><td>Records errors and which request failed, never its contents; passwords are not echoed.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">The daemon's socket</th><td>Only your user (or root) may connect. Any program running as you has the same access as the app: it can read mail and send as you. It can also point an account at a new server and the saved password goes along.</td><td class="state"><span class="chip warn">Partial</span></td></tr>
+            <tr><th scope="row">Message-ID</th><td>Sent mail carries <code>&lt;number.your-address@uitoolkit&gt;</code>, which names the software and repeats your address.</td><td class="state"><span class="chip warn">Partial</span></td></tr>
+            <tr><th scope="row">Header injection</th><td>Line breaks in addresses, subjects and file names are refused.</td><td class="state"><span class="chip good">In place</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Fixes that need no decision</h3>
+      <ul class="fixes">
+        <li>Show an S/MIME- or PGP-encrypted message as "encrypted, cannot be opened yet" instead of binary text or an empty body.</li>
+        <li>Clean up opened attachments and printed pages once they are closed or old.</li>
+        <li>Make sent Message-IDs look like everyone else's (<code>&lt;random@your-domain&gt;</code>), without the software name or your address.</li>
+        <li>Ask for the password again when an account is pointed at a different server, instead of carrying the saved one over.</li>
+        <li>Read the <code>Authentication-Results</code> header and warn on a failed DMARC or DKIM check, a display name that pretends to be another address, and a Reply-To on another domain. Trust the per-sender "Always show images" only when the sender passed those checks.</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="decide">
+      <h2>Decisions to make</h2>
+      <p>Each of these changes what gets built. They are yours to make; each has a recommendation.</p>
+      <div class="decisions">
+        <div class="decision">
+          <h3>1. Where passwords and tokens live</h3>
+          <p><b>Desktop keyring</b> (GNOME Keyring or KWallet through the Secret Service): unlocked when you log in, encrypted on disk and in backups, and the way Evolution, Geary and KMail do it. A plain file stays only as the fallback on a desktop without a keyring.</p>
+          <p><b>A passphrase of your own</b>: comms-mail encrypts its secrets with a passphrase you type when it starts, like Thunderbird's primary password. Works everywhere, but asks you every login.</p>
+          <p class="rec"><b>Recommended:</b> the keyring, with the passphrase as an option for machines without one. Either way, <code>master.key</code> stops being written next to the tokens.</p>
+        </div>
+        <div class="decision">
+          <h3>2. PGP or S/MIME first</h3>
+          <p>This depends on the people you write to. Colleagues on Outlook or Apple Mail in a company that issues certificates point to S/MIME. Open-source, security or Proton Mail contacts point to PGP.</p>
+          <p class="rec"><b>Recommended:</b> first, for both, recognise and check what arrives (signed mail shows as verified or not; encrypted mail says what it is). That is the common case and it shares the work. Then sending and decrypting for whichever your contacts use. Tell me who you exchange mail with and I will order it.</p>
+        </div>
+        <div class="decision">
+          <h3>3. Whose crypto engine</h3>
+          <p><b>GnuPG</b> (<code>gpg</code> for PGP, <code>gpgsm</code> for S/MIME), the way KMail does it. Your keys stay in GnuPG, where <code>git</code> and <code>pass</code> use them too. Hardware keys, passphrase prompts and certificate handling come with it. It needs GnuPG installed, and comms-mail talks to it as a separate program.</p>
+          <p><b>Built in</b> (pure Go, the way Thunderbird has its own engine): Proton's <code>go-crypto</code> for PGP and a third-party package for S/MIME, since Go has none of its own. Nothing to install, but comms-mail must then store private keys safely itself and needs its own key manager, and hardware keys are hard to support.</p>
+          <p class="rec"><b>Recommended:</b> GnuPG. Storing secrets is comms-mail's weakest spot today, and with GnuPG the most valuable secret, your private key, never becomes comms-mail's to guard. One engine covers both PGP and S/MIME. A built-in engine can come later for machines without GnuPG.</p>
+        </div>
+        <div class="decision">
+          <h3>4. Searching encrypted mail</h3>
+          <p>To search inside encrypted mail, comms-mail has to keep its decrypted text in the search index, which is a readable copy on disk of what was meant to be sealed. Without it, encrypted mail is found by sender, subject and date only.</p>
+          <p class="rec"><b>Recommended:</b> do not keep decrypted text by default; offer it as a setting for those whose disk is encrypted.</p>
+        </div>
+        <div class="decision">
+          <h3>5. The OAuth client ID</h3>
+          <p>Your own registration works today and costs nothing. A comms-mail registration matters only once other people use comms-mail with Gmail or Microsoft 365, and for Gmail it means Google's verification and a yearly paid security assessment.</p>
+          <p class="rec"><b>Recommended:</b> stay with your own registration while comms-mail is yours alone. Decide on a built-in one when others will use it. Is that the plan?</p>
+        </div>
+        <div class="decision">
+          <h3>6. Sender warnings</h3>
+          <p>Showing the server's SPF, DKIM and DMARC results, and flagging look-alike senders, costs little and catches most phishing that reaches an inbox. It needs no keys and works on every account, including yours.</p>
+          <p class="rec"><b>Recommended:</b> yes, and early. It is the most protection for the least work.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <section id="words">
+      <h2>Words you'll meet</h2>
+      <dl class="words">
+        <dt>Public key</dt><dd>The half of a key pair you give out. Others use it to encrypt to you and to check your signatures.</dd>
+        <dt>Private key</dt><dd>The half that never leaves you. It opens what was encrypted to you and makes your signatures.</dd>
+        <dt>Fingerprint</dt><dd>A short, unique summary of a public key, used to confirm it is the right one.</dd>
+        <dt>Certificate</dt><dd>A public key plus a statement of whose it is, signed by a certificate authority (S/MIME, and websites).</dd>
+        <dt>Certificate authority</dt><dd>An organisation apps trust to vouch for certificates.</dd>
+        <dt>Session key</dt><dd>The random one-time key that actually encrypts a message; it is then locked for each reader.</dd>
+        <dt>Hash</dt><dd>A fixed-size digest of data. Any change to the data changes the hash.</dd>
+        <dt>Revocation</dt><dd>Declaring a key or certificate no longer valid, for example after it is lost.</dd>
+        <dt>Implicit TLS</dt><dd>A connection that is encrypted from the first byte (ports 993, 465).</dd>
+        <dt>STARTTLS</dt><dd>A plain connection that switches to TLS on request (ports 143, 587).</dd>
+        <dt>Client ID</dt><dd>The public name an app is registered under with Google or Microsoft.</dd>
+        <dt>Access token</dt><dd>A short-lived pass (about an hour) an app shows instead of a password.</dd>
+        <dt>Refresh token</dt><dd>A long-lived secret the app uses to get new access tokens. Revocable from your account page.</dd>
+        <dt>Scope</dt><dd>What an app asked permission to do, such as "read and send mail".</dd>
+        <dt>PKCE</dt><dd>A check that ties the sign-in code to the app that started the sign-in.</dd>
+        <dt>XOAUTH2</dt><dd>The IMAP and SMTP sign-in method that takes an access token.</dd>
+        <dt>Keyring</dt><dd>The desktop's store for secrets (GNOME Keyring, KWallet), unlocked when you log in.</dd>
+      </dl>
+    </section>
+  </main>
+</div>
+
+</body>
+</html>

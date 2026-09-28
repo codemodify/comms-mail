@@ -130,6 +130,11 @@ $
 - [docs/tray.md](docs/tray.md) — the status item and new-mail toasts.
 - [docs/testing.md](docs/testing.md) — how to run the tests, and the mail
   safety rules.
+- [docs/security/security-primer.md](docs/security/security-primer.md) — how
+  mail is secured (TLS, PGP, S/MIME, OAuth, SPF/DKIM/DMARC), where comms-mail
+  stands, and the open security decisions. Also as
+  [PDF](docs/security/security-primer.pdf) and
+  [HTML](docs/security/security-primer.html).
 
 ## Status
 
