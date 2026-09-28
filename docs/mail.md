@@ -291,6 +291,8 @@ call `localhost`, your router or a cloud metadata address, checked on the
 address actually dialled — at most 100 images of 8 MB each and 48 MB in
 all, 15 s each, no cookies, no proxy, not while working offline. PNG, JPEG,
 GIF and WebP are drawn; pictures seen once are kept for the session.
+**Settings → Privacy** lists the senders trusted with Always and takes
+them back. A message opened in a tab has the same Message / HTML views.
 
 A link is followed on a click, after a confirmation showing the real target
 so link text cannot disguise where it goes; a `mailto:` opens a

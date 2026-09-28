@@ -20,6 +20,8 @@ type ChromePrefs struct {
 	Threaded   bool   `json:"threaded,omitempty"`
 	HideMute   bool   `json:"hideMuted,omitempty"`
 	ShowFilter bool   `json:"showFilter,omitempty"`
+	// InviteLess folds invitation cards (Less / More).
+	InviteLess bool `json:"inviteLess,omitempty"`
 }
 
 // chromePrefsPath is mailui.json, beside mail.json in ConfigDir, so the

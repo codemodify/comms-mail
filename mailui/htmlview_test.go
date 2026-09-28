@@ -8,7 +8,11 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
+	"github.com/codemodify/uitoolkit"
+	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
+	"github.com/codemodify/uitoolkit/widget"
+	"github.com/codemodify/uitoolkit/widgets"
 )
 
 func TestHTMLHasRemoteImages(t *testing.T) {
@@ -138,13 +142,13 @@ func TestInlineImagesDrawAndRemoteWait(t *testing.T) {
 
 	// What was fetched is drawn: pretend the banner came back.
 	s.cacheImage(mailcore.DemoNewsletterBanner, decodeImage(onePixelPNG(t)))
-	s.rerenderHTML(s.imgGen)
+	s.html.rerender(s.html.gen)
 	if s.previewRich.ResolveImage(mailcore.DemoNewsletterBanner) == nil {
 		t.Fatal("a fetched remote image is not drawn")
 	}
 
 	// Always from Sender is kept by the daemon.
-	s.alwaysShowImages()
+	s.html.alwaysShow()
 	s.waitIdle()
 	senders, _ := s.cli.RemoteImageSenders()
 	if len(senders) != 1 || senders[0] != "weekly@news.example" || !s.imgSenders["weekly@news.example"] {
@@ -159,4 +163,41 @@ func onePixelPNG(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return b.Bytes()
+}
+
+// Settings → Privacy lists the trusted senders and takes one back.
+func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
+	cli := demoClient(t)
+	if err := cli.AllowRemoteImages("news@example.com", true); err != nil {
+		t.Fatal(err)
+	}
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 560, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	changed := 0
+	col := prefsPrivacy(w, cli, func() { changed++ })
+	w.SetContent(col)
+	a.PumpOnce()
+	var remove *widgets.Button
+	var table *widgets.TableView
+	widget.Walk(col, func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.Button:
+			if v.Text == "Remove" {
+				remove = v
+			}
+		case *widgets.TableView:
+			table = v
+		}
+	})
+	if table == nil || table.RowCount != 1 || remove == nil || !remove.Enabled() {
+		t.Fatalf("privacy tab: table %v remove %v", table, remove)
+	}
+	remove.OnClick()
+	if got, _ := cli.RemoteImageSenders(); len(got) != 0 || table.RowCount != 0 || changed != 1 || remove.Enabled() {
+		t.Fatalf("after remove: %v rows %d changed %d", got, table.RowCount, changed)
+	}
 }

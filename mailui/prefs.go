@@ -37,15 +37,17 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 	accountsTab := prefsAccounts(a, win, cli, st, onChange)
 	tagsTab := prefsTags(a, win, cli, onChange)
 	sigTab := prefsSignatures(win, cli)
+	privacyTab := prefsPrivacy(win, cli, onChange)
 
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Accounts", Content: widgets.NewPad(10, accountsTab)},
 		widgets.Tab{Title: "Signatures", Content: widgets.NewPad(10, sigTab)},
 		widgets.Tab{Title: "Tags", Content: widgets.NewPad(10, tagsTab)},
+		widgets.Tab{Title: "Privacy", Content: widgets.NewPad(10, privacyTab)},
 	)
 	closeBtn := widgets.NewButton("Close", func() { win.Close() })
 	tools := widgets.NewRow(widgets.NewSpacer(), closeBtn).WithGap(8)
-	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · v"+uitoolkit.Version)
+	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · privacy · v"+uitoolkit.Version)
 	root := widgets.NewColumn(chrome, tabs, tools, status).WithGap(0)
 	root.AddFlex(tabs, 1)
 	return root
@@ -357,5 +359,59 @@ func prefsSignatures(win *app.Window, cli *mailcore.Client) widget.Component {
 		widgets.NewRow(save, status).WithGap(8),
 	).WithGap(8)
 	col.AddFlex(sig, 1)
+	return col
+}
+
+// prefsPrivacy lists the senders whose remote images load without asking
+// (given with Always in the reading pane), and takes them back.
+func prefsPrivacy(win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+	senders, _ := cli.RemoteImageSenders()
+	var table *widgets.TableView
+	var remove *widgets.Button
+	refresh := func() {
+		senders, _ = cli.RemoteImageSenders()
+		table.RowCount = len(senders)
+		if table.Selected >= len(senders) {
+			table.Selected = len(senders) - 1
+		}
+		if table.Selected < 0 && len(senders) > 0 {
+			table.Selected = 0
+		}
+		remove.SetEnabled(table.Selected >= 0 && len(senders) > 0)
+		table.Invalidate()
+	}
+	table = widgets.NewTableView([]widgets.TableColumn{
+		{Title: "Sender", Sortable: true},
+	}, len(senders), func(row, _ int) string {
+		if row < 0 || row >= len(senders) {
+			return ""
+		}
+		return senders[row]
+	}, func(int) { remove.SetEnabled(table.Selected >= 0 && table.Selected < len(senders)) })
+	remove = widgets.NewButton("Remove", func() {
+		i := table.Selected
+		if i < 0 || i >= len(senders) {
+			return
+		}
+		if err := cli.AllowRemoteImages(senders[i], false); err != nil {
+			widgets.Warn(win.Content(), "Privacy", err.Error(), nil)
+			return
+		}
+		refresh()
+		if onChange != nil {
+			onChange()
+		}
+	})
+	if len(senders) > 0 {
+		table.Selected = 0
+	}
+	remove.SetEnabled(len(senders) > 0)
+	col := widgets.NewColumn(
+		widgets.NewTitle("Remote images"),
+		wrapLabel("Images on the web are not loaded unless you ask: loading one tells the sender you opened the message, and from where. These senders' images load without asking (Always, in the reading pane). Remove one to be asked again."),
+		table,
+		widgets.NewRow(remove).WithGap(8),
+	).WithGap(8)
+	col.AddFlex(table, 1)
 	return col
 }

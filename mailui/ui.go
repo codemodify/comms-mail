@@ -108,12 +108,15 @@ type session struct {
 	hideMuted   bool
 	muted       map[string]bool
 
-	table                                      *widgets.TableView
-	cards                                      *widgets.CardList
-	listStack                                  *widgets.Stack
-	tree                                       *widgets.TreeView
-	outboxTree                                 *widgets.TreeView
-	preview                                    *widgets.TextArea
+	table      *widgets.TableView
+	cards      *widgets.CardList
+	listStack  *widgets.Stack
+	tree       *widgets.TreeView
+	outboxTree *widgets.TreeView
+	preview    *widgets.TextArea
+	// html is the reading pane's HTML tab; previewRich, previewImg, imgBar
+	// and alwaysImgs are its parts.
+	html                                       *htmlPane
 	previewRich                                *widgets.RichText
 	previewImg                                 *widgets.Label
 	imgBar                                     *widgets.FlexBox
@@ -171,7 +174,6 @@ type session struct {
 	// without asking.
 	images     map[string]*paintengine2d.Image
 	imgSenders map[string]bool
-	imgGen     uint64
 	// folderNames names each folder, for the rows of a list that mixes
 	// folders (search, unified views).
 	folderNames map[mailcore.FolderID]string
@@ -209,6 +211,7 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	s.opts.ShowFilter = opts.ShowFilter || p.ShowFilter
 	s.threaded = p.Threaded
 	s.hideMuted = p.HideMute
+	s.inviteCompact = p.InviteLess
 	s.density = opts.Density
 	if s.density == style.DensityDefault && p.Density != "" {
 		s.density = p.density()
@@ -239,6 +242,7 @@ func (s *session) persistChrome() {
 		s.chromePrefs.Layout = "vertical"
 	}
 	s.chromePrefs.Light = s.opts.Light
+	s.chromePrefs.InviteLess = s.inviteCompact
 	saveChromePrefs(s.chromePrefs)
 	// Density / layout live in mailui.json only. look.json is Settings’
 	// file; persist must not SaveAppearance or rewrite theme packs.
@@ -373,20 +377,12 @@ func (s *session) build() widget.Component {
 	// images the renderer will not fetch.
 	// Three tabs: Message is the text/plain body (the default), Source the
 	// raw RFC822, and HTML the rendered HTML part when the message has one.
-	s.previewRich = newReadOnlyRich(s.openLink)
-	s.previewRich.Placeholder = "This message has no HTML part."
-	s.previewImg = widgets.NewLabel("Remote images are not shown — loading them tells the sender you opened this.")
-	s.previewImg.Wrap = true
-	s.alwaysImgs = widgets.NewButton("Always", s.alwaysShowImages)
-	s.imgBar = widgets.NewColumn(s.previewImg,
-		widgets.NewRow(widgets.NewButton("Show Images", s.showRemoteImages), s.alwaysImgs).WithGap(8)).WithGap(4)
-	s.imgBar.SetVisible(false)
+	s.html = newHTMLPane(s)
+	s.previewRich, s.previewImg, s.imgBar, s.alwaysImgs = s.html.rich, s.html.notice, s.html.bar, s.html.always
 	s.loadImageSenders()
 	previewTab := widgets.NewPad(8, s.preview)
 	sourceTab := widgets.NewPad(8, s.source)
-	htmlCol := widgets.NewColumn(s.imgBar, s.previewRich).WithGap(4)
-	htmlCol.AddFlex(s.previewRich, 1)
-	htmlTab := widgets.NewPad(8, htmlCol)
+	htmlTab := widgets.NewPad(8, s.html.view)
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: previewTab},
 		widgets.Tab{Title: "Source", Content: sourceTab},
@@ -1451,19 +1447,8 @@ func (s *session) showBody(m mailcore.Message) {
 // request; the blocked-images line shows when the HTML wants images it
 // will not fetch.
 func (s *session) renderHTMLView(m mailcore.Message) {
-	if s.previewRich == nil {
-		return
-	}
-	s.imgGen++
-	if strings.TrimSpace(m.HTML) != "" {
-		s.previewRich.ResolveImage = s.imageResolver(m.ID)
-		s.previewRich.SetHTML(m.HTML)
-		s.loadMessageImages(m)
-		return
-	}
-	s.previewRich.SetHTML("")
-	if s.imgBar != nil {
-		s.imgBar.SetVisible(false)
+	if s.html != nil {
+		s.html.show(m)
 	}
 }
 
@@ -1474,12 +1459,8 @@ func (s *session) showPreviewPlain(placeholder, text string) {
 		s.preview.Placeholder = placeholder
 		s.preview.SetText(text)
 	}
-	if s.previewRich != nil {
-		s.imgGen++
-		s.previewRich.SetHTML("")
-	}
-	if s.imgBar != nil {
-		s.imgBar.SetVisible(false)
+	if s.html != nil {
+		s.html.clear()
 	}
 }
 
@@ -3096,6 +3077,7 @@ func (s *session) removeCurrentAccount() {
 }
 
 func (s *session) afterAccountsChanged() {
+	s.loadImageSenders() // Settings may have taken a trusted sender back
 	accts := s.accounts()
 	still := false
 	for _, a := range accts {

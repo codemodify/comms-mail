@@ -2084,8 +2084,8 @@ func TestMailSettingsTabs(t *testing.T) {
 		t.Fatal("Settings tabs")
 	}
 	got := append([]string(nil), bar.Titles...)
-	if len(got) != 3 || got[0] != "Accounts" || got[1] != "Signatures" || got[2] != "Tags" {
-		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags", got)
+	if len(got) != 4 || got[0] != "Accounts" || got[1] != "Signatures" || got[2] != "Tags" || got[3] != "Privacy" {
+		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Privacy", got)
 	}
 	for _, name := range []string{"Appearance", "Notify", "VIP", "Identities", "Filters"} {
 		if containsLabel(got, name) {

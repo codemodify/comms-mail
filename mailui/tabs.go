@@ -26,6 +26,8 @@ type messageTab struct {
 	head *widgets.Label
 	// invite is the message's calendar invitation, when it has one.
 	invite *inviteCard
+	// html is the tab's HTML view, beside the text as in the reading pane.
+	html *htmlPane
 }
 
 // setupTabs makes the strip with the Mail tab showing main, and reopens the
@@ -163,12 +165,15 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	mt.body = widgets.NewTextView("", "Loading message…")
 	mt.body.MinRows = 8
 	mt.invite = newInviteCard(s)
-	col := widgets.NewColumn(
-		widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10),
-		widgets.NewSeparator(),
-		widgets.NewPad(8, mt.body),
-	).WithGap(0)
-	col.AddFlex(col.Children()[2], 1)
+	mt.html = newHTMLPane(s)
+	// Text and HTML, as in the reading pane.
+	views := widgets.NewTabView(
+		widgets.Tab{Title: "Message", Content: widgets.NewPad(8, mt.body)},
+		widgets.Tab{Title: "HTML", Content: widgets.NewPad(8, mt.html.view)},
+	)
+	head := newReserveBox(200, widgets.NewScrollView(widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10)))
+	col := widgets.NewColumn(head, widgets.NewSeparator(), views).WithGap(0)
+	col.AddFlex(views, 1)
 	mt.view = col
 	mt.view.SetVisible(false)
 	s.pages.Add(mt.view)
@@ -180,16 +185,23 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	s.tabs.AddTab(widgets.BrowserTab{Title: title, Tip: title + "\n" + m.From, Data: mt})
 
 	if mt.full {
+		// The text shows at once; the full message (a list row carries no
+		// HTML) is fetched for the HTML tab, as for the reading pane.
 		mt.body.SetText(mailcore.DisplayBody(m))
 		mt.invite.show(m)
-		return s.tabs.Len() - 1
+		if m.HTML != "" {
+			mt.html.show(m)
+			return s.tabs.Len() - 1
+		}
 	}
 	id := m.ID
 	s.async(func() (any, error) {
 		return s.getMessage(id)
 	}, func(v any, err error) {
 		if err != nil {
-			mt.body.SetText("Couldn't load this message.\n\n" + err.Error())
+			if !mt.full {
+				mt.body.SetText("Couldn't load this message.\n\n" + err.Error())
+			}
 			return
 		}
 		full := v.(mailcore.Message)
@@ -199,6 +211,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		mt.head.SetText(messageHeaderText(full))
 		mt.body.SetText(mailcore.DisplayBody(full))
 		mt.invite.show(full)
+		mt.html.show(full)
 	})
 	return s.tabs.Len() - 1
 }

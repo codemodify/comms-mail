@@ -65,6 +65,7 @@ func newInviteCard(s *session) *inviteCard {
 	c.more = widgets.NewButton("Less", func() {
 		s.inviteCompact = !s.inviteCompact
 		s.inviteLayoutChanged()
+		s.persistChrome() // remembered across restarts
 	})
 	c.tell = widgets.NewCheckbox("Tell the organizer", true, nil)
 	c.note = widgets.NewTextField("", "Add a note (optional)", nil)

@@ -123,3 +123,28 @@ func containsTag(tags []string, want string) bool {
 	}
 	return false
 }
+
+// A message opened in a tab has its HTML there too, inline images and all.
+func TestMessageTabShowsHTML(t *testing.T) {
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	rows, _ := s.cli.ListMessages(mailcore.FolderAdaInbox, mailcore.Filter{})
+	var row mailcore.Message
+	for _, m := range rows {
+		if m.ID == mailcore.DemoNewsletterID {
+			row = m
+		}
+	}
+	if row.ID == "" || row.HTML != "" {
+		t.Fatalf("list row %q html %d", row.ID, len(row.HTML))
+	}
+	i := s.addMessageTab(row)
+	s.waitIdle()
+	mt := s.tabs.Tab(i).Data.(*messageTab)
+	if got := mt.html.rich.PlainText(); !strings.Contains(got, "images in richtext") {
+		t.Fatalf("tab HTML %q", got)
+	}
+	if !mt.html.bar.Visible() || mt.html.rich.ResolveImage("cid:logo@news.example") == nil {
+		t.Fatal("the tab should draw the inline logo and offer the remote banner")
+	}
+}

@@ -6,20 +6,186 @@ import (
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/paintengine2d"
+	"github.com/codemodify/uitoolkit/widgets"
 )
 
 // The HTML view's pictures. Inline (cid:) images come from the message
 // itself and are drawn as soon as they are read; remote ones wait for Show
-// Images (this message) or Always from Sender (every message from it), and
+// Images (this message) or Always (every message from its sender), and
 // comms-maild fetches them. Whatever was drawn is kept for the session, so
-// going back to a message does not fetch its images again.
+// going back to a message — or opening it in a tab — does not fetch its
+// images again.
 
 // maxCachedImages bounds the session's picture cache; past it, it starts
 // over.
 const maxCachedImages = 400
 
+const remoteImagesNotice = "Remote images are not shown — loading them tells the sender you opened this."
+
 func cidKey(id mailcore.MessageID, cid string) string {
 	return "cid:" + string(id) + ":" + strings.Trim(strings.TrimSpace(cid), "<>")
+}
+
+// htmlPane is a message's HTML: the rendering, and above it the bar that
+// offers its remote images. The reading pane has one, and so does every
+// message tab.
+type htmlPane struct {
+	s      *session
+	rich   *widgets.RichText
+	notice *widgets.Label
+	always *widgets.Button
+	bar    *widgets.FlexBox
+	view   *widgets.FlexBox // the bar over the rendering
+	msg    mailcore.Message
+	shown  bool
+	gen    uint64 // one per message shown: late answers for another are dropped
+}
+
+func newHTMLPane(s *session) *htmlPane {
+	p := &htmlPane{s: s}
+	p.rich = newReadOnlyRich(s.openLink)
+	p.rich.Placeholder = "This message has no HTML part."
+	p.notice = wrapLabel(remoteImagesNotice)
+	p.always = widgets.NewButton("Always", p.alwaysShow)
+	p.bar = widgets.NewColumn(p.notice,
+		widgets.NewRow(widgets.NewButton("Show Images", p.showRemote), p.always).WithGap(8)).WithGap(4)
+	p.bar.SetVisible(false)
+	p.view = widgets.NewColumn(p.bar, p.rich).WithGap(4)
+	p.view.AddFlex(p.rich, 1)
+	return p
+}
+
+// show renders m's HTML part, or leaves the placeholder for a message that
+// has none. The renderer makes no network request.
+func (p *htmlPane) show(m mailcore.Message) {
+	p.gen++
+	p.msg, p.shown = m, true
+	if strings.TrimSpace(m.HTML) == "" {
+		p.rich.SetHTML("")
+		p.bar.SetVisible(false)
+		return
+	}
+	p.rich.ResolveImage = p.s.imageResolver(m.ID)
+	p.rich.SetHTML(m.HTML)
+	p.loadImages()
+}
+
+// clear empties the pane (loading, errors, no selection).
+func (p *htmlPane) clear() {
+	p.gen++
+	p.msg, p.shown = mailcore.Message{}, false
+	p.rich.SetHTML("")
+	p.bar.SetVisible(false)
+}
+
+// loadImages fetches what the HTML needs and is allowed: its inline parts
+// always, its remote images when the sender is trusted. Otherwise the bar
+// offers them.
+func (p *htmlPane) loadImages() {
+	s, m := p.s, p.msg
+	cids, remote := splitImageSources(htmlImageSources(m.HTML))
+	missingCID := false
+	for _, c := range cids {
+		if rest, _ := cutFold(strings.TrimSpace(c), "cid:"); s.images[cidKey(m.ID, rest)] == nil {
+			missingCID = true
+		}
+	}
+	var missing []string
+	for _, u := range remote {
+		if s.images[u] == nil {
+			missing = append(missing, u)
+		}
+	}
+	if missingCID {
+		gen, id := p.gen, m.ID
+		s.async(func() (any, error) {
+			return s.cli.InlineImages(id)
+		}, func(v any, err error) {
+			if err != nil || gen != p.gen {
+				return
+			}
+			for _, im := range v.([]mailcore.InlineImage) {
+				s.cacheImage(cidKey(id, im.CID), decodeImage(im.Data))
+			}
+			p.rerender(gen)
+		})
+	}
+	p.bar.SetVisible(len(missing) > 0)
+	if len(missing) == 0 {
+		return
+	}
+	sender := strings.ToLower(mailcore.ExtractAddr(m.From))
+	p.always.Tip = "Load remote images in every message from " + sender
+	p.always.SetVisible(strings.Contains(sender, "@"))
+	if s.imgSenders[sender] {
+		p.fetchRemote(missing)
+	}
+}
+
+// rerender draws the HTML again, now that more of its images are in —
+// unless another message is showing by now.
+func (p *htmlPane) rerender(gen uint64) {
+	if gen != p.gen || !p.shown {
+		return
+	}
+	p.rich.SetHTML(p.msg.HTML)
+	p.rich.Invalidate()
+}
+
+// fetchRemote has the daemon download urls for the message showing.
+func (p *htmlPane) fetchRemote(urls []string) {
+	s, gen := p.s, p.gen
+	p.notice.SetText("Loading images…")
+	s.async(func() (any, error) {
+		return s.cli.FetchImages(urls)
+	}, func(v any, err error) {
+		if gen != p.gen {
+			return
+		}
+		if err != nil {
+			p.notice.SetText("Images could not be loaded: " + err.Error())
+			return
+		}
+		failed := 0
+		for _, im := range v.([]mailcore.RemoteImage) {
+			img := decodeImage(im.Data)
+			if img == nil {
+				failed++
+				continue
+			}
+			s.cacheImage(im.URL, img)
+		}
+		p.notice.SetText(remoteImagesNotice)
+		if failed > 0 {
+			s.mark(pluralize(failed, "image") + " could not be loaded")
+		}
+		p.bar.SetVisible(false)
+		p.rerender(gen)
+	})
+}
+
+// showRemote loads the remote images of the message showing, once.
+func (p *htmlPane) showRemote() {
+	if !p.shown {
+		return
+	}
+	if _, remote := splitImageSources(htmlImageSources(p.msg.HTML)); len(remote) > 0 {
+		p.fetchRemote(remote)
+	}
+}
+
+// alwaysShow trusts the message's sender with remote images from now on,
+// and loads this message's.
+func (p *htmlPane) alwaysShow() {
+	if !p.shown {
+		return
+	}
+	sender := strings.ToLower(mailcore.ExtractAddr(p.msg.From))
+	if !strings.Contains(sender, "@") {
+		return
+	}
+	p.s.trustImageSender(sender, true)
+	p.showRemote()
 }
 
 // imageResolver is the HTML view's ResolveImage for message id: cid:
@@ -43,124 +209,22 @@ func (s *session) cacheImage(key string, img *paintengine2d.Image) {
 	s.images[key] = img
 }
 
-// loadMessageImages fetches what m's HTML needs and is allowed: its inline
-// parts always, its remote images when the sender is trusted. Otherwise
-// the bar offers them.
-func (s *session) loadMessageImages(m mailcore.Message) {
-	cids, remote := splitImageSources(htmlImageSources(m.HTML))
-	var missingCID bool
-	for _, c := range cids {
-		if rest, _ := cutFold(strings.TrimSpace(c), "cid:"); s.images[cidKey(m.ID, rest)] == nil {
-			missingCID = true
-		}
-	}
-	var missing []string
-	for _, u := range remote {
-		if s.images[u] == nil {
-			missing = append(missing, u)
-		}
-	}
-	if missingCID {
-		gen, id := s.imgGen, m.ID
-		s.async(func() (any, error) {
-			return s.cli.InlineImages(id)
-		}, func(v any, err error) {
-			if err != nil || gen != s.imgGen {
-				return
-			}
-			for _, im := range v.([]mailcore.InlineImage) {
-				s.cacheImage(cidKey(id, im.CID), decodeImage(im.Data))
-			}
-			s.rerenderHTML(gen)
-		})
-	}
-	if s.imgBar == nil {
-		return
-	}
-	s.imgBar.SetVisible(len(missing) > 0)
-	if len(missing) == 0 {
-		return
-	}
-	sender := strings.ToLower(mailcore.ExtractAddr(m.From))
-	s.alwaysImgs.Tip = "Load remote images in every message from " + sender
-	s.alwaysImgs.SetVisible(strings.Contains(sender, "@"))
-	if s.imgSenders[sender] {
-		s.fetchRemoteImages(missing)
-	}
-}
-
-// rerenderHTML draws the shown message's HTML again, now that more of its
-// images are in — unless another message is showing by now.
-func (s *session) rerenderHTML(gen uint64) {
-	if gen != s.imgGen || !s.shownOK || s.previewRich == nil {
-		return
-	}
-	s.previewRich.SetHTML(s.shown.HTML)
-	s.previewRich.Invalidate()
-}
-
-// fetchRemoteImages has the daemon download urls for the message showing.
-func (s *session) fetchRemoteImages(urls []string) {
-	gen := s.imgGen
-	s.previewImg.SetText("Loading images…")
-	s.async(func() (any, error) {
-		return s.cli.FetchImages(urls)
-	}, func(v any, err error) {
-		if gen != s.imgGen {
-			return
-		}
-		if err != nil {
-			s.previewImg.SetText("Images could not be loaded: " + err.Error())
-			return
-		}
-		failed := 0
-		for _, im := range v.([]mailcore.RemoteImage) {
-			img := decodeImage(im.Data)
-			if img == nil {
-				failed++
-				continue
-			}
-			s.cacheImage(im.URL, img)
-		}
-		s.previewImg.SetText("Remote images are not shown — loading them tells the sender you opened this.")
-		if failed > 0 {
-			s.mark(pluralize(failed, "image") + " could not be loaded")
-		}
-		s.imgBar.SetVisible(false)
-		s.rerenderHTML(gen)
-	})
-}
-
-// showRemoteImages loads the remote images of the message showing, once.
-func (s *session) showRemoteImages() {
-	if !s.shownOK {
-		return
-	}
-	_, remote := splitImageSources(htmlImageSources(s.shown.HTML))
-	if len(remote) > 0 {
-		s.fetchRemoteImages(remote)
-	}
-}
-
-// alwaysShowImages trusts the showing message's sender with remote images
-// from now on, and loads this message's.
-func (s *session) alwaysShowImages() {
-	if !s.shownOK {
-		return
-	}
-	sender := strings.ToLower(mailcore.ExtractAddr(s.shown.From))
-	if !strings.Contains(sender, "@") {
-		return
-	}
+// trustImageSender remembers (or forgets) a sender whose remote images
+// load without asking, here and in the daemon.
+func (s *session) trustImageSender(sender string, allow bool) {
 	if s.imgSenders == nil {
 		s.imgSenders = map[string]bool{}
 	}
-	s.imgSenders[sender] = true
+	if allow {
+		s.imgSenders[sender] = true
+		s.mark("Images from " + sender + " will load without asking")
+	} else {
+		delete(s.imgSenders, sender)
+		s.mark("Images from " + sender + " will wait to be asked for")
+	}
 	s.async(func() (any, error) {
-		return nil, s.cli.AllowRemoteImages(sender, true)
+		return nil, s.cli.AllowRemoteImages(sender, allow)
 	}, nil)
-	s.mark("Images from " + sender + " will load without asking")
-	s.showRemoteImages()
 }
 
 // loadImageSenders reads the trusted senders from the daemon.

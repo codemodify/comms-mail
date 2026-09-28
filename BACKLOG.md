@@ -6,17 +6,12 @@ that make the difference in daily use. Grouped, roughly by area. Append as
 new ones turn up.
 
 ## Reading / HTML
-- **Manage trusted image senders** — "Always from This Sender" can be
-  given but not taken back in the UI (the daemon's `images.allowSender`
-  with allow=false does it); a list in Settings would.
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
 - **Emoji show as ▯** (tofu) — blocked on a uitoolkit font-fallback gap
   (uitoolkit-gaps.md #2), but very visible in subjects and bodies.
 - **HTML tab only when there is HTML** (or auto-select it for HTML-only
   mail) — needs TabView per-tab hide (uitoolkit-gaps.md #6).
-- **Opened message tabs are text-only** — no HTML view when a message is
-  opened in its own tab.
 
 ## Calendar invitations
 - **Conflicts** — no "you are busy then" hint: comms-mail has no calendar
@@ -25,7 +20,6 @@ new ones turn up.
 - **Accept a proposed time** — declining a guest's COUNTER works; taking
   it needs the event (all guests, to send them the update), which lives in
   the calendar application.
-- **Remember Less / More** across restarts (it lasts the session).
 
 ## Compose
 - **Drafts saved offline stay local** — a draft saved (or autosaved) while
