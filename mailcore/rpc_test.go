@@ -154,3 +154,57 @@ func TestIMAPStoreHealthWithoutEnv(t *testing.T) {
 		t.Fatal("disconnected list should not clear health")
 	}
 }
+
+// slowSyncStore holds sync.run until released, standing in for a sync of a
+// large mailbox over a slow link.
+type slowSyncStore struct {
+	*MemoryStore
+	started chan struct{}
+	release chan struct{}
+}
+
+func (s *slowSyncStore) Sync(accountID string) (SyncResult, error) {
+	s.started <- struct{}{}
+	<-s.release
+	return s.MemoryStore.Sync(accountID)
+}
+
+// A window has one connection to the daemon. A sync.run still running on it
+// must not hold the window's other calls behind it.
+func TestRPCSlowCallDoesNotBlockTheConnection(t *testing.T) {
+	store := &slowSyncStore{MemoryStore: NewDemoStore(), started: make(chan struct{}, 1), release: make(chan struct{})}
+	sock, stop, err := startStore(context.Background(), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	cli, err := DialWait(sock, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+
+	syncDone := make(chan error, 1)
+	go func() {
+		_, err := cli.Sync(AcctAda)
+		syncDone <- err
+	}()
+	<-store.started
+
+	start := time.Now()
+	if _, err := cli.ListFolders(AcctAda); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("folders.list took %v behind a running sync.run", d)
+	}
+	select {
+	case <-syncDone:
+		t.Fatal("sync.run finished before it was released")
+	default:
+	}
+	close(store.release)
+	if err := <-syncDone; err != nil {
+		t.Fatalf("sync.run: %v", err)
+	}
+}

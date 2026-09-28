@@ -134,6 +134,9 @@ func (s *MemoryStore) listLocked(folder FolderID) []Message {
 	return out
 }
 
+// CachedMessage is GetMessage: everything a MemoryStore has is in memory.
+func (s *MemoryStore) CachedMessage(id MessageID) (Message, bool) { return s.GetMessage(id) }
+
 func (s *MemoryStore) GetMessage(id MessageID) (Message, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

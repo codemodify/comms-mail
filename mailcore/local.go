@@ -1,12 +1,15 @@
 package mailcore
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,16 +24,27 @@ type LocalStore struct {
 	// They are exported so the UI package's tests can seed a store
 	// directly; callers outside a test should go through the Store
 	// methods, which take the lock.
-	Folders    []Folder
-	Messages   []Message
-	tags       []Tag
-	rules      []FilterRule
-	clients    map[string]*imapClient
+	Folders  []Folder
+	Messages []Message
+	tags     []Tag
+	rules    []FilterRule
+	clients  map[string]*imapClient
+	// fgClients is a second session per account for what a person is
+	// waiting on — a message body, an attachment — so a click never
+	// queues behind a background sync on the shared session.
+	fgClients map[string]*imapClient
+	// downSince is when each account's server last failed at the network
+	// level with no success since. Foreground fetches fail fast inside
+	// unreachableFor of it instead of waiting out a connect timeout per click.
+	downSince  map[string]time.Time
 	nextID     int
 	health     error
 	now        time.Time
 	feat       *featureHost
 	pushCancel func()
+
+	// prefetching is set while a body prefetch pass runs (prefetch.go).
+	prefetching atomic.Bool
 
 	// syncMu serialises whole-account syncs. Network I/O happens with mu
 	// released (snapshot → I/O → re-lock and apply), so an unresponsive
@@ -86,7 +100,7 @@ func NewLocalStoreDir(cfg MailConfig, dir string) (*LocalStore, error) {
 	}
 	_ = os.Chmod(dir, 0o700)
 	s := &LocalStore{
-		dir: dir, cfg: cfg, clients: map[string]*imapClient{},
+		dir: dir, cfg: cfg, clients: map[string]*imapClient{}, fgClients: map[string]*imapClient{}, downSince: map[string]time.Time{},
 		tags: DefaultTags(), nextID: 1, now: time.Now(), feat: newFeatureHost(),
 	}
 	s.loadLocked()
@@ -220,9 +234,11 @@ func (s *LocalStore) DeleteAccount(id string) error {
 	if !found {
 		return fmt.Errorf("mail: no account %s", id)
 	}
-	if c := s.clients[id]; c != nil {
-		c.close()
-		delete(s.clients, id)
+	for _, pool := range []map[string]*imapClient{s.clients, s.fgClients} {
+		if c := pool[id]; c != nil {
+			c.close()
+			delete(pool, id)
+		}
 	}
 	file, _ := LoadConfig()
 	file.Accounts = dropAccountConfig(file.Accounts, id)
@@ -409,6 +425,19 @@ func (s *LocalStore) listLocked(folder FolderID) []Message {
 	return out
 }
 
+// CachedMessage is the message as the cache holds it — headers and flags
+// always, the body only if it has been downloaded. It never touches the
+// network.
+func (s *LocalStore) CachedMessage(id MessageID) (Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ok := s.indexLocked(id)
+	if !ok {
+		return Message{}, false
+	}
+	return s.Messages[i].Clone(), true
+}
+
 func (s *LocalStore) GetMessage(id MessageID) (Message, bool) {
 	s.mu.Lock()
 	i, ok := s.indexLocked(id)
@@ -468,14 +497,20 @@ func (s *LocalStore) fetchRaw(m Message) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("mail: no folder for %s", m.ID)
 	}
-	cli, err := s.client(m.AccountID)
+	cli, err := s.fgClient(m.AccountID)
 	if err != nil {
 		return nil, err
 	}
-	if err := selectFor(cli, f, true); err != nil {
-		return nil, err
-	}
-	raw, err := cli.uidFetchRFC822(m.UID)
+	var raw []byte
+	err = cli.inBox(func() error {
+		if err := selectFor(cli, f, true); err != nil {
+			return err
+		}
+		var err error
+		raw, err = cli.uidFetchRFC822(m.UID)
+		return err
+	})
+	s.noteNetwork(m.AccountID, err)
 	if err != nil {
 		return nil, err
 	}
@@ -612,7 +647,16 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 	if offline || !hasFolder || snapshot.UID == 0 {
 		return nil
 	}
-	s.pushFlags(snapshot, folder, add, rem)
+	if err := s.pushFlags(snapshot, folder, add, rem); err != nil && s.feat != nil {
+		// The cache already has the change. Queue it for the server rather
+		// than let a network blip lose it; the background tick retries.
+		s.feat.mu.Lock()
+		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: snapshot.AccountID, UID: snapshot.UID, Error: err.Error()})
+		s.feat.mu.Unlock()
+		s.mu.Lock()
+		s.saveLocked()
+		s.mu.Unlock()
+	}
 	return nil
 }
 func imapSafeKeyword(s string) string {
@@ -622,18 +666,20 @@ func imapSafeKeyword(s string) string {
 
 // pushFlags mirrors a flag change to the server. Network I/O: never called
 // with the store lock held.
-func (s *LocalStore) pushFlags(m Message, f Folder, add, rem []string) {
+func (s *LocalStore) pushFlags(m Message, f Folder, add, rem []string) error {
 	if m.UID == 0 || (len(add) == 0 && len(rem) == 0) {
-		return
+		return nil
 	}
 	cli, err := s.client(m.AccountID)
 	if err != nil {
-		return
+		return err
 	}
-	if err := selectFor(cli, f, false); err != nil {
-		return
-	}
-	_ = cli.uidStore(m.UID, add, rem)
+	return cli.inBox(func() error {
+		if err := selectFor(cli, f, false); err != nil {
+			return err
+		}
+		return cli.uidStore(m.UID, add, rem)
+	})
 }
 
 // Move relocates messages. When the server reports the destination UID
@@ -688,11 +734,14 @@ func (s *LocalStore) Move(ids []MessageID, dest FolderID) error {
 		var moveErr error
 		cli, err := s.client(j.msg.AccountID)
 		if err == nil {
-			if err := selectFor(cli, j.src, false); err == nil {
-				newUID, moveErr = cli.uidMove(j.msg.UID, dremote)
-			} else {
-				moveErr = err
-			}
+			moveErr = cli.inBox(func() error {
+				if err := selectFor(cli, j.src, false); err != nil {
+					return err
+				}
+				var err error
+				newUID, err = cli.uidMove(j.msg.UID, dremote)
+				return err
+			})
 		} else {
 			moveErr = err
 		}
@@ -810,10 +859,14 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 		if err != nil {
 			continue
 		}
-		if err := selectFor(cli, mv.src, false); err != nil {
-			continue
-		}
-		newUID, err = cli.uidMove(mv.msg.UID, remoteName(mv.trash))
+		err = cli.inBox(func() error {
+			if err := selectFor(cli, mv.src, false); err != nil {
+				return err
+			}
+			var err error
+			newUID, err = cli.uidMove(mv.msg.UID, remoteName(mv.trash))
+			return err
+		})
 		if err != nil {
 			continue
 		}
@@ -840,13 +893,15 @@ func (s *LocalStore) expungeOne(m Message, f Folder) {
 	if err != nil {
 		return
 	}
-	if err := selectFor(cli, f, false); err != nil {
-		return
-	}
-	if err := cli.uidStore(m.UID, []string{`\Deleted`}, nil); err != nil {
-		return
-	}
-	_ = cli.expungeUID(m.UID)
+	_ = cli.inBox(func() error {
+		if err := selectFor(cli, f, false); err != nil {
+			return err
+		}
+		if err := cli.uidStore(m.UID, []string{`\Deleted`}, nil); err != nil {
+			return err
+		}
+		return cli.expungeUID(m.UID)
+	})
 }
 func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	s.mu.Lock()
@@ -967,6 +1022,7 @@ func (s *LocalStore) Sync(accountID string) (SyncResult, error) {
 	s.saveLocked()
 	health := s.health
 	s.mu.Unlock()
+	s.prefetchBodies()
 	return res, health
 }
 func (s *LocalStore) syncAccount(accountID string) (int, error) {
@@ -979,9 +1035,11 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 	}
 	boxes, err := cli.list()
 	if err != nil {
+		s.noteNetwork(accountID, err)
 		return 0, err
 	}
 	added := 0
+	var netErr error
 	for _, b := range boxes {
 		if b.Name == "" {
 			continue
@@ -1010,6 +1068,9 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 		n, err := s.syncFolder(cli, f)
 		if err != nil {
 			s.setHealth(err)
+			if isNetworkError(err) {
+				netErr = err
+			}
 			continue
 		}
 		added += n
@@ -1017,6 +1078,7 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 			s.Emit(StoreEvent{Reason: "fetch", AccountID: accountID, FolderID: f.ID, Count: n})
 		}
 	}
+	s.noteNetwork(accountID, netErr)
 	return added, nil
 }
 func (s *LocalStore) syncPOP3(accountID string) (int, error) {
@@ -1161,41 +1223,57 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 	meta := s.loadFolderMeta(f.ID)
 	s.mu.Unlock()
 
-	st, vanished, err := cli.selectSync(remote, true, meta)
-	if err != nil {
-		return 0, err
-	}
-	if meta.UIDValidity != 0 && st.UIDValidity != 0 && meta.UIDValidity != st.UIDValidity {
-		s.mu.Lock()
-		s.dropFolderMessagesLocked(f.ID)
-		s.mu.Unlock()
-		meta = folderMeta{}
-	}
-	from := uint32(1)
-	if meta.UIDNext > 1 {
-		from = meta.UIDNext
-	}
-	list, err := cli.uidFetchMeta(from)
-	if err != nil {
-		return 0, err
-	}
-	flags, flagErr := cli.uidFetchFlags(1, meta.HighestMod)
-
-	// Deletion reconciliation. QRESYNC servers tell us what vanished; the
-	// rest need an explicit UID-set diff, or messages deleted from another
-	// client stay in the cache forever (and later UID commands address a
-	// message that no longer exists). VANISHED only covers what changed
-	// since the saved modseq, so a deletion missed once — a sync that died
-	// after saving the watermark, a cache from before QRESYNC — is never
-	// reported again. When the cache and the server disagree on how many
-	// messages the folder holds, diff anyway.
-	var serverUIDs []uint32
-	haveUIDSet := false
-	if !cli.has("QRESYNC") || s.cachedAfterSync(f.ID, from, vanished, len(list)) != st.Exists {
-		if uids, err := cli.uidList(); err == nil {
-			serverUIDs = uids
-			haveUIDSet = true
+	// Everything from the SELECT to the UID list reads the one mailbox, so
+	// it holds the session's mailbox lock throughout.
+	var (
+		st         imapSelect
+		vanished   []uint32
+		from       = uint32(1)
+		list       []imapMeta
+		flags      []imapMeta
+		flagErr    error
+		serverUIDs []uint32
+		haveUIDSet bool
+	)
+	err := cli.inBox(func() error {
+		var err error
+		st, vanished, err = cli.selectSync(remote, true, meta)
+		if err != nil {
+			return err
 		}
+		if meta.UIDValidity != 0 && st.UIDValidity != 0 && meta.UIDValidity != st.UIDValidity {
+			s.mu.Lock()
+			s.dropFolderMessagesLocked(f.ID)
+			s.mu.Unlock()
+			meta = folderMeta{}
+		}
+		if meta.UIDNext > 1 {
+			from = meta.UIDNext
+		}
+		list, err = cli.uidFetchMeta(from)
+		if err != nil {
+			return err
+		}
+		flags, flagErr = cli.uidFetchFlags(1, meta.HighestMod)
+
+		// Deletion reconciliation. QRESYNC servers tell us what vanished; the
+		// rest need an explicit UID-set diff, or messages deleted from another
+		// client stay in the cache forever (and later UID commands address a
+		// message that no longer exists). VANISHED only covers what changed
+		// since the saved modseq, so a deletion missed once — a sync that died
+		// after saving the watermark, a cache from before QRESYNC — is never
+		// reported again. When the cache and the server disagree on how many
+		// messages the folder holds, diff anyway.
+		if !cli.has("QRESYNC") || s.cachedAfterSync(f.ID, from, vanished, len(list)) != st.Exists {
+			if uids, err := cli.uidList(); err == nil {
+				serverUIDs = uids
+				haveUIDSet = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
 	}
 
 	s.mu.Lock()
@@ -1634,13 +1712,21 @@ func (s *LocalStore) GetPart(id MessageID, partID string) (PartData, error) {
 		f, hasFolder := s.folderLocked(m.Folder)
 		s.mu.Unlock()
 		if hasFolder {
-			if cli, err := s.client(m.AccountID); err == nil {
-				if err := selectFor(cli, f, true); err == nil {
-					if b, err := cli.uidFetchSection(m.UID, partID); err == nil && len(b) > 0 {
-						p := partByID(m.Parts, partID)
-						p.Data = b
-						return p, nil
+			if cli, err := s.fgClient(m.AccountID); err == nil {
+				var b []byte
+				err := cli.inBox(func() error {
+					if err := selectFor(cli, f, true); err != nil {
+						return err
 					}
+					var err error
+					b, err = cli.uidFetchSection(m.UID, partID)
+					return err
+				})
+				s.noteNetwork(m.AccountID, err)
+				if len(b) > 0 {
+					p := partByID(m.Parts, partID)
+					p.Data = b
+					return p, nil
 				}
 			}
 		}
@@ -1748,12 +1834,95 @@ func (s *LocalStore) defaultIdentLocked(accountID string) Identity {
 // and LOGIN) is network I/O, and holding the store lock across it used to
 // freeze every unrelated RPC behind one slow server.
 func (s *LocalStore) client(accountID string) (*imapClient, error) {
+	return s.clientIn(s.clients, accountID, false)
+}
+
+// fgClient is client's counterpart for foreground fetches: its own session,
+// so fetching a body never waits for a sync to finish with the shared one.
+//
+// Its timeouts are shorter than a sync's: someone is looking at "Loading
+// message…", and a dead network should say so in seconds, not minutes.
+func (s *LocalStore) fgClient(accountID string) (*imapClient, error) {
+	if err := s.reachable(accountID); err != nil {
+		return nil, err
+	}
+	return s.clientIn(s.fgClients, accountID, true)
+}
+
+const (
+	fgIMAPDialTimeout = 10 * time.Second
+	fgIMAPCmdTimeout  = 45 * time.Second
+	// unreachableFor is how long after a network failure foreground fetches
+	// fail at once. Background sync keeps trying and clears it on success.
+	unreachableFor = 15 * time.Second
+)
+
+// UnreachableError is a fetch refused because the account's server failed
+// at the network level moments ago.
+type UnreachableError struct {
+	AccountID string
+	Retry     time.Duration
+	Cause     string
+}
+
+func (e *UnreachableError) Error() string {
+	return fmt.Sprintf("can't reach the mail server (%s); trying again in %ds",
+		e.Cause, int((e.Retry+time.Second-1)/time.Second))
+}
+
+func (s *LocalStore) reachable(accountID string) error {
 	s.mu.Lock()
-	existing := s.clients[accountID]
+	since, down := s.downSince[accountID]
+	cause := "network error"
+	if s.health != nil {
+		cause = truncate(s.health.Error(), 80)
+	}
+	s.mu.Unlock()
+	if !down {
+		return nil
+	}
+	left := unreachableFor - time.Since(since)
+	if left <= 0 {
+		return nil
+	}
+	return &UnreachableError{AccountID: accountID, Retry: left, Cause: cause}
+}
+
+// noteNetwork records how a network operation for accountID went: a
+// network-level failure opens the fail-fast window, a success closes it,
+// and an answer from the server (NO, BAD) leaves it as it was.
+func (s *LocalStore) noteNetwork(accountID string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err == nil {
+		delete(s.downSince, accountID)
+		return
+	}
+	if isNetworkError(err) {
+		s.downSince[accountID] = time.Now()
+		s.health = err
+	}
+}
+
+// isNetworkError is a failure of the connection rather than an answer from
+// the server: a dial, a TLS handshake, a timeout, a session lost mid-reply.
+func isNetworkError(err error) bool {
+	var lost *imapConnError
+	if errors.As(err, &lost) {
+		return true
+	}
+	var ne net.Error
+	return errors.As(err, &ne)
+}
+
+func (s *LocalStore) clientIn(pool map[string]*imapClient, accountID string, fg bool) (*imapClient, error) {
+	s.mu.Lock()
+	existing := pool[accountID]
 	cfg, ok := s.accountCfgLocked(accountID)
 	s.mu.Unlock()
 	if existing != nil {
 		if err := existing.connect(); err != nil {
+			s.noteNetwork(accountID, err)
 			return nil, err
 		}
 		return existing, nil
@@ -1769,18 +1938,22 @@ func (s *LocalStore) client(accountID string) (*imapClient, error) {
 	}
 	cfg.IMAP.tokenKey = accountID
 	c := newIMAPClient(cfg.IMAP, cfg.Address)
+	if fg {
+		c.dialTimeout, c.cmdTimeout = fgIMAPDialTimeout, fgIMAPCmdTimeout
+	}
 	if err := c.connect(); err != nil {
 		s.setHealth(err)
+		s.noteNetwork(accountID, err)
 		return nil, err
 	}
 	s.mu.Lock()
-	if prev := s.clients[accountID]; prev != nil {
+	if prev := pool[accountID]; prev != nil {
 		// Another goroutine won the race; keep one session per account.
 		s.mu.Unlock()
 		c.close()
 		return prev, nil
 	}
-	s.clients[accountID] = c
+	pool[accountID] = c
 	s.mu.Unlock()
 	return c, nil
 }
@@ -2138,11 +2311,22 @@ func (s *LocalStore) ListSenderCategories() []SenderCat {
 }
 
 func (s *LocalStore) FlushOutbox() (int, error) {
+	return s.flushOutbox(nil)
+}
+
+// flushOutbox replays the queued ops only accepts, or all of them when
+// only is nil.
+func (s *LocalStore) flushOutbox(only func(OutboxOp) bool) (int, error) {
 	if s.feat == nil {
 		return 0, nil
 	}
 	s.feat.mu.Lock()
-	ops := append([]OutboxOp(nil), s.feat.outbox...)
+	var ops []OutboxOp
+	for _, op := range s.feat.outbox {
+		if only == nil || only(op) {
+			ops = append(ops, op)
+		}
+	}
 	s.feat.mu.Unlock()
 	flushed := 0
 	var last error
@@ -2200,8 +2384,7 @@ func (s *LocalStore) flushOne(op OutboxOp) error {
 				rem = append(rem, `\Flagged`)
 			}
 		}
-		s.pushFlags(m, f, add, rem)
-		return nil
+		return s.pushFlags(m, f, add, rem)
 	case "move":
 		return s.Move([]MessageID{op.MessageID}, op.Dest)
 	case "delete":

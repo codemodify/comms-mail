@@ -31,6 +31,10 @@ type scriptIMAP struct {
 type imapSession struct {
 	w   *bufio.Writer
 	srv *scriptIMAP
+	box string // the mailbox this connection last selected, for handlers that track it
+	// hangUp, set by a handler, closes the connection once it returns: a
+	// network that drops mid-reply.
+	hangUp bool
 }
 
 func (s *imapSession) send(format string, a ...any) {
@@ -104,6 +108,9 @@ func (srv *scriptIMAP) session(c net.Conn) {
 		tag, cmd := fields[0], strings.ToUpper(fields[1])
 		srv.log(strings.TrimPrefix(line, tag+" "))
 		if srv.handle != nil && srv.handle(s, tag, cmd, line) {
+			if s.hangUp {
+				return
+			}
 			continue
 		}
 		switch cmd {

@@ -159,6 +159,10 @@ func (s *Server) handleConn(raw net.Conn) {
 		s.mu.Unlock()
 		_ = c.Close()
 	}()
+	// Requests on one connection run concurrently and answer by id, so a
+	// minutes-long sync.run does not hold every later call from the same
+	// window behind it. A caller that needs order waits for the reply.
+	inflight := make(chan struct{}, maxInflightPerConn)
 	sc := bufio.NewScanner(c)
 	sc.Buffer(make([]byte, 0, 64*1024), maxRPCLine)
 	for sc.Scan() {
@@ -171,17 +175,42 @@ func (s *Server) handleConn(raw net.Conn) {
 			_ = c.send(Response{JSONRPC: RPCVersion, Error: &RPCError{Code: -32700, Message: err.Error()}})
 			continue
 		}
-		resp := s.dispatch(req)
-		if req.ID == nil {
-			continue
-		}
-		resp.JSONRPC = RPCVersion
-		resp.ID = req.ID
-		if err := c.send(resp); err != nil {
-			return
-		}
+		inflight <- struct{}{}
+		go func(req Request) {
+			defer func() { <-inflight }()
+			resp := s.dispatch(req)
+			if req.ID == nil {
+				return
+			}
+			resp.JSONRPC = RPCVersion
+			resp.ID = req.ID
+			if err := c.send(resp); err != nil {
+				_ = c.Close()
+			}
+		}(req)
 	}
 }
+
+// cachedMessager is a Store that can answer from its cache alone. GetMessage
+// on LocalStore downloads a body it does not have, which is what a preview
+// wants and not what a flag change needs to learn which folder to announce.
+type cachedMessager interface {
+	CachedMessage(id MessageID) (Message, bool)
+}
+
+// messageFolder is the folder id is in, without network I/O where the store
+// allows it.
+func messageFolder(st Store, id MessageID) (FolderID, bool) {
+	if c, ok := st.(cachedMessager); ok {
+		m, ok := c.CachedMessage(id)
+		return m.Folder, ok
+	}
+	m, ok := st.GetMessage(id)
+	return m.Folder, ok
+}
+
+// maxInflightPerConn bounds the requests one connection may have running.
+const maxInflightPerConn = 32
 
 // maxRPCLine bounds one NDJSON request. Attachments travel as base64 inside
 // compose.send, so the limit has to accommodate a real message.
@@ -314,8 +343,8 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			err = s.Store.SetFlags(p.ID, p.Patch.to())
 			if err == nil {
-				if m, ok := s.Store.GetMessage(p.ID); ok {
-					s.broadcast(EventChanged, eventParams{FolderID: m.Folder, Reason: "flags"})
+				if f, ok := messageFolder(s.Store, p.ID); ok {
+					s.broadcast(EventChanged, eventParams{FolderID: f, Reason: "flags"})
 				}
 			}
 		}

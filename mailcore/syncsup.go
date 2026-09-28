@@ -58,6 +58,10 @@ func (s *LocalStore) pushLoop(ctx context.Context) {
 				continue
 			}
 			s.rewatch(ctx, watched)
+			// Flag changes that failed to reach the server go again. Only
+			// flags: replaying one is idempotent and addresses the message
+			// where it now is.
+			_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" })
 			res, _ := s.Sync("")
 			if res.New > 0 {
 				s.Emit(StoreEvent{Reason: "poll", Count: res.New})
@@ -212,6 +216,7 @@ func (s *LocalStore) afterPush(f Folder, n int) {
 	s.Emit(StoreEvent{Reason: "push", AccountID: f.AccountID, FolderID: f.ID, Count: n})
 	if n > 0 {
 		s.notifyNew(f.AccountID, n)
+		s.prefetchBodies()
 	}
 }
 

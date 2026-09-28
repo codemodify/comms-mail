@@ -138,6 +138,24 @@ type session struct {
 
 	busy      sync.WaitGroup
 	refresher *refreshCoalescer
+
+	// previewGen counts preview loads. A body that arrives for an older one
+	// is dropped, so clicking down the list shows the last click rather
+	// than whichever reply was slowest.
+	previewGen uint64
+	// shown is the primary message as fully loaded for the preview, when
+	// shownOK; what reply, forward and the attachments act on.
+	shown   mailcore.Message
+	shownOK bool
+	// loadingID is the message whose body is being fetched for the preview.
+	// A refresh that lands meanwhile (marking it read sends one) waits for
+	// that fetch rather than starting a second.
+	loadingID mailcore.MessageID
+	// sourceID is whose raw source s.source holds. The source is fetched
+	// only while its tab is showing.
+	sourceID   mailcore.MessageID
+	sourceOpen bool
+	retryBar   widget.Component
 	// pendingRefresh records a daemon event that arrived while no UI loop
 	// was pumping (headless / tests). DrainDaemonEvents applies it.
 	pendingRefresh atomic.Bool
@@ -309,11 +327,14 @@ func (s *session) build() widget.Component {
 		widgets.Tab{Title: "Message", Content: previewTab},
 		widgets.Tab{Title: "Source", Content: sourceTab},
 	)
+	s.sourceOpen = false
 	tabs.OnChange = func(i int) {
+		s.sourceOpen = i == 1
 		if i == 0 {
 			s.mark("Message")
 		} else {
 			s.mark("Source  ·  JetBrains Mono")
+			s.loadSource()
 		}
 	}
 	s.attachAll = widgets.NewButton("Save All", s.saveAllAttachments)
@@ -324,7 +345,9 @@ func (s *session) build() widget.Component {
 	s.attachPane = widgets.NewColumn(s.attachBar, s.attachRows).WithGap(4)
 	s.attachPane.SetVisible(false)
 	s.applyRowMetrics()
-	headCol := widgets.NewColumn(s.hdrSubj, s.hdrFrom, s.hdrTo, s.hdrDate, s.hdrExtra, s.attachPane).WithGap(3).WithPad(10)
+	s.retryBar = widgets.NewRow(widgets.NewButton("Retry", s.loadPreview))
+	s.retryBar.SetVisible(false)
+	headCol := widgets.NewColumn(s.hdrSubj, s.hdrFrom, s.hdrTo, s.hdrDate, s.hdrExtra, s.attachPane, s.retryBar).WithGap(3).WithPad(10)
 	previewCol := widgets.NewColumn(headCol, widgets.NewSeparator(), tabs).WithGap(0)
 	previewCol.AddFlex(tabs, 1)
 
@@ -952,14 +975,7 @@ func (s *session) clickRow(i int, add bool) {
 	}
 	s.syncViews()
 	if !s.rows[i].Read {
-		_ = s.cli.SetFlags(id, mailcore.FlagPatch{Read: mailcore.BoolPtr(true)})
-		s.rows[i].Read = true
-		if s.table != nil {
-			s.table.Invalidate()
-		}
-		if s.cards != nil {
-			s.cards.Invalidate()
-		}
+		s.setFlagsLater([]mailcore.MessageID{id}, mailcore.FlagPatch{Read: mailcore.BoolPtr(true)})
 	}
 	s.loadPreview()
 	s.refreshStatus()
@@ -1058,25 +1074,87 @@ func (s *session) hasSel(id mailcore.MessageID) bool {
 	return false
 }
 
+// primary is the message the window is acting on: the last one selected.
+// It answers from what the window already has — the loaded preview, else
+// the list row — and never asks the daemon, so a keystroke or a menu never
+// waits on the network. What needs the body goes through withFull.
 func (s *session) primary() (mailcore.Message, bool) {
 	if len(s.selected) == 0 {
 		return mailcore.Message{}, false
 	}
-	m, ok, err := s.cli.GetMessage(s.selected[len(s.selected)-1])
-	if err != nil {
-		return mailcore.Message{}, false
+	id := s.selected[len(s.selected)-1]
+	if s.shownOK && s.shown.ID == id {
+		return s.shown, true
 	}
-	return m, ok
+	for _, m := range s.rows {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return mailcore.Message{}, false
 }
 
+// withFull calls fn on the UI goroutine with the primary message, body
+// included, fetching it off the UI goroutine first when the preview has
+// not loaded it yet.
+func (s *session) withFull(what string, fn func(mailcore.Message)) {
+	m, ok := s.primary()
+	if !ok {
+		s.mark("No message")
+		return
+	}
+	if hasBody(m) {
+		fn(m)
+		return
+	}
+	s.mark(what + ": loading message…")
+	id := m.ID
+	s.async(func() (any, error) {
+		return s.getMessage(id)
+	}, func(v any, err error) {
+		if err != nil {
+			widgets.Warn(s.win.Content(), what, err.Error(), nil)
+			return
+		}
+		fn(v.(mailcore.Message))
+	})
+}
+
+func (s *session) getMessage(id mailcore.MessageID) (mailcore.Message, error) {
+	m, ok, err := s.cli.GetMessage(id)
+	if err == nil && !ok {
+		err = fmt.Errorf("the message is no longer there")
+	}
+	return m, err
+}
+
+func hasBody(m mailcore.Message) bool { return m.Body != "" || m.HTML != "" }
+
+// loadPreview shows the primary message. The headers come from the list
+// row at once; a body not yet downloaded is fetched off the UI goroutine
+// with "Loading message…" in its place, so a click on a new message never
+// freezes the window, however slow or broken the network.
 func (s *session) loadPreview() {
+	if m, ok := s.primary(); ok && !hasBody(m) && m.ID == s.loadingID {
+		s.showHeaders(m)
+		return
+	}
+	s.previewGen++
+	gen := s.previewGen
+	s.loadingID = ""
+	s.shownOK = false
+	s.sourceID = ""
+	if s.source != nil {
+		s.source.SetText("")
+	}
+	if s.retryBar != nil {
+		s.retryBar.SetVisible(false)
+	}
 	m, ok := s.primary()
 	if !ok {
 		if s.preview != nil {
+			s.preview.Placeholder = "Select a message (plain text)"
 			s.preview.SetText("")
-		}
-		if s.source != nil {
-			s.source.SetText("")
 		}
 		if s.hdrSubj != nil {
 			s.hdrSubj.SetText("No message selected")
@@ -1089,6 +1167,40 @@ func (s *session) loadPreview() {
 		s.syncAttachPane()
 		return
 	}
+	s.showHeaders(m)
+	if hasBody(m) {
+		s.showBody(m)
+		return
+	}
+	if s.preview != nil {
+		s.preview.Placeholder = "Loading message…"
+		s.preview.SetText("")
+	}
+	id := m.ID
+	s.loadingID = id
+	s.async(func() (any, error) {
+		return s.getMessage(id)
+	}, func(v any, err error) {
+		if gen != s.previewGen {
+			return
+		}
+		s.loadingID = ""
+		if err != nil {
+			if s.preview != nil {
+				s.preview.SetText("Couldn't load this message.\n\n" + err.Error())
+			}
+			if s.retryBar != nil {
+				s.retryBar.SetVisible(true)
+			}
+			return
+		}
+		full := v.(mailcore.Message)
+		s.showHeaders(full)
+		s.showBody(full)
+	})
+}
+
+func (s *session) showHeaders(m mailcore.Message) {
 	if s.hdrSubj != nil {
 		s.hdrSubj.SetText(m.Subject)
 		s.hdrFrom.SetText("From: " + m.From)
@@ -1108,23 +1220,117 @@ func (s *session) loadPreview() {
 	}
 	s.attNames = append([]string(nil), m.Attachments...)
 	s.syncAttachPane()
+}
+
+// showBody puts a loaded message in the preview and makes it the one the
+// window acts on.
+func (s *session) showBody(m mailcore.Message) {
+	s.shown, s.shownOK = m, true
 	if s.preview != nil {
+		s.preview.Placeholder = "This message has no text"
 		s.preview.SetText(mailcore.DisplayBody(m))
 	}
-	if s.source != nil {
-		if raw, err := s.cli.GetSource(m.ID); err == nil {
-			s.source.SetText(raw)
-		} else {
-			s.source.SetText("")
+	if s.sourceOpen {
+		s.loadSource()
+	}
+}
+
+// loadSource fills the Source tab for the primary message, off the UI
+// goroutine. It runs when the tab is shown, not on every click.
+func (s *session) loadSource() {
+	if s.source == nil {
+		return
+	}
+	m, ok := s.primary()
+	if !ok || s.sourceID == m.ID {
+		return
+	}
+	s.sourceID = m.ID
+	gen := s.previewGen
+	s.source.Placeholder = "Loading source…"
+	s.source.SetText("")
+	id := m.ID
+	s.async(func() (any, error) {
+		return s.cli.GetSource(id)
+	}, func(v any, err error) {
+		if gen != s.previewGen {
+			return
 		}
+		if err != nil {
+			s.sourceID = ""
+			s.source.SetText("Couldn't load the source.\n\n" + err.Error())
+			return
+		}
+		s.source.Placeholder = "Raw source"
+		s.source.SetText(v.(string))
+	})
+}
+
+// setFlagsLater shows a flag change in the list at once and tells the
+// daemon off the UI goroutine; when the daemon refuses, the list goes back
+// to what the daemon has.
+func (s *session) setFlagsLater(ids []mailcore.MessageID, patch mailcore.FlagPatch) {
+	want := make(map[mailcore.MessageID]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	for i := range s.rows {
+		if !want[s.rows[i].ID] {
+			continue
+		}
+		if patch.Read != nil {
+			s.rows[i].Read = *patch.Read
+		}
+		if patch.Starred != nil {
+			s.rows[i].Starred = *patch.Starred
+		}
+		if patch.Tags != nil {
+			s.rows[i].Tags = append([]string(nil), (*patch.Tags)...)
+		}
+	}
+	if s.shownOK && want[s.shown.ID] {
+		if patch.Read != nil {
+			s.shown.Read = *patch.Read
+		}
+		if patch.Starred != nil {
+			s.shown.Starred = *patch.Starred
+		}
+		if patch.Tags != nil {
+			s.shown.Tags = append([]string(nil), (*patch.Tags)...)
+		}
+	}
+	s.invalidateList()
+	s.async(func() (any, error) {
+		for _, id := range ids {
+			if err := s.cli.SetFlags(id, patch); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}, func(_ any, err error) {
+		if err != nil {
+			s.mark("Couldn't update the message: " + err.Error())
+			s.refreshList()
+			return
+		}
+		s.refreshStatus()
+	})
+}
+
+func (s *session) invalidateList() {
+	if s.table != nil {
+		s.table.Invalidate()
+	}
+	if s.cards != nil {
+		s.cards.Invalidate()
 	}
 }
 
 func (s *session) refreshStatus() {
-	unread, _ := s.cli.UnreadTotal()
 	if s.status == nil {
 		return
 	}
+	unread, _ := s.cli.UnreadTotal()
 	name := string(s.folder)
 	if f, ok, _ := s.cli.GetFolder(s.folder); ok {
 		name = f.Name
@@ -1173,29 +1379,23 @@ func (s *session) write() {
 }
 
 func (s *session) reply() {
-	m, ok := s.primary()
-	if !ok {
-		s.mark("No message")
-		return
-	}
-	cp := m.Clone()
-	_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, OnChange: s.refreshAll})
-	if err != nil {
-		widgets.Warn(s.win.Content(), "Reply", err.Error(), nil)
-	}
+	s.withFull("Reply", func(m mailcore.Message) {
+		cp := m.Clone()
+		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, OnChange: s.refreshAll})
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Reply", err.Error(), nil)
+		}
+	})
 }
 
 func (s *session) forward() {
-	m, ok := s.primary()
-	if !ok {
-		s.mark("No message")
-		return
-	}
-	cp := m.Clone()
-	_, err := OpenCompose(s.app, s.cli, ComposeOptions{Forward: &cp, OnChange: s.refreshAll})
-	if err != nil {
-		widgets.Warn(s.win.Content(), "Forward", err.Error(), nil)
-	}
+	s.withFull("Forward", func(m mailcore.Message) {
+		cp := m.Clone()
+		_, err := OpenCompose(s.app, s.cli, ComposeOptions{Forward: &cp, OnChange: s.refreshAll})
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Forward", err.Error(), nil)
+		}
+	})
 }
 
 // getMessages runs a full sync off the UI goroutine. The window stays live
@@ -1339,22 +1539,7 @@ func (s *session) openSmartFolders() {
 }
 
 func (s *session) setRead(read bool) {
-	for _, id := range s.ids() {
-		_ = s.cli.SetFlags(id, mailcore.FlagPatch{Read: mailcore.BoolPtr(read)})
-		for i := range s.rows {
-			if s.rows[i].ID == id {
-				s.rows[i].Read = read
-			}
-		}
-	}
-	if s.table != nil {
-		s.table.Invalidate()
-	}
-	if s.cards != nil {
-		s.cards.Invalidate()
-	}
-	s.loadPreview()
-	s.refreshStatus()
+	s.setFlagsLater(s.ids(), mailcore.FlagPatch{Read: mailcore.BoolPtr(read)})
 }
 
 func (s *session) toggleStar() {
@@ -1362,40 +1547,89 @@ func (s *session) toggleStar() {
 	if !ok {
 		return
 	}
-	star := !m.Starred
-	for _, id := range s.ids() {
-		_ = s.cli.SetFlags(id, mailcore.FlagPatch{Starred: mailcore.BoolPtr(star)})
-		for i := range s.rows {
-			if s.rows[i].ID == id {
-				s.rows[i].Starred = star
-			}
-		}
-	}
-	if s.table != nil {
-		s.table.Invalidate()
-	}
-	if s.cards != nil {
-		s.cards.Invalidate()
-	}
-	s.loadPreview()
-	s.refreshStatus()
+	s.setFlagsLater(s.ids(), mailcore.FlagPatch{Starred: mailcore.BoolPtr(!m.Starred)})
 }
 
+// toggleTag flips tag on every selected message, each from the tags its
+// row already shows.
 func (s *session) toggleTag(tag string) {
-	if len(s.ids()) == 0 {
+	ids := s.ids()
+	if len(ids) == 0 {
 		s.mark("No selection")
 		return
 	}
-	for _, id := range s.ids() {
-		m, ok, err := s.cli.GetMessage(id)
-		if err != nil || !ok {
+	for _, id := range ids {
+		for _, m := range s.rows {
+			if m.ID == id {
+				next := mailcore.ToggleTag(m.Tags, tag)
+				s.setFlagsLater([]mailcore.MessageID{id}, mailcore.FlagPatch{Tags: &next})
+				break
+			}
+		}
+	}
+	if s.shownOK {
+		s.showHeaders(s.shown)
+	}
+	s.mark("Tag " + tag)
+}
+
+// removeLater takes ids out of the list at once and runs the daemon call
+// that moves or deletes them off the UI goroutine. On failure the list
+// comes back from the daemon and the error is shown.
+func (s *session) removeLater(ids []mailcore.MessageID, what, done string, call func() error) {
+	gone := make(map[mailcore.MessageID]bool, len(ids))
+	for _, id := range ids {
+		gone[id] = true
+	}
+	next := -1
+	keep := s.rows[:0:0]
+	for i, m := range s.rows {
+		if gone[m.ID] {
+			if next < 0 {
+				next = i
+			}
 			continue
 		}
-		next := mailcore.ToggleTag(m.Tags, tag)
-		_ = s.cli.SetFlags(id, mailcore.FlagPatch{Tags: &next})
+		keep = append(keep, m)
 	}
-	s.refreshAll()
-	s.mark("Tag " + tag)
+	s.rows = keep
+	s.selected = nil
+	// The row below the first one removed takes its place, the way a mail
+	// client moves on to the next message.
+	if next >= 0 && len(s.rows) > 0 {
+		if next >= len(s.rows) {
+			next = len(s.rows) - 1
+		}
+		s.selected = []mailcore.MessageID{s.rows[next].ID}
+	}
+	s.showRows()
+	s.mark(what + "…")
+	s.async(func() (any, error) {
+		return nil, call()
+	}, func(_ any, err error) {
+		if err != nil {
+			widgets.Warn(s.win.Content(), what, err.Error(), nil)
+		} else {
+			s.mark(done)
+		}
+		s.refreshAll()
+	})
+}
+
+// showRows puts s.rows in the table and card list and the primary in the
+// preview, without asking the daemon for the list again.
+func (s *session) showRows() {
+	if s.table != nil {
+		s.table.RowCount = len(s.rows)
+		s.table.Invalidate()
+	}
+	if s.cards != nil {
+		s.cards.Count = len(s.rows)
+		s.cards.Invalidate()
+	}
+	s.syncViews()
+	s.loadPreview()
+	s.refreshStatus()
 }
 
 func (s *session) deleteSel() {
@@ -1403,13 +1637,7 @@ func (s *session) deleteSel() {
 	if len(ids) == 0 {
 		return
 	}
-	if err := s.cli.Delete(ids); err != nil {
-		widgets.Warn(s.win.Content(), "Delete", err.Error(), nil)
-		return
-	}
-	s.selected = nil
-	s.refreshAll()
-	s.mark("Deleted")
+	s.removeLater(ids, "Delete", "Deleted", func() error { return s.cli.Delete(ids) })
 }
 
 func (s *session) junk() {
@@ -1422,13 +1650,7 @@ func (s *session) junk() {
 		s.mark("No Junk folder")
 		return
 	}
-	if err := s.cli.Move(ids, junk.ID); err != nil {
-		widgets.Warn(s.win.Content(), "Junk", err.Error(), nil)
-		return
-	}
-	s.selected = nil
-	s.refreshAll()
-	s.mark("Moved to Junk")
+	s.removeLater(ids, "Junk", "Moved to Junk", func() error { return s.cli.Move(ids, junk.ID) })
 }
 
 func (s *session) archive() {
@@ -1441,13 +1663,7 @@ func (s *session) archive() {
 		s.mark("No Archives folder")
 		return
 	}
-	if err := s.cli.Move(ids, arch.ID); err != nil {
-		widgets.Warn(s.win.Content(), "Archive", err.Error(), nil)
-		return
-	}
-	s.selected = nil
-	s.refreshAll()
-	s.mark("Archived")
+	s.removeLater(ids, "Archive", "Archived", func() error { return s.cli.Move(ids, arch.ID) })
 }
 
 func (s *session) emptyTrash() {
@@ -1472,10 +1688,18 @@ func (s *session) emptyTrash() {
 			for i, m := range list {
 				ids[i] = m.ID
 			}
-			_ = s.cli.Delete(ids)
-			s.selected = nil
-			s.refreshAll()
-			s.mark("Trash emptied")
+			s.mark("Emptying Trash…")
+			s.async(func() (any, error) {
+				return nil, s.cli.Delete(ids)
+			}, func(_ any, err error) {
+				if err != nil {
+					widgets.Warn(s.win.Content(), "Empty Trash", err.Error(), nil)
+				} else {
+					s.mark("Trash emptied")
+				}
+				s.selected = nil
+				s.refreshAll()
+			})
 		})
 }
 
@@ -2337,16 +2561,20 @@ func (s *session) viewSource() {
 		s.mark("No message")
 		return
 	}
-	raw, err := s.cli.GetSource(m.ID)
-	if err != nil {
-		widgets.Warn(s.win.Content(), "Message Source", err.Error(), nil)
-		return
-	}
-	if _, err := OpenMessageSource(s.app, m, raw); err != nil {
-		widgets.Warn(s.win.Content(), "Message Source", err.Error(), nil)
-		return
-	}
-	s.mark("Message Source")
+	s.mark("Message Source: loading…")
+	s.async(func() (any, error) {
+		return s.cli.GetSource(m.ID)
+	}, func(v any, err error) {
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Message Source", err.Error(), nil)
+			return
+		}
+		if _, err := OpenMessageSource(s.app, m, v.(string)); err != nil {
+			widgets.Warn(s.win.Content(), "Message Source", err.Error(), nil)
+			return
+		}
+		s.mark("Message Source")
+	})
 }
 
 // PrepareShot selects Ada’s Inbox welcome message and optionally opens File.

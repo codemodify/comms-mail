@@ -82,6 +82,13 @@ func StartEmpty(ctx context.Context) (socket string, stop func(), err error) {
 	return startStore(ctx, NewMemoryStore(time.Time{}))
 }
 
+// StartStore runs comms-maild over store on a disposable socket, the way
+// StartDemo does for the demo store: for tests that need a daemon which
+// behaves a particular way (slow, failing) behind a real connection.
+func StartStore(ctx context.Context, store Store) (socket string, stop func(), err error) {
+	return startStore(ctx, store)
+}
+
 func startStore(ctx context.Context, store Store) (socket string, stop func(), err error) {
 	dir, err := os.MkdirTemp("", "comms-maild-")
 	if err != nil {

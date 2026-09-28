@@ -227,6 +227,17 @@ func (s *IMAPStore) ListMessages(folder FolderID) []Message {
 	return out
 }
 
+// CachedMessage is what the cache holds for id, without network I/O.
+func (s *IMAPStore) CachedMessage(id MessageID) (Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, ok := s.cache[id]
+	if !ok {
+		return Message{}, false
+	}
+	return m.Clone(), true
+}
+
 func (s *IMAPStore) GetMessage(id MessageID) (Message, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

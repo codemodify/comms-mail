@@ -16,7 +16,12 @@ import (
 
 // imapClient is a production-minded IMAP4rev1 session (comms-maild only).
 type imapClient struct {
-	mu       sync.Mutex
+	mu sync.Mutex
+	// box is held from a SELECT through every command that depends on the
+	// mailbox it selected. mu alone guards one command at a time, which let
+	// another goroutine SELECT a different mailbox in between, so a UID
+	// FETCH or STORE meant for one folder ran against another.
+	box      sync.Mutex
 	cfg      ServerConfig
 	user     string
 	conn     net.Conn
@@ -57,6 +62,15 @@ func newIMAPClient(cfg ServerConfig, address string) *imapClient {
 
 // mode is the resolved connection security for this account.
 func (c *imapClient) mode() TLSMode { return c.cfg.Mode(imapPorts) }
+
+// inBox runs fn holding the mailbox lock: select and then use the mailbox
+// inside fn, and no other caller can select a different one until fn
+// returns. fn must not call inBox itself.
+func (c *imapClient) inBox(fn func() error) error {
+	c.box.Lock()
+	defer c.box.Unlock()
+	return fn()
+}
 
 func (c *imapClient) connect() error {
 	c.mu.Lock()
@@ -199,6 +213,22 @@ func (c *imapClient) closeLocked() {
 		_, _ = c.cmdLocked("LOGOUT")
 	}
 	c.dropLocked()
+}
+
+// imapConnError is a command that failed on the wire — a write that did not
+// go, a reply that never came or stopped halfway — as against a server that
+// answered NO or BAD. The session is dropped when one happens.
+type imapConnError struct{ err error }
+
+func (e *imapConnError) Error() string { return "imap: connection lost: " + e.err.Error() }
+func (e *imapConnError) Unwrap() error { return e.err }
+
+// lostLocked drops the session after an I/O failure mid-command. The rest of
+// that reply may still be in flight, and the next command would read it as
+// its own; a dropped session reconnects cleanly on next use instead.
+func (c *imapClient) lostLocked(err error) error {
+	c.dropLocked()
+	return &imapConnError{err: err}
 }
 
 // dropLocked tears the socket down without trying to talk on it.
@@ -788,7 +818,9 @@ func (c *imapClient) idleOnce(wait time.Duration) (woke bool, err error) {
 	deadline := time.Now().Add(wait)
 	_ = c.conn.SetReadDeadline(deadline)
 	defer func() {
-		_ = c.conn.SetReadDeadline(time.Time{})
+		if c.conn != nil {
+			_ = c.conn.SetReadDeadline(time.Time{})
+		}
 		c.idle = false
 	}()
 	for {
@@ -800,7 +832,7 @@ func (c *imapClient) idleOnce(wait time.Duration) (woke bool, err error) {
 				_, _ = c.readUntilTaggedLocked(tag)
 				return false, nil
 			}
-			return false, err
+			return false, c.lostLocked(err)
 		}
 		u := strings.ToUpper(ln)
 		if strings.HasPrefix(strings.TrimSpace(ln), "+") {
@@ -851,7 +883,7 @@ func (c *imapClient) cmdLocked(format string, args ...any) ([]string, error) {
 	c.deadlineLocked()
 	defer c.clearDeadlineLocked()
 	if _, err := io.WriteString(c.conn, line); err != nil {
-		return nil, err
+		return nil, c.lostLocked(err)
 	}
 	return c.readUntilTaggedLocked(tag)
 }
@@ -868,18 +900,18 @@ func (c *imapClient) cmdAuthLocked(cmd string) ([]string, error) {
 	c.deadlineLocked()
 	defer c.clearDeadlineLocked()
 	if _, err := io.WriteString(c.conn, tag+" "+cmd+"\r\n"); err != nil {
-		return nil, err
+		return nil, c.lostLocked(err)
 	}
 	var lines []string
 	for {
 		ln, err := c.readRawLocked()
 		if err != nil {
-			return lines, err
+			return lines, c.lostLocked(err)
 		}
 		trimmed := strings.TrimSpace(ln)
 		if strings.HasPrefix(trimmed, "+") {
 			if _, err := io.WriteString(c.conn, "\r\n"); err != nil {
-				return lines, err
+				return lines, c.lostLocked(err)
 			}
 			continue
 		}
@@ -902,11 +934,11 @@ func (c *imapClient) cmdLiteralLocked(head, literal string) ([]string, error) {
 	c.deadlineLocked()
 	defer c.clearDeadlineLocked()
 	if _, err := io.WriteString(c.conn, tag+" "+head+"\r\n"); err != nil {
-		return nil, err
+		return nil, c.lostLocked(err)
 	}
 	cont, err := c.readRawLocked()
 	if err != nil {
-		return nil, err
+		return nil, c.lostLocked(err)
 	}
 	if !strings.HasPrefix(strings.TrimSpace(cont), "+") {
 		if strings.HasPrefix(cont, tag+" ") {
@@ -915,7 +947,7 @@ func (c *imapClient) cmdLiteralLocked(head, literal string) ([]string, error) {
 		return nil, fmt.Errorf("imap: expected + continuation, got %s", strings.TrimSpace(cont))
 	}
 	if _, err := io.WriteString(c.conn, literal+"\r\n"); err != nil {
-		return nil, err
+		return nil, c.lostLocked(err)
 	}
 	return c.readUntilTaggedLocked(tag)
 }
@@ -925,7 +957,7 @@ func (c *imapClient) readUntilTaggedLocked(tag string) ([]string, error) {
 	for {
 		ln, err := c.readRawLocked()
 		if err != nil {
-			return lines, err
+			return lines, c.lostLocked(err)
 		}
 		if strings.HasPrefix(ln, tag+" ") {
 			rest := strings.TrimSpace(ln[len(tag)+1:])
