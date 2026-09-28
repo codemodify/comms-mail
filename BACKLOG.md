@@ -58,8 +58,6 @@ new ones turn up.
 
 
 ## Message list / actions
-- **Undo for tag changes** — Undo covers move/delete/archive/junk, not
-  tagging.
 - **Bulk-action progress** — feedback for a move/delete over a large
   selection.
 
