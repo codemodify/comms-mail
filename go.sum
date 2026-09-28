@@ -1,7 +1,7 @@
 github.com/codemodify/paintengine2d v0.11.0 h1:IEIGp/B+/cqwOoK63tsO4sxKRB8g/AjcYgDIZcY/ONc=
 github.com/codemodify/paintengine2d v0.11.0/go.mod h1:+e0/rlydkknTGd/M0k6uigFBMjFluCXVF2sqmMsO0a4=
-github.com/codemodify/uitoolkit v0.19.2-0.20260927232141-a18f37a067bc h1:mjB+CfKwAHuyHCVl1vBJfTcDEVGEbGBt7PAr4hJ60mc=
-github.com/codemodify/uitoolkit v0.19.2-0.20260927232141-a18f37a067bc/go.mod h1:vgrBZXkdFfZ7sNpD854j6a6sXeGVtbutOdRlcfApQ74=
+github.com/codemodify/uitoolkit v0.20.1-0.20260928065701-49dd2a847960 h1:dGTek4w9CPNnKy94ax52kMB+IFPxUKMCG64PDf02ric=
+github.com/codemodify/uitoolkit v0.20.1-0.20260928065701-49dd2a847960/go.mod h1:vgrBZXkdFfZ7sNpD854j6a6sXeGVtbutOdRlcfApQ74=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/godbus/dbus/v5 v5.1.0 h1:4KLkAxT3aOY8Li4FRJe/KvhoNFFxo0m6fNuFUO8QJUk=

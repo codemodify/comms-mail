@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/codemodify/paintengine2d v0.11.0
-	github.com/codemodify/uitoolkit v0.19.2-0.20260927232141-a18f37a067bc
+	github.com/codemodify/uitoolkit v0.20.1-0.20260928065701-49dd2a847960
 	github.com/godbus/dbus/v5 v5.1.0
 	golang.org/x/text v0.16.0
 	modernc.org/sqlite v1.59.0
