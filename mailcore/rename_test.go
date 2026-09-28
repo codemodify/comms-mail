@@ -20,6 +20,8 @@ type folderServer struct {
 	log   []string
 	// hits answers UID SEARCH in a mailbox (every UID there when nil).
 	hits map[string][]uint32
+	// flags are a message's flags by UID (\Seen when unset).
+	flags map[uint32]string
 }
 
 func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *folderServer {
@@ -98,7 +100,12 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 			s.send("%s OK fetch", tag)
 		case strings.Contains(strings.ToUpper(line), "UID FETCH") && strings.Contains(strings.ToUpper(line), "ENVELOPE"):
 			for i, u := range fs.boxes[s.box] {
-				s.send(`* %d FETCH (UID %d FLAGS (\Seen) RFC822.SIZE 10 ENVELOPE ("Mon, 1 Jan 2024 00:00:00 +0000" "m%d" NIL NIL NIL NIL NIL NIL NIL "<%d.%s@ex>"))`, i+1, u, u, u, strings.ReplaceAll(s.box, "&", "_"))
+				s.send(`* %d FETCH (UID %d FLAGS (%s) RFC822.SIZE 10 ENVELOPE ("Mon, 1 Jan 2024 00:00:00 +0000" "m%d" NIL NIL NIL NIL NIL NIL NIL "<%d.%s@ex>"))`, i+1, u, fs.flagsOf(u), u, u, strings.ReplaceAll(s.box, "&", "_"))
+			}
+			s.send("%s OK fetch", tag)
+		case strings.Contains(strings.ToUpper(line), "UID FETCH") && strings.Contains(strings.ToUpper(line), "FLAGS)"):
+			for i, u := range fs.boxes[s.box] {
+				s.send(`* %d FETCH (UID %d FLAGS (%s))`, i+1, u, fs.flagsOf(u))
 			}
 			s.send("%s OK fetch", tag)
 		case strings.Contains(strings.ToUpper(line), "UID FETCH"):
@@ -109,6 +116,14 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 		return true
 	})
 	return fs
+}
+
+// flagsOf is uid's flags; the caller holds fs.mu.
+func (fs *folderServer) flagsOf(u uint32) string {
+	if f, ok := fs.flags[u]; ok {
+		return f
+	}
+	return `\Seen`
 }
 
 func (fs *folderServer) takeLog() []string {

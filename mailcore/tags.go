@@ -2,6 +2,7 @@ package mailcore
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/codemodify/paintengine2d"
@@ -306,4 +307,140 @@ func unhex(c byte) int {
 		return int(c - 'A' + 10)
 	}
 	return 0
+}
+
+// Tags on the server are IMAP keywords. Thunderbird keeps its five default
+// tags — the same five comms-mail starts with — as $label1…$label5, so
+// those are written and read that way and a tag set in either client shows
+// in the other. Any other tag is its name, spaces as underscores.
+var thunderbirdLabels = []string{"Important", "Work", "Personal", "To Do", "Later"}
+
+// tagKeyword is the IMAP keyword for a tag.
+func tagKeyword(tag string) string {
+	for i, n := range thunderbirdLabels {
+		if strings.EqualFold(tag, n) {
+			return fmt.Sprintf("$label%d", i+1)
+		}
+	}
+	return imapSafeKeyword(tag)
+}
+
+// bookkeepingKeyword reports keywords clients set for themselves, which are
+// not tags: $Forwarded, $MDNSent, $Junk, NonJunk and the like.
+func bookkeepingKeyword(kw string) bool {
+	low := strings.ToLower(kw)
+	if strings.HasPrefix(low, "$") {
+		return !strings.HasPrefix(low, "$label") && low != "$important"
+	}
+	switch low {
+	case "junk", "nonjunk", "notjunk", "forwarded", "redirected", "old":
+		return true
+	}
+	return false
+}
+
+// keywordTags turns a message's IMAP flags into its tags: $label1…5 and
+// $Important into their names, a keyword a known tag stands for (spaces
+// written as underscores, any case) into that tag's name, and other
+// clients' bookkeeping keywords into nothing.
+func keywordTags(flags []string, known []Tag) []string {
+	var out []string
+	add := func(t string) {
+		if t != "" && !listHasFold(out, t) {
+			out = append(out, t)
+		}
+	}
+	for _, f := range flags {
+		if f == "" || strings.HasPrefix(f, `\`) || bookkeepingKeyword(f) {
+			continue
+		}
+		low := strings.ToLower(f)
+		if strings.HasPrefix(low, "$label") {
+			if n, err := strconv.Atoi(low[6:]); err == nil && n >= 1 && n <= len(thunderbirdLabels) {
+				add(thunderbirdLabels[n-1])
+			}
+			continue
+		}
+		if low == "$important" {
+			add("Important")
+			continue
+		}
+		name := f
+		for _, t := range known {
+			if strings.EqualFold(t.Name, f) || strings.EqualFold(imapSafeKeyword(t.Name), f) {
+				name = t.Name
+				break
+			}
+		}
+		add(name)
+	}
+	return out
+}
+
+func listHasFold(list []string, s string) bool {
+	for _, x := range list {
+		if strings.EqualFold(x, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeServerTags applies to m the tag changes the server made since it
+// last looked — additions and removals between m.Keywords and server —
+// leaving tags that exist only here alone, and records server as seen.
+func mergeServerTags(m *Message, server []string) {
+	var local []string
+	for _, t := range m.Tags {
+		if IsSystemTag(t) || bookkeepingKeyword(t) {
+			continue
+		}
+		local = append(local, t)
+	}
+	for _, t := range server {
+		if !listHasFold(m.Keywords, t) && !listHasFold(local, t) {
+			local = append(local, t) // added elsewhere
+		}
+	}
+	var kept []string
+	for _, t := range local {
+		if listHasFold(m.Keywords, t) && !listHasFold(server, t) {
+			continue // removed elsewhere
+		}
+		kept = append(kept, t)
+	}
+	m.Tags = kept
+	if len(server) > 0 {
+		m.Keywords = append([]string(nil), server...)
+	} else {
+		m.Keywords = nil
+	}
+	applyAutomaticTags(m)
+}
+
+// normalizeTagsLocked drops other clients' bookkeeping keywords that older
+// syncs made into tags, and names $label1…5 as their tags. It reports
+// whether anything changed.
+func normalizeTags(m *Message) bool {
+	changed := false
+	var out []string
+	for _, t := range m.Tags {
+		switch {
+		case bookkeepingKeyword(t):
+			changed = true
+		case strings.HasPrefix(strings.ToLower(t), "$label"):
+			changed = true
+			for _, n := range keywordTags([]string{t}, nil) {
+				if !listHasFold(out, n) {
+					out = append(out, n)
+				}
+			}
+		default:
+			out = append(out, t)
+		}
+	}
+	if changed {
+		m.Tags = out
+	}
+	return changed
 }

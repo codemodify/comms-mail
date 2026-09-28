@@ -61,7 +61,7 @@ func (s *LocalStore) pushLoop(ctx context.Context) {
 			// Flag changes that failed to reach the server go again. Only
 			// flags: replaying one is idempotent and addresses the message
 			// where it now is.
-			_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" })
+			_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" || op.Kind == "read" })
 			res, _ := s.Sync("")
 			if res.New > 0 {
 				s.Emit(StoreEvent{Reason: "poll", Count: res.New})

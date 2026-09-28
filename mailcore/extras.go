@@ -86,6 +86,9 @@ type OutboxOp struct {
 	// and clears, worked out when it was made.
 	Add []string `json:"add,omitempty"`
 	Rem []string `json:"rem,omitempty"`
+	// UIDs are the messages a queued "read" (Mark Folder Read) marks, in
+	// Src: the ones the user saw, not whatever the folder holds by then.
+	UIDs []uint32 `json:"uids,omitempty"`
 }
 
 // featureHost is the shared Tier A/B state (MemoryStore + LocalStore).
@@ -427,6 +430,26 @@ func (f *featureHost) dropOutboxLocked(id string) {
 		}
 	}
 	f.outbox = out
+}
+
+// pendingRead reports whether a queued Mark Folder Read will mark uid in
+// folder read, so a sync must not set it back to unread meanwhile.
+func (f *featureHost) pendingRead(folder FolderID, uid uint32) bool {
+	if f == nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, op := range f.outbox {
+		if op.Kind == "read" && op.Src == folder {
+			for _, u := range op.UIDs {
+				if u == uid {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // touchesFolder reports whether a queued op moves a message out of, or

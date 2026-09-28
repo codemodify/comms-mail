@@ -166,8 +166,12 @@ func (s *LocalStore) loadSQL() error {
 			continue
 		}
 		m.Body, m.HTML = body, html
+		c.stamps[m.ID] = messageStamp(&m) // as stored
+		// Older syncs made other clients' bookkeeping keywords ($Forwarded,
+		// NonJunk, $label1…) into tags; tidied after stamping, so the next
+		// save writes the change.
+		normalizeTags(&m)
 		s.Messages = append(s.Messages, m)
-		c.stamps[m.ID] = messageStamp(&m)
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -337,6 +341,7 @@ func messageStamp(m *Message) uint64 {
 	str(m.Category)
 	strs(h, m.Attachments)
 	flag(m.SignatureInBody)
+	strs(h, m.Keywords)
 	return h.Sum64()
 }
 

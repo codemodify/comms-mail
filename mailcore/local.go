@@ -467,34 +467,65 @@ func (s *LocalStore) MarkFolderRead(id FolderID) error {
 		return nil
 	}
 	changed := 0
+	var uids []uint32
 	for i := range s.Messages {
 		if s.Messages[i].Folder == id && !s.Messages[i].Read {
 			s.Messages[i].Read = true
+			syncSystemTagsFromFlags(&s.Messages[i])
 			changed++
+			if s.Messages[i].UID != 0 {
+				uids = append(uids, s.Messages[i].UID)
+			}
 		}
 	}
 	accountID, remote := f.AccountID, remoteName(f)
 	offline := s.feat != nil && !s.feat.Online()
+	// Only the messages the user saw unread are marked on the server — not
+	// "1:*", which also marked mail that arrived since the last sync.
+	op := OutboxOp{Kind: "read", AccountID: accountID, Src: id, UIDs: uids, UIDVal: s.loadFolderMeta(id).UIDValidity}
+	if offline && len(uids) > 0 && s.feat != nil {
+		s.feat.mu.Lock()
+		s.feat.enqueueLocked(op)
+		s.feat.mu.Unlock()
+	}
 	s.saveLocked()
 	s.mu.Unlock()
 	if changed > 0 {
 		s.Emit(StoreEvent{Reason: "flags", AccountID: accountID, FolderID: id, Count: changed})
 	}
-	if changed == 0 || offline || remote == "" {
+	if len(uids) == 0 || offline || remote == "" || accountID == LocalAccountID {
 		return nil
 	}
-	cli, err := s.client(accountID)
+	err := s.markReadOnServer(f, uids, op.UIDVal)
+	s.noteNetwork(accountID, err)
+	if err != nil && s.feat != nil {
+		// The cache has it; the server gets it when it answers.
+		Logf("mark %s read: %v — queued", id, err)
+		op.Error = err.Error()
+		s.mu.Lock()
+		s.feat.mu.Lock()
+		s.feat.enqueueLocked(op)
+		s.feat.mu.Unlock()
+		s.saveLocked()
+		s.mu.Unlock()
+		return nil
+	}
+	return err
+}
+
+// markReadOnServer sets \Seen on uids in f, refusing when the folder was
+// renumbered since they were read (uidVal).
+func (s *LocalStore) markReadOnServer(f Folder, uids []uint32, uidVal uint32) error {
+	cli, err := s.client(f.AccountID)
 	if err != nil {
 		return err
 	}
-	err = cli.inBox(func() error {
-		if _, err := cli.selectBox(remote, false); err != nil {
+	return cli.inBox(func() error {
+		if err := selectForReplay(cli, f, OutboxOp{UIDVal: uidVal}); err != nil {
 			return err
 		}
-		return cli.markAllSeen()
+		return cli.uidStoreSet(uids, []string{`\Seen`})
 	})
-	s.noteNetwork(accountID, err)
-	return err
 }
 func (s *LocalStore) ListMessages(folder FolderID) []Message {
 	s.mu.Lock()
@@ -734,13 +765,17 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 		// derived here from flags and parts, not stored as keywords.
 		for _, t := range m.Tags {
 			if !next[t] && !IsSystemTag(t) {
-				rem = append(rem, imapSafeKeyword(t))
+				// Both spellings: it may be on the server either way.
+				rem = append(rem, tagKeyword(t))
+				if kw := imapSafeKeyword(t); kw != tagKeyword(t) {
+					rem = append(rem, kw)
+				}
 			}
 		}
 		m.Tags = append([]string(nil), (*patch.Tags)...)
 		for _, t := range m.Tags {
 			if !IsSystemTag(t) {
-				add = append(add, imapSafeKeyword(t))
+				add = append(add, tagKeyword(t))
 			}
 		}
 	}
@@ -1730,10 +1765,11 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 			From: im.From, To: im.To, Cc: im.Cc, Subject: im.Subject,
 			Date: im.Date, Size: im.Size, UID: im.UID,
 			Read: imapFlagSeen(im.Flags), Starred: imapFlagStar(im.Flags),
-			Tags: imapKeywords(im.Flags), Parts: im.Parts,
+			Tags: keywordTags(im.Flags, s.tags), Parts: im.Parts,
 			RFCMessageID: im.RFCMessageID, InReplyTo: im.InReplyTo,
 		}
 		m.ThreadID = ThreadIDOf(m)
+		m.Keywords = append([]string(nil), m.Tags...)
 		if s.feat != nil {
 			m.Category = messageCategory(m, s.feat.snap())
 		}
@@ -1785,12 +1821,13 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 	if flagErr == nil {
 		for _, im := range flags {
 			id := MessageID(fmt.Sprintf("%s:%d", f.ID, im.UID))
-			if s.feat != nil && s.feat.pendingFor(id) {
+			if s.feat != nil && (s.feat.pendingFor(id) || s.feat.pendingRead(f.ID, im.UID)) {
 				continue
 			}
 			if i, ok := s.indexLocked(id); ok {
 				s.Messages[i].Read = imapFlagSeen(im.Flags)
 				s.Messages[i].Starred = imapFlagStar(im.Flags)
+				mergeServerTags(&s.Messages[i], keywordTags(im.Flags, s.tags))
 			}
 		}
 	}
@@ -2891,6 +2928,16 @@ func (s *LocalStore) flushOne(op OutboxOp) error {
 			add, rem = op.Add, op.Rem
 		}
 		return s.pushFlags(m, f, add, rem)
+	case "read":
+		src, _, ok := s.replayFolders(OutboxOp{Src: op.Src, UID: 1})
+		if !ok || len(op.UIDs) == 0 {
+			return nil
+		}
+		err := s.markReadOnServer(src, op.UIDs, op.UIDVal)
+		if errors.Is(err, errStaleUIDs) {
+			return nil // renumbered: those UIDs name other messages now
+		}
+		return err
 	case "move":
 		return s.replayMove(op)
 	case "delete":

@@ -97,7 +97,7 @@ func TestDeleteFolderRemovesItEverywhere(t *testing.T) {
 	}
 }
 
-func TestMarkFolderReadFlagsEverything(t *testing.T) {
+func TestMarkFolderReadFlagsWhatWasUnread(t *testing.T) {
 	rs := newFolderOpsServer(t, map[string][]uint32{"INBOX": {1, 2}})
 	dir := t.TempDir()
 	t.Setenv(EnvConfig, filepath.Join(dir, "mail.json"))
@@ -125,7 +125,9 @@ func TestMarkFolderReadFlagsEverything(t *testing.T) {
 			t.Fatalf("message %s still unread", m.ID)
 		}
 	}
-	if !strings.Contains(strings.Join(rs.takeLog(), "\n"), `UID STORE 1:* +FLAGS.SILENT (\Seen)`) {
-		t.Fatalf("the server was not told to flag the mailbox: %v", rs.takeLog())
+	// The messages that were unread, by UID — not "1:*", which also marked
+	// mail that arrived after the last sync.
+	if log := strings.Join(rs.takeLog(), "\n"); !strings.Contains(log, `UID STORE 1:2 +FLAGS.SILENT (\Seen)`) {
+		t.Fatalf("the server was not told to flag the messages: %v", log)
 	}
 }

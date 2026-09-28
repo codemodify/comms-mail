@@ -217,6 +217,11 @@ type Message struct {
 	// SignatureInBody says the writer already put (or deliberately took
 	// out) the identity's signature, so sending must not append it again.
 	SignatureInBody bool `json:"signatureInBody,omitempty"`
+	// Keywords are the tags the server last had on the message. A sync
+	// compares them with what it has now and applies only that change, so
+	// tags added or removed in another client arrive without undoing tags
+	// that exist only here (a filter rule's).
+	Keywords []string `json:"keywords,omitempty"`
 }
 
 func messageHasBody(m Message) bool {
@@ -234,6 +239,9 @@ func (m Message) Clone() Message {
 	}
 	if m.Parts != nil {
 		out.Parts = append([]Part(nil), m.Parts...)
+	}
+	if m.Keywords != nil {
+		out.Keywords = append([]string(nil), m.Keywords...)
 	}
 	return out
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/mail"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -316,21 +317,6 @@ func (c *imapClient) deleteMailbox(name string) error {
 		c.selected = ""
 	}
 	_, err = c.cmdLocked("DELETE %s", box)
-	return err
-}
-
-// markAllSeen sets \Seen on every message in the selected mailbox. The
-// caller selects the mailbox read-write first.
-func (c *imapClient) markAllSeen() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.selected == "" {
-		return fmt.Errorf("imap: no mailbox selected")
-	}
-	if c.exists == 0 {
-		return nil
-	}
-	_, err := c.cmdLocked("UID STORE 1:* +FLAGS.SILENT (\\Seen)")
 	return err
 }
 
@@ -697,6 +683,43 @@ func (c *imapClient) uidStore(uid uint32, add, rem []string) error {
 		}
 	}
 	return nil
+}
+
+// uidStoreSet adds flags to many messages, a few hundred UIDs a command.
+func (c *imapClient) uidStoreSet(uids []uint32, add []string) error {
+	sorted := append([]uint32(nil), uids...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	for start := 0; start < len(sorted); start += 500 {
+		end := min(start+500, len(sorted))
+		c.mu.Lock()
+		_, err := c.cmdLocked("UID STORE %s +FLAGS.SILENT (%s)", uidSetString(sorted[start:end]), strings.Join(add, " "))
+		c.mu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// uidSetString writes sorted UIDs as an IMAP sequence set: "1:4,7,9:12".
+func uidSetString(uids []uint32) string {
+	var b strings.Builder
+	for i := 0; i < len(uids); {
+		j := i
+		for j+1 < len(uids) && uids[j+1] <= uids[j]+1 {
+			j++
+		}
+		if b.Len() > 0 {
+			b.WriteByte(',')
+		}
+		if j > i && uids[j] != uids[i] {
+			fmt.Fprintf(&b, "%d:%d", uids[i], uids[j])
+		} else {
+			fmt.Fprintf(&b, "%d", uids[i])
+		}
+		i = j + 1
+	}
+	return b.String()
 }
 
 // uidCopy copies one message and returns the destination UID when the server

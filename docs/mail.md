@@ -431,6 +431,22 @@ flagged.
 
 Work Offline (`status.set`) stops treating the transport as reachable; mutations go to the outbox (below). Going online flushes the queue.
 
+
+**Tags and other clients.** Tags are IMAP keywords on the server.
+Thunderbird's five default tags — the same five comms-mail starts with,
+Important / Work / Personal / To Do / Later — are written and read as its
+keywords `$label1`…`$label5`, so a tag set in either client shows in the
+other; other tags are their name with spaces as underscores. A sync applies
+the tag changes made elsewhere since it last looked (each message remembers
+the keywords it last saw), so a tag added or removed in another client
+arrives here, while a tag only this machine has — a filter rule's — is left
+alone. Other clients' bookkeeping keywords (`$Forwarded`, `$MDNSent`,
+`NonJunk`, …) are not tags.
+
+**Mark Folder Read** marks the messages that were unread when you chose it
+— by UID, not the whole mailbox, which would also mark mail that arrived
+since — and is queued like any change when offline; a sync meanwhile does
+not set them unread again.
 ## Offline outbox
 
 While offline (or after a transport error), **send / move / delete / flag** apply to the local cache immediately and enqueue an `OutboxOp`. The folder tree **Outbox** node lists queued sends.

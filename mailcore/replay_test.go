@@ -196,7 +196,8 @@ func TestRemovingATagClearsItsKeyword(t *testing.T) {
 	if _, err := st.FlushOutbox(); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 -FLAGS.SILENT (Work)`)
+	// Work is Thunderbird's $label2; both spellings are cleared.
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 -FLAGS.SILENT ($label2 Work)`)
 }
 
 // A signature the writer took out of the body stays out: the compose window
@@ -240,7 +241,7 @@ func TestOfflineTagThenMoveReplaysInTheSourceFolder(t *testing.T) {
 	if _, err := st.FlushOutbox(); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (Work)`, `INBOX: UID MOVE 7 "Archive"`)
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT ($label2)`, `INBOX: UID MOVE 7 "Archive"`)
 }
 
 // Moved and then tagged offline, the tag is not lost: it goes to the
@@ -261,12 +262,67 @@ func TestOfflineMoveThenTagIsNotLost(t *testing.T) {
 	if _, err := st.FlushOutbox(); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
-	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Seen Work)`, `INBOX: UID MOVE 7 "Archive"`)
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Seen $label2)`, `INBOX: UID MOVE 7 "Archive"`)
 	if n := len(st.ListOutbox()); n != 0 {
 		t.Fatalf("%d ops left after replay", n)
 	}
 	m, ok := st.CachedMessage("home/archive:70")
 	if !ok || !HasTag(m.Tags, "Work") {
 		t.Fatalf("cache after replay: %+v %v", m.Tags, ok)
+	}
+}
+
+// Mark Folder Read marks the messages the user saw — by UID, never "1:*",
+// which also marked mail that arrived since. Done offline it is queued, a
+// sync meanwhile does not set them unread again, and it reaches the server
+// when back online.
+func TestMarkFolderReadOfflineIsQueuedAndKept(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	st.SetOnline(false)
+	if err := st.MarkFolderRead("home/inbox"); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := st.CachedMessage("home/inbox:7"); !m.Read {
+		t.Fatal("not read in the cache")
+	}
+	st.SetOnline(true)
+	if _, err := st.Sync("home"); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := st.CachedMessage("home/inbox:7"); !m.Read {
+		t.Fatal("a sync set it unread again while the change was queued")
+	}
+	rs.takeLog()
+	if _, err := st.FlushOutbox(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Seen)`)
+	if n := len(st.ListOutbox()); n != 0 {
+		t.Fatalf("%d ops left", n)
+	}
+}
+
+func TestMarkFolderReadOnlineMarksOnlyWhatWasSeen(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	if err := st.MarkFolderRead("home/inbox"); err != nil {
+		t.Fatal(err)
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Seen)`)
+}
+
+func TestUIDSetString(t *testing.T) {
+	for _, c := range []struct {
+		in   []uint32
+		want string
+	}{
+		{[]uint32{1, 2, 3, 4, 7, 9, 10, 11, 12}, "1:4,7,9:12"},
+		{[]uint32{5}, "5"},
+		{[]uint32{3, 3, 4}, "3:4"},
+	} {
+		if got := uidSetString(c.in); got != c.want {
+			t.Fatalf("%v: %q want %q", c.in, got, c.want)
+		}
 	}
 }
