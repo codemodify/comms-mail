@@ -39,16 +39,12 @@ new ones turn up.
   its formatting.
 
 ## Folders / search
-- **Folder hierarchy from the server** — folders synced from IMAP are
-  listed flat (Parent is only set for folders made here); nesting them by
-  the server's delimiter would show `Archives/2023` under `Archives`.
-- **Move a folder** (drag it onto another) — rename covers the name only.
+- **Drag a folder onto another** to move it — Move Folder To does it from
+  the menu; the tree has no drag for its own nodes (uitoolkit).
+- **Messages marked deleted by other clients** are listed until Compact
+  Folder removes them; they could be hidden, or shown struck through.
 - **Gmail search syntax** — On server uses IMAP TEXT; Gmail's `X-GM-RAW`
   would allow its own operators (`has:attachment`, `older_than:`).
-- **Show the folder of each search result** — a folder column in search /
-  unified views.
-- **Compact folders** — `EXPUNGE` deleted messages (the menu stub was
-  removed).
 
 - **Import contacts / filters** (see below) — account settings and local
   mail import are done; these remain.

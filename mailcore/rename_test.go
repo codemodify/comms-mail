@@ -22,6 +22,10 @@ type folderServer struct {
 	hits map[string][]uint32
 	// flags are a message's flags by UID (\Seen when unset).
 	flags map[uint32]string
+	// attrs are a mailbox's LIST attributes (\HasNoChildren when unset).
+	attrs map[string]string
+	// expunge, when set, is what EXPUNGE removes from a mailbox.
+	expunge map[string][]uint32
 }
 
 func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *folderServer {
@@ -37,7 +41,11 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 			}
 			sort.Strings(names)
 			for _, n := range names {
-				s.send(`* LIST (\HasNoChildren) %q %q`, fs.delim, n)
+				attr := `\HasNoChildren`
+				if a, ok := fs.attrs[n]; ok {
+					attr = a
+				}
+				s.send(`* LIST (%s) %q %q`, attr, fs.delim, n)
 			}
 			s.send("%s OK list", tag)
 		case cmd == "LSUB":
@@ -60,8 +68,27 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 				}
 			}
 			s.send("%s OK renamed", tag)
+		case cmd == "EXPUNGE":
+			fs.log = append(fs.log, s.box+": EXPUNGE")
+			gone := map[uint32]bool{}
+			for _, u := range fs.expunge[s.box] {
+				gone[u] = true
+			}
+			var keep []uint32
+			for _, u := range fs.boxes[s.box] {
+				if !gone[u] {
+					keep = append(keep, u)
+				}
+			}
+			fs.boxes[s.box] = keep
+			s.send("%s OK expunged", tag)
+		case cmd == "CLOSE":
+			s.send("%s OK closed", tag)
 		case cmd == "SELECT" || cmd == "EXAMINE":
-			s.box = strings.Trim(strings.Fields(line)[2], `"`)
+			// The mailbox is the rest of the line (a quoted name may hold
+			// spaces), unquoted.
+			rest := strings.TrimSpace(line[strings.Index(strings.ToUpper(line), cmd)+len(cmd):])
+			s.box = strings.Trim(rest, `"`)
 			fs.log = append(fs.log, cmd+" "+s.box)
 			u, ok := fs.boxes[s.box]
 			if !ok {

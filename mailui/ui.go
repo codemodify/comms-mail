@@ -172,6 +172,9 @@ type session struct {
 	images     map[string]*paintengine2d.Image
 	imgSenders map[string]bool
 	imgGen     uint64
+	// folderNames names each folder, for the rows of a list that mixes
+	// folders (search, unified views).
+	folderNames map[mailcore.FolderID]string
 	// srv is the "On server" search: its toggle and its latest answer;
 	// srvAdded is how many rows it added to the list showing.
 	srv      serverSearch
@@ -652,6 +655,16 @@ func (s *session) now() time.Time {
 	return time.Now()
 }
 
+// mixedFolders reports whether the list shows messages from more than one
+// folder — a search of every folder, a unified or tag view — so each row
+// says where its message is.
+func (s *session) mixedFolders() bool {
+	if s.searchAll && strings.TrimSpace(s.filter.Query) != "" {
+		return true
+	}
+	return mailcore.IsVirtual(s.folder)
+}
+
 func (s *session) cellText(row, col int) string {
 	if row < 0 || row >= len(s.rows) {
 		return ""
@@ -681,7 +694,13 @@ func (s *session) cellText(row, col int) string {
 		}
 		return sub
 	case 3:
-		return m.Correspondent(s.kind)
+		who := m.Correspondent(s.kind)
+		if s.mixedFolders() {
+			if name := s.folderNames[m.Folder]; name != "" {
+				who += "  ·  " + name
+			}
+		}
+		return who
 	case 4:
 		return mailcore.FormatDate(m.Date, s.now())
 	default:
@@ -783,6 +802,12 @@ func (s *session) refreshList() {
 	}
 	if s.table != nil {
 		s.table.RowCount = len(s.rows)
+		if len(s.table.Columns) > 3 {
+			s.table.Columns[3].Title = "Who"
+			if s.mixedFolders() {
+				s.table.Columns[3].Title = "Who · Folder"
+			}
+		}
 		s.table.SortCol = s.sortCol
 		s.table.SortAsc = s.sortAsc
 		s.table.SetVisible(!s.cardView)
@@ -830,6 +855,10 @@ func (s *session) rebuildTree() {
 		folders, _ := s.cli.ListFolders(acct.ID)
 		for _, f := range folders {
 			byParent[f.Parent] = append(byParent[f.Parent], f)
+			if s.folderNames == nil {
+				s.folderNames = map[mailcore.FolderID]string{}
+			}
+			s.folderNames[f.ID] = f.Name
 		}
 		for pid, kids := range byParent {
 			byParent[pid] = orderFolderChildren(kids)
@@ -991,12 +1020,18 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 		}
 		if haveFolder && !folder.Virtual {
 			f := folder
-			items = append(items, widgets.Item("Mark Folder Read", func() { s.markFolderRead(f.ID) }))
+			if !f.NoSelect {
+				items = append(items, widgets.Item("Mark Folder Read", func() { s.markFolderRead(f.ID) }))
+			}
 			items = append(items, widgets.Item("New Subfolder…", func() { s.newSubfolder(f) }))
 			if folder.Kind == mailcore.FolderCustom {
 				items = append(items,
 					widgets.Item("Rename Folder…", func() { s.renameFolder(f) }),
+					&widgets.MenuItem{Text: "Move Folder To", Submenu: s.folderMoveMenu(f)},
 					widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
+			}
+			if !f.NoSelect {
+				items = append(items, widgets.Item("Compact Folder", func() { s.compactFolder(f) }))
 			}
 		}
 		items = append(items,
@@ -2007,6 +2042,65 @@ func (s *session) moveMenu() []*widgets.MenuItem {
 	return items
 }
 
+// folderMoveMenu lists where folder f can go: the top level, or under any
+// other folder of its account but itself and those inside it.
+func (s *session) folderMoveMenu(f mailcore.Folder) []*widgets.MenuItem {
+	folders, _ := s.cli.ListFolders(f.AccountID)
+	byParent := map[mailcore.FolderID][]mailcore.Folder{}
+	for _, x := range folders {
+		if !x.Virtual {
+			byParent[x.Parent] = append(byParent[x.Parent], x)
+		}
+	}
+	top := widgets.Item("Top Level", func() { s.moveFolder(f, "") })
+	top.Disabled = f.Parent == ""
+	items := []*widgets.MenuItem{top, widgets.Sep()}
+	var walk func(parent mailcore.FolderID, depth int)
+	walk = func(parent mailcore.FolderID, depth int) {
+		for _, x := range orderFolderChildren(byParent[parent]) {
+			if x.ID == f.ID {
+				continue // not into itself, nor anything inside it
+			}
+			x := x
+			it := widgets.Item(strings.Repeat("    ", depth)+x.Name, func() { s.moveFolder(f, x.ID) })
+			it.Disabled = x.ID == f.Parent
+			items = append(items, it)
+			walk(x.ID, depth+1)
+		}
+	}
+	walk("", 0)
+	return items
+}
+
+// moveFolder puts f under parent, off the UI goroutine.
+func (s *session) moveFolder(f mailcore.Folder, parent mailcore.FolderID) {
+	s.async(func() (any, error) {
+		return s.cli.MoveFolder(f.ID, parent)
+	}, func(_ any, err error) {
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Move Folder", err.Error(), nil)
+			return
+		}
+		s.refreshAll()
+		s.mark("Moved " + f.Name)
+	})
+}
+
+// compactFolder removes what is marked deleted in f, on the server.
+func (s *session) compactFolder(f mailcore.Folder) {
+	s.mark("Compacting " + f.Name + "…")
+	s.async(func() (any, error) {
+		return nil, s.cli.CompactFolder(f.ID)
+	}, func(_ any, err error) {
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Compact Folder", err.Error(), nil)
+			return
+		}
+		s.refreshAll()
+		s.mark("Compacted " + f.Name)
+	})
+}
+
 // mimeMessageIDs marks a drag of messages inside this window; the ids ride
 // in the drag's in-process payload.
 const mimeMessageIDs = "application/x-comms-mail-message-ids"
@@ -2388,10 +2482,14 @@ func (s *session) cardAt(i int) widgets.CardContent {
 		}
 		badges = append(badges, widgets.CardBadge{Label: name, Color: col})
 	}
+	meta := mailcore.FormatDate(m.Date, s.now())
+	if s.mixedFolders() && s.folderNames[m.Folder] != "" {
+		meta = s.folderNames[m.Folder] + "  ·  " + meta
+	}
 	return widgets.CardContent{
 		Title:    m.Correspondent(s.kind),
 		Subtitle: m.Subject,
-		Meta:     mailcore.FormatDate(m.Date, s.now()),
+		Meta:     meta,
 		Snippet:  snip,
 		Badges:   badges,
 		Bold:     !m.Read,

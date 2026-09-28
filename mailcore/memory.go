@@ -83,6 +83,43 @@ func (s *MemoryStore) RenameFolder(id FolderID, name string) (Folder, error) {
 	return f, nil
 }
 
+// MoveFolder puts a user-created folder under parent ("" = top level).
+func (s *MemoryStore) MoveFolder(id, parent FolderID) (Folder, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := memFolder(s.folders, id)
+	if !ok {
+		return Folder{}, fmt.Errorf("mail: no folder %s", id)
+	}
+	if f.Virtual || f.Kind != FolderCustom {
+		return Folder{}, fmt.Errorf("mail: %q is a system folder and cannot be renamed or moved", f.Name)
+	}
+	if parent != "" {
+		p, ok := memFolder(s.folders, parent)
+		if !ok || p.AccountID != f.AccountID || p.Virtual {
+			return Folder{}, fmt.Errorf("mail: cannot move a folder there")
+		}
+		for x := p; ; {
+			if x.ID == id {
+				return Folder{}, fmt.Errorf("mail: a folder cannot go inside itself")
+			}
+			if x.Parent == "" {
+				break
+			}
+			if x, ok = memFolder(s.folders, x.Parent); !ok {
+				break
+			}
+		}
+	}
+	for i := range s.folders {
+		if s.folders[i].ID == id {
+			s.folders[i].Parent = parent
+			f = s.folders[i]
+		}
+	}
+	return f, nil
+}
+
 // DeleteFolder removes a user-created folder and its messages.
 func (s *MemoryStore) DeleteFolder(id FolderID) error {
 	s.mu.Lock()

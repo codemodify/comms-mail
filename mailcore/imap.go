@@ -243,6 +243,10 @@ func (s *IMAPStore) RenameFolder(id FolderID, name string) (Folder, error) {
 	return Folder{}, fmt.Errorf("mail: rename folder is not supported by the IMAP skeleton")
 }
 
+func (s *IMAPStore) MoveFolder(id, parent FolderID) (Folder, error) {
+	return Folder{}, fmt.Errorf("mail: move folder is not supported by the IMAP skeleton")
+}
+
 func (s *IMAPStore) DeleteFolder(id FolderID) error {
 	return fmt.Errorf("mail: folder delete is not available on this backend")
 }

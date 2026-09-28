@@ -183,6 +183,9 @@ type Folder struct {
 	Tag       string     `json:"tag,omitempty"`
 	Remote    string     `json:"remote,omitempty"` // IMAP mailbox name (decoded, not modified UTF-7)
 	Delim     string     `json:"delim,omitempty"`  // the server's hierarchy delimiter
+	// NoSelect marks a mailbox that holds only other mailboxes (Gmail's
+	// [Gmail]): it is shown as their parent and never opened.
+	NoSelect bool `json:"noSelect,omitempty"`
 }
 
 // Message is a full RFC-822-ish record. Body is plain text (no MIME tree).
@@ -328,6 +331,8 @@ type Store interface {
 	// RenameFolder gives a user-created folder a new name, on the server and
 	// in the cache; its messages keep their ids.
 	RenameFolder(id FolderID, name string) (Folder, error)
+	// MoveFolder puts a user-created folder under parent ("" = top level).
+	MoveFolder(id, parent FolderID) (Folder, error)
 	// MarkFolderRead marks every message in a real folder read.
 	MarkFolderRead(id FolderID) error
 	// ImportLocalMail reads on-disk mail (Thunderbird/KMail) into the local

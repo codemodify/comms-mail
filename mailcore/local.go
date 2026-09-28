@@ -384,11 +384,18 @@ func (s *LocalStore) CreateFolder(accountID, name string, parent FolderID) (Fold
 		return Folder{}, fmt.Errorf("mail: illegal folder name")
 	}
 	s.mu.Lock()
-	remote := name
+	remote, delim := name, s.accountDelimLocked(accountID)
 	if parent != "" {
 		if pf, ok := s.folderLocked(parent); ok && pf.Remote != "" {
-			remote = pf.Remote + "/" + name
+			if pf.Delim != "" {
+				delim = pf.Delim
+			}
+			remote = pf.Remote + delim + name
 		}
+	}
+	if strings.Contains(name, delim) {
+		s.mu.Unlock()
+		return Folder{}, fmt.Errorf("mail: a folder name cannot contain %q", delim)
 	}
 	s.mu.Unlock()
 
@@ -404,7 +411,7 @@ func (s *LocalStore) CreateFolder(accountID, name string, parent FolderID) (Fold
 	// A renamed folder keeps the id its old name gave it, so a new folder
 	// under that old name needs another.
 	id := s.uniqueFolderIDLocked(FolderID(safeID(accountID) + "/" + safeID(name)))
-	f := Folder{ID: id, AccountID: accountID, Name: name, Kind: FolderCustom, Parent: parent, Remote: remote}
+	f := Folder{ID: id, AccountID: accountID, Name: name, Kind: FolderCustom, Parent: parent, Remote: remote, Delim: delim}
 	s.Folders = append(s.Folders, f)
 	s.saveLocked()
 	return f, nil
@@ -1363,16 +1370,20 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 				f = Folder{ID: id, AccountID: accountID, Name: displayIMAPName(display, b.Delim), Kind: kind}
 			}
 		}
+		noSelect := hasAttrFold(b.Attrs, `\Noselect`) || hasAttrFold(b.Attrs, `\NonExistent`)
 		if !ok {
-			f.Remote, f.Delim = display, b.Delim
+			f.Remote, f.Delim, f.NoSelect = display, b.Delim, noSelect
 			s.Folders = append(s.Folders, f)
 		} else {
-			f.Remote, f.Delim = display, b.Delim
+			f.Remote, f.Delim, f.NoSelect = display, b.Delim, noSelect
 			f.Kind = kind
 			s.replaceFolderLocked(f)
 		}
 		listed[f.ID] = true
 		s.mu.Unlock()
+		if noSelect {
+			continue // a parent only: nothing to open
+		}
 
 		n, err := s.syncFolder(cli, f)
 		if err != nil {
@@ -1390,7 +1401,91 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 	}
 	s.noteNetwork(accountID, netErr)
 	s.dropUnlistedFolders(accountID, listed)
+	s.mu.Lock()
+	if s.nestFoldersLocked(accountID) {
+		s.saveLocked()
+	}
+	s.mu.Unlock()
 	return added, nil
+}
+
+func hasAttrFold(attrs []string, want string) bool {
+	for _, a := range attrs {
+		if strings.EqualFold(a, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// nestFoldersLocked sets each IMAP folder's parent from its server name —
+// "Archives/2023" goes under "Archives" and is called "2023". A mailbox
+// whose parent the server does not list keeps its whole path as its name.
+// When every other mailbox sits under "INBOX." (a server whose namespace is
+// INBOX), that prefix is a namespace, not a parent, and is left out. It
+// reports whether anything changed.
+func (s *LocalStore) nestFoldersLocked(accountID string) bool {
+	var idx []int
+	byRemote := map[string]int{}
+	inboxPrefix := ""
+	for i, f := range s.Folders {
+		if f.AccountID != accountID || f.Virtual || f.Remote == "" || f.Delim == "" {
+			continue
+		}
+		idx = append(idx, i)
+		byRemote[f.Remote] = i
+		if f.Kind == FolderInbox {
+			inboxPrefix = f.Remote + f.Delim
+		}
+	}
+	namespaced, others := inboxPrefix != "", 0
+	for _, i := range idx {
+		f := s.Folders[i]
+		if f.Kind == FolderInbox {
+			continue
+		}
+		others++
+		if !strings.HasPrefix(strings.ToUpper(f.Remote), strings.ToUpper(inboxPrefix)) {
+			namespaced = false
+		}
+	}
+	if others == 0 {
+		namespaced = false
+	}
+	changed := false
+	for _, i := range idx {
+		f := s.Folders[i]
+		if f.Kind == FolderInbox {
+			continue
+		}
+		rel := f.Remote
+		if namespaced {
+			rel = rel[len(inboxPrefix):]
+		}
+		parent, name := FolderID(""), strings.ReplaceAll(rel, f.Delim, "/")
+		if cut := strings.LastIndex(rel, f.Delim); cut >= 0 {
+			parentRemote := f.Remote[:len(f.Remote)-len(rel)+cut]
+			if j, ok := byRemote[parentRemote]; ok && j != i {
+				parent, name = s.Folders[j].ID, rel[cut+len(f.Delim):]
+			}
+		}
+		if f.Parent != parent || f.Name != name {
+			s.Folders[i].Parent, s.Folders[i].Name = parent, name
+			changed = true
+		}
+	}
+	return changed
+}
+
+// accountDelimLocked is the hierarchy delimiter the account's server uses
+// ("/" until a sync has said).
+func (s *LocalStore) accountDelimLocked(accountID string) string {
+	for _, f := range s.Folders {
+		if f.AccountID == accountID && f.Delim != "" {
+			return f.Delim
+		}
+	}
+	return "/"
 }
 
 // folderByRemoteLocked is the account's folder for a server mailbox, by
@@ -1432,8 +1527,8 @@ func (s *LocalStore) dropUnlistedFolders(accountID string, listed map[FolderID]b
 		if f.AccountID != accountID || f.Virtual || listed[f.ID] || f.Remote == "" {
 			continue
 		}
-		if s.loadFolderMeta(f.ID).UIDValidity == 0 {
-			continue
+		if !f.NoSelect && s.loadFolderMeta(f.ID).UIDValidity == 0 {
+			continue // made here and not on the server yet
 		}
 		if s.feat != nil && s.feat.touchesFolder(f.ID) {
 			continue
@@ -1471,19 +1566,12 @@ func (s *LocalStore) RenameFolder(id FolderID, name string) (Folder, error) {
 		return Folder{}, fmt.Errorf("mail: illegal folder name")
 	}
 	s.mu.Lock()
-	f, ok := s.folderLocked(id)
-	if !ok {
+	f, err := s.movableFolderLocked(id)
+	if err != nil {
 		s.mu.Unlock()
-		return Folder{}, fmt.Errorf("mail: no folder %s", id)
+		return Folder{}, err
 	}
-	if f.Virtual || f.Kind != FolderCustom {
-		s.mu.Unlock()
-		return Folder{}, fmt.Errorf("mail: %q is a system folder and cannot be renamed", f.Name)
-	}
-	delim := f.Delim
-	if delim == "" {
-		delim = "/"
-	}
+	delim := s.folderDelimLocked(f)
 	if strings.Contains(name, delim) {
 		s.mu.Unlock()
 		return Folder{}, fmt.Errorf("mail: a folder name cannot contain %q", delim)
@@ -1492,19 +1580,113 @@ func (s *LocalStore) RenameFolder(id FolderID, name string) (Folder, error) {
 	newRemote := name
 	if i := strings.LastIndex(oldRemote, delim); i >= 0 {
 		newRemote = oldRemote[:i+len(delim)] + name
+	} else if ns := s.namespacePrefixLocked(f.AccountID); ns != "" {
+		newRemote = ns + name
 	}
-	for _, x := range s.Folders {
-		if x.AccountID == f.AccountID && x.ID != id && !x.Virtual && strings.EqualFold(remoteName(x), newRemote) {
+	s.mu.Unlock()
+	return s.moveMailbox(f, newRemote, name, f.Parent)
+}
+
+// MoveFolder puts a user-created folder under parent (or at the top level
+// when parent is empty): RENAME on the server to its new path, then the
+// cache. Its messages, and the folders under it, go with it.
+func (s *LocalStore) MoveFolder(id, parent FolderID) (Folder, error) {
+	s.mu.Lock()
+	f, err := s.movableFolderLocked(id)
+	if err != nil {
+		s.mu.Unlock()
+		return Folder{}, err
+	}
+	if parent == f.Parent {
+		s.mu.Unlock()
+		return f, nil
+	}
+	delim := s.folderDelimLocked(f)
+	leaf := f.Name
+	if i := strings.LastIndex(remoteName(f), delim); i >= 0 {
+		leaf = remoteName(f)[i+len(delim):]
+	}
+	newRemote := s.namespacePrefixLocked(f.AccountID) + leaf
+	if parent != "" {
+		p, ok := s.folderLocked(parent)
+		switch {
+		case !ok || p.AccountID != f.AccountID || p.Virtual:
 			s.mu.Unlock()
-			return Folder{}, fmt.Errorf("mail: there is already a folder called %q", name)
+			return Folder{}, fmt.Errorf("mail: cannot move a folder there")
+		case p.ID == id || strings.HasPrefix(remoteName(p), remoteName(f)+delim):
+			s.mu.Unlock()
+			return Folder{}, fmt.Errorf("mail: a folder cannot go inside itself")
+		}
+		newRemote = remoteName(p) + delim + leaf
+	}
+	s.mu.Unlock()
+	return s.moveMailbox(f, newRemote, leaf, parent)
+}
+
+// movableFolderLocked is folder id when the user may rename or move it.
+func (s *LocalStore) movableFolderLocked(id FolderID) (Folder, error) {
+	f, ok := s.folderLocked(id)
+	if !ok {
+		return Folder{}, fmt.Errorf("mail: no folder %s", id)
+	}
+	if f.Virtual || f.Kind != FolderCustom {
+		return Folder{}, fmt.Errorf("mail: %q is a system folder and cannot be renamed or moved", f.Name)
+	}
+	return f, nil
+}
+
+func (s *LocalStore) folderDelimLocked(f Folder) string {
+	if f.Delim != "" {
+		return f.Delim
+	}
+	return s.accountDelimLocked(f.AccountID)
+}
+
+// namespacePrefixLocked is "INBOX." (or the like) for a server whose
+// folders all live under INBOX, else "".
+func (s *LocalStore) namespacePrefixLocked(accountID string) string {
+	prefix, others := "", 0
+	for _, f := range s.Folders {
+		if f.AccountID == accountID && f.Kind == FolderInbox && f.Delim != "" && f.Remote != "" {
+			prefix = f.Remote + f.Delim
 		}
 	}
-	accountID := f.AccountID
-	onServer := f.Remote != "" && accountID != LocalAccountID
+	if prefix == "" {
+		return ""
+	}
+	for _, f := range s.Folders {
+		if f.AccountID != accountID || f.Virtual || f.Remote == "" || f.Kind == FolderInbox {
+			continue
+		}
+		others++
+		if !strings.HasPrefix(strings.ToUpper(f.Remote), strings.ToUpper(prefix)) {
+			return ""
+		}
+	}
+	if others == 0 {
+		return ""
+	}
+	return prefix
+}
+
+// moveMailbox renames f's mailbox to newRemote on the server and in the
+// cache, where it is called name and sits under parent; the folders under
+// it follow.
+func (s *LocalStore) moveMailbox(f Folder, newRemote, name string, parent FolderID) (Folder, error) {
+	s.mu.Lock()
+	for _, x := range s.Folders {
+		if x.AccountID == f.AccountID && x.ID != f.ID && !x.Virtual && strings.EqualFold(remoteName(x), newRemote) {
+			s.mu.Unlock()
+			return Folder{}, fmt.Errorf("mail: there is already a folder called %q there", name)
+		}
+	}
+	delim := s.folderDelimLocked(f)
+	oldRemote := remoteName(f)
+	onServer := f.Remote != "" && f.AccountID != LocalAccountID
 	s.mu.Unlock()
 
 	if onServer {
-		cli, err := s.client(accountID)
+		cli, err := s.client(f.AccountID)
 		if err != nil {
 			return Folder{}, err
 		}
@@ -1516,12 +1698,12 @@ func (s *LocalStore) RenameFolder(id FolderID, name string) (Folder, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, x := range s.Folders {
-		if x.AccountID != accountID || x.Virtual {
+		if x.AccountID != f.AccountID || x.Virtual {
 			continue
 		}
 		switch {
-		case x.ID == id:
-			x.Name = name
+		case x.ID == f.ID:
+			x.Name, x.Parent = name, parent
 			if onServer {
 				x.Remote = newRemote
 			}
@@ -1535,12 +1717,39 @@ func (s *LocalStore) RenameFolder(id FolderID, name string) (Folder, error) {
 			meta.Remote = x.Remote
 			s.saveFolderMeta(x.ID, meta)
 		}
-		if x.ID == id {
-			f = x
-		}
+	}
+	if onServer {
+		s.nestFoldersLocked(f.AccountID)
 	}
 	s.saveLocked()
-	return f, nil
+	out, _ := s.folderLocked(f.ID)
+	return out, nil
+}
+
+// CompactFolder removes from the server what is marked deleted in a folder
+// (EXPUNGE) — mail another client deleted by marking it — and drops it here.
+func (s *LocalStore) CompactFolder(id FolderID) error {
+	s.mu.Lock()
+	f, ok := s.folderLocked(id)
+	s.mu.Unlock()
+	if !ok || f.Virtual || f.NoSelect || f.Remote == "" || f.AccountID == LocalAccountID {
+		return fmt.Errorf("mail: this folder cannot be compacted")
+	}
+	cli, err := s.client(f.AccountID)
+	if err != nil {
+		return err
+	}
+	err = cli.inBox(func() error {
+		if err := selectFor(cli, f, false); err != nil {
+			return err
+		}
+		return cli.expunge()
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.syncFolder(cli, f) // the diff drops what is gone
+	return err
 }
 
 func (s *LocalStore) syncPOP3(accountID string) (int, error) {

@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
@@ -88,4 +89,50 @@ func askNameWindow(t *testing.T, a *app.Application, open func()) *app.Window {
 	}
 	t.Fatal("no prompt window opened")
 	return nil
+}
+
+// A list that mixes folders says where each message is.
+func TestMixedListsNameTheFolder(t *testing.T) {
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	s.searchAll = true
+	s.filter.Query = "lunch"
+	s.refreshList()
+	if len(s.rows) == 0 {
+		t.Fatal("no search results")
+	}
+	if s.table.Columns[3].Title != "Who · Folder" || !strings.Contains(s.cellText(0, 3), "  ·  Inbox") {
+		t.Fatalf("column %q cell %q", s.table.Columns[3].Title, s.cellText(0, 3))
+	}
+	s.searchAll = false
+	s.filter.Query = ""
+	s.refreshList()
+	if s.table.Columns[3].Title != "Who" || strings.Contains(s.cellText(0, 3), "·") {
+		t.Fatalf("a single folder: %q %q", s.table.Columns[3].Title, s.cellText(0, 3))
+	}
+}
+
+// Move Folder To offers the top level and every other folder, but not the
+// folder itself or what is inside it.
+func TestFolderMoveMenu(t *testing.T) {
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	proj, _, _ := s.cli.GetFolder(mailcore.FolderAdaProjects)
+	sub, err := s.cli.CreateFolder(mailcore.AcctAda, "Inner", proj.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, it := range s.folderMoveMenu(proj) {
+		texts = append(texts, strings.TrimSpace(it.Text))
+	}
+	all := strings.Join(texts, "|")
+	if !strings.HasPrefix(all, "Top Level|") || strings.Contains(all, "Projects") || strings.Contains(all, sub.Name) || !strings.Contains(all, "Archives") {
+		t.Fatalf("menu %q", all)
+	}
+	s.moveFolder(proj, mailcore.FolderAdaArchives)
+	s.waitIdle()
+	if f, _, _ := s.cli.GetFolder(proj.ID); f.Parent != mailcore.FolderAdaArchives {
+		t.Fatalf("moved %+v", f)
+	}
 }

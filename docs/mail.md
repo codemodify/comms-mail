@@ -500,9 +500,19 @@ created by hand with a looser umask — it holds a plaintext password.
 ## Folders
 
 Right-click a folder for **New Folder…** / **New Subfolder…** (each asks
-for a name), **Rename Folder…**, **Delete Folder…** and **Mark Folder Read**.
-Only folders you made can be renamed or deleted; Inbox, Sent, Drafts, Trash
-and the rest cannot.
+for a name), **Rename Folder…**, **Move Folder To** (another folder, or the
+top level), **Delete Folder…**, **Mark Folder Read** and **Compact Folder**
+(removes from the server what another client deleted by marking it). Only
+folders you made can be renamed, moved or deleted; Inbox, Sent, Drafts,
+Trash and the rest cannot.
+
+Folders nest as the server names them: `Archives/2023` shows as `2023`
+under `Archives`, using the server's own delimiter (`/` or `.`). A mailbox
+that only holds others (Gmail's `[Gmail]`, `\Noselect`) is their parent and
+is never opened. On a server that keeps every folder under `INBOX.` (a
+namespace), they are not all shown inside Inbox. A list that mixes folders
+— All folders, a unified or tag view — names each message's folder beside
+its sender.
 
 A rename is an IMAP `RENAME` (the server renames the folders under it
 too). The folder keeps its id and its messages keep theirs, so nothing is
@@ -629,6 +639,8 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `folders.list` | `{accountId}` |
 | `folders.get` | `{id}` |
 | `folders.create` | `{accountId, name, parent?}` |
+| `folders.move` | `{folderId, parent?}` — user folders only: IMAP `RENAME` to the new path; no parent = top level |
+| `folders.compact` | `{folderId}` — `EXPUNGE`: remove what is marked deleted |
 | `folders.rename` | `{folderId, name}` — user folders only: IMAP `RENAME`, the folder keeps its id and messages |
 | `folders.delete` | `{folderId}` — user folders only, with their messages, on the server too |
 | `folders.markRead` | `{folderId}` |

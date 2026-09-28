@@ -352,6 +352,18 @@ func (c *Client) DeleteFolder(id FolderID) error {
 	return c.call(MethodFoldersDelete, folderIDParams{FolderID: id}, nil)
 }
 
+// MoveFolder puts a user-created folder under parent ("" = top level).
+func (c *Client) MoveFolder(id, parent FolderID) (Folder, error) {
+	var f Folder
+	err := c.call(MethodFoldersMove, folderMoveParams{FolderID: id, Parent: parent}, &f)
+	return f, err
+}
+
+// CompactFolder removes what is marked deleted in a folder, on the server.
+func (c *Client) CompactFolder(id FolderID) error {
+	return c.call(MethodFoldersCompact, folderIDParams{FolderID: id}, nil)
+}
+
 // RenameFolder gives a user-created folder a new name.
 func (c *Client) RenameFolder(id FolderID, name string) (Folder, error) {
 	var f Folder

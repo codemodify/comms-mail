@@ -384,6 +384,26 @@ func (s *Server) dispatch(req Request) Response {
 				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
 			}
 		}
+	case MethodFoldersMove:
+		var p folderMoveParams
+		p, err = decodeParams[folderMoveParams](req.Params)
+		if err == nil {
+			result, err = s.Store.MoveFolder(p.FolderID, p.Parent)
+			if err == nil {
+				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
+			}
+		}
+	case MethodFoldersCompact:
+		var p folderIDParams
+		p, err = decodeParams[folderIDParams](req.Params)
+		if err == nil {
+			if ls, ok := s.Store.(*LocalStore); ok {
+				err = ls.CompactFolder(p.FolderID)
+			}
+			if err == nil {
+				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
+			}
+		}
 	case MethodFoldersRename:
 		var p folderRenameParams
 		p, err = decodeParams[folderRenameParams](req.Params)
