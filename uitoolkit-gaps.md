@@ -64,3 +64,12 @@ inline lists would simplify.
 
 ## Future
 <!-- append new findings here as they turn up -->
+
+### 9. FileDialog has no folder-picking mode
+`FileDialogOptions.Mode` is `FileOpen` or `FileSave`. Choosing a directory
+works only implicitly: open the folder and press Open with nothing selected
+(the dialog returns what the path field says, then the selection, then the
+directory). comms-mail's "Add a folder or mailbox file…" relies on that and
+has to explain it in the title. Maildir / MH / .eml imports are directories.
+**Fix:** a `FileOpenFolder` mode (the portal's `directory` option does this
+natively).

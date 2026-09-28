@@ -249,7 +249,12 @@ func ThunderbirdProfiles() []string {
 	var roots []string
 	home, _ := os.UserHomeDir()
 	if home != "" {
-		roots = append(roots, filepath.Join(home, ".thunderbird"), filepath.Join(home, ".mozilla-thunderbird"))
+		roots = append(roots,
+			filepath.Join(home, ".thunderbird"),
+			filepath.Join(home, ".mozilla-thunderbird"),
+			filepath.Join(home, ".var", "app", "org.mozilla.Thunderbird", ".thunderbird"), // Flatpak
+			filepath.Join(home, "snap", "thunderbird", "common", ".thunderbird"),          // Snap
+		)
 	}
 	var out []string
 	seen := map[string]bool{}

@@ -318,7 +318,7 @@ type Store interface {
 	MarkFolderRead(id FolderID) error
 	// ImportLocalMail reads on-disk mail (Thunderbird/KMail) into the local
 	// "On This Computer" account.
-	ImportLocalMail() (ImportResult, error)
+	ImportLocalMail(stores []LocalMailStore) (ImportResult, error)
 
 	ListMessages(folder FolderID) []Message
 	GetMessage(id MessageID) (Message, bool)

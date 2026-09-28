@@ -77,7 +77,7 @@ const (
 	MethodFoldersDelete   = "folders.delete"
 	MethodFoldersMarkRead = "folders.markRead"
 	MethodImportScan      = "import.scan"
-	MethodImportMailScan  = "import.mailScan"
+	MethodImportScanPath  = "import.scanPath"
 	MethodImportMail      = "import.mail"
 	MethodMessagesFlags   = "messages.setFlags"
 	MethodMessagesMove    = "messages.move"
@@ -201,6 +201,14 @@ type searchParams struct {
 	AccountID string   `json:"accountId,omitempty"`
 	FolderID  FolderID `json:"folderId,omitempty"`
 	Filter    Filter   `json:"filter"`
+}
+
+type importPathParams struct {
+	Path string `json:"path"`
+}
+
+type importMailParams struct {
+	Stores []LocalMailStore `json:"stores"`
 }
 
 type folderIDParams struct {

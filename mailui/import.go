@@ -2,7 +2,7 @@ package mailui
 
 import (
 	"fmt"
-	"sort"
+	"os"
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
@@ -12,158 +12,248 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// importScan is what a scan of Thunderbird and KMail found: account settings
-// and on-disk mail.
-type importScan struct {
-	accounts []mailcore.ImportedAccount
-	mail     []mailcore.LocalMailStore
-}
-
-// startImport scans Thunderbird and KMail for account settings and local
-// mail, then opens a window to choose what to bring in. Accounts already set
-// up here are left out. onDone runs after an import so the caller refreshes.
+// startImport scans the other mail clients installed for this user, then
+// opens the import window. Accounts already set up here are left out.
+// onDone runs after an import so the caller can refresh.
 func startImport(a *app.Application, win *app.Window, cli *mailcore.Client, existing []mailcore.Account, onDone func()) {
 	have := map[string]bool{}
 	for _, acc := range existing {
 		have[strings.ToLower(acc.Address)] = true
 	}
 	runAsync(a, func() (any, error) {
-		accs, accErr := cli.ImportScan()
-		mail, _ := cli.ImportMailScan()
-		if accErr != nil && len(mail) == 0 {
-			return nil, accErr
-		}
-		return importScan{accounts: accs, mail: mail}, nil
+		return cli.ImportScan()
 	}, func(v any, err error) {
 		if err != nil {
 			widgets.Warn(win.Content(), "Import", err.Error(), nil)
 			return
 		}
-		sc := v.(importScan)
-		var todo []mailcore.ImportedAccount
-		for _, f := range sc.accounts {
-			if f.Account.Address != "" && !have[strings.ToLower(f.Account.Address)] {
-				todo = append(todo, f)
-			}
-		}
-		if len(todo) == 0 && len(sc.mail) == 0 {
-			widgets.Warn(win.Content(), "Import",
-				"Nothing to import from Thunderbird or KMail.\n\nAccounts already set up here are skipped.", nil)
-			return
-		}
-		openImportWindow(a, cli, todo, sc.mail, onDone)
+		openImportWindow(a, cli, v.([]mailcore.ImportSource), have, onDone)
 	})
 }
 
-// openImportWindow offers two things to bring in, each with its own
-// checkboxes: account settings (one per account) and local mail (the on-disk
-// folders, into the "On This Computer" account). Passwords are never read.
-func openImportWindow(a *app.Application, cli *mailcore.Client, accounts []mailcore.ImportedAccount, mail []mailcore.LocalMailStore, onDone func()) {
+// importSection is one client (or one chosen folder) in the import window:
+// a Config checkbox over one checkbox per account, and an Emails checkbox.
+type importSection struct {
+	src       mailcore.ImportSource
+	accounts  []mailcore.ImportedAccount // the ones not already set up here
+	cfg       *widgets.Checkbox
+	acctBoxes []*widgets.Checkbox
+	mail      *widgets.Checkbox
+}
+
+// importOutcome is what the Import button did.
+type importOutcome struct {
+	accounts int
+	errs     []string
+	didMail  bool
+	mail     mailcore.ImportResult
+	mailErr  error
+}
+
+// openImportWindow lists what each client offers — its account settings and
+// its on-disk mail, each behind its own checkbox — and lets the user add a
+// folder or mailbox file of their own.
+func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailcore.ImportSource, have map[string]bool, onDone func()) *app.Window {
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: "Import", Width: 600, Height: 520, MinWidth: 460, MinHeight: 380,
+		Title: "Import", Width: 660, Height: 600, MinWidth: 500, MinHeight: 440,
 	})
 	if err != nil {
-		return
+		return nil
 	}
-	rows := []widget.Component{widgets.NewTitle("Import from Thunderbird and KMail")}
+	list := widgets.NewColumn().WithGap(8)
+	list.Add(widgets.NewTitle("Import from other mail clients"))
+	list.Add(wrapLabel("Pick what to bring in from each client. Passwords are never imported — set one for each account (or sign in) afterward. Mail kept on an IMAP server is not listed: it syncs down once its account is added."))
+	none := wrapLabel("No other mail client was found. Add a folder or mailbox file below — an mbox, a maildir, an MH folder, or .eml / .emlx files.")
+	list.Add(none)
 
-	// Account settings.
-	acctChecks := make([]*widgets.Checkbox, len(accounts))
-	if len(accounts) > 0 {
-		rows = append(rows,
-			wrapLabel("Account settings — servers, identities and signatures. Passwords are not imported; set one per account (or sign in) afterward."),
-		)
-		for i, f := range accounts {
-			in := f.Account.IMAP
-			proto := "IMAP"
-			if f.Account.Protocol == "pop3" {
-				in, proto = f.Account.POP, "POP3"
+	var sections []*importSection
+	addSection := func(src mailcore.ImportSource) {
+		sec := &importSection{src: src}
+		for _, acc := range src.Accounts {
+			if acc.Account.Address != "" && !have[strings.ToLower(acc.Account.Address)] {
+				sec.accounts = append(sec.accounts, acc)
 			}
-			label := fmt.Sprintf("%s  ·  %s  ·  %s %s", f.Source, f.Account.Address, proto, in.Host)
-			acctChecks[i] = widgets.NewCheckbox(label, true, nil)
-			rows = append(rows, acctChecks[i])
 		}
+		if len(sec.accounts) == 0 && len(src.Mail) == 0 && src.Note == "" {
+			return
+		}
+		none.SetVisible(false)
+		list.Add(widgets.NewSeparator())
+		list.Add(widgets.NewTitle(src.Source))
+		if src.Note != "" {
+			list.Add(wrapLabel(src.Note))
+		}
+		switch {
+		case len(sec.accounts) > 0:
+			sec.cfg = widgets.NewCheckbox(fmt.Sprintf("Config — %d account(s): servers, identities, signatures", len(sec.accounts)), true, func(on bool) {
+				for _, b := range sec.acctBoxes {
+					b.SetChecked(on)
+				}
+			})
+			list.Add(sec.cfg)
+			for _, acc := range sec.accounts {
+				b := widgets.NewCheckbox(accountLine(acc.Account), true, nil)
+				sec.acctBoxes = append(sec.acctBoxes, b)
+				list.Add(indent(b))
+			}
+		case len(src.Accounts) > 0:
+			list.Add(indent(widgets.NewLabel("Config — every account here is already set up.")))
+		}
+		if len(src.Mail) > 0 {
+			sec.mail = widgets.NewCheckbox(fmt.Sprintf("Emails — %d folder(s) kept on disk", len(src.Mail)), true, nil)
+			list.Add(sec.mail)
+			list.Add(indent(widgets.NewLabel(storeList(src.Mail, 8))))
+		}
+		sections = append(sections, sec)
+		list.RequestLayout()
+		list.Invalidate()
 	}
-
-	// Local mail.
-	var mailCheck *widgets.Checkbox
-	if len(mail) > 0 {
-		rows = append(rows, widgets.NewSeparator())
-		rows = append(rows,
-			wrapLabel("Local mail — messages that live only on disk (Thunderbird Local Folders, KMail maildir). IMAP mail is not listed: it re-syncs from its server."),
-		)
-		mailCheck = widgets.NewCheckbox(localMailSummary(mail), true, nil)
-		rows = append(rows, mailCheck)
-		rows = append(rows, widgets.NewLabel(localMailFolderList(mail, 8)))
+	for _, src := range sources {
+		addSection(src)
 	}
 
 	status := widgets.NewLabel("")
+	addFolder := widgets.NewButton("Add a folder or mailbox file…", func() {
+		home, _ := os.UserHomeDir()
+		widgets.ShowFileDialog(win.Content(), widgets.FileDialogOptions{
+			Title:      "Choose a mailbox file, or open a mail folder and press Open",
+			Mode:       widgets.FileOpen,
+			Path:       home,
+			OnNavigate: mailDirEntries,
+			OnPick: func(path string) {
+				if strings.TrimSpace(path) == "" {
+					return
+				}
+				status.SetText("Looking for mail in " + path + "…")
+				runAsync(a, func() (any, error) {
+					return cli.ImportScanPath(path)
+				}, func(v any, err error) {
+					status.SetText("")
+					if err != nil {
+						widgets.Warn(win.Content(), "Import", err.Error(), nil)
+						return
+					}
+					src := v.(mailcore.ImportSource)
+					if len(src.Mail) == 0 {
+						widgets.Warn(win.Content(), "Import", src.Note, nil)
+						return
+					}
+					addSection(src)
+				})
+			},
+		})
+	})
+
 	var imp *widgets.Button
 	imp = widgets.NewButton("Import", func() {
-		imp.SetEnabled(false)
-		n := 0
-		var errs []string
-		for i, f := range accounts {
-			if acctChecks[i] == nil || !acctChecks[i].Checked {
-				continue
-			}
-			if _, err := cli.PutAccount(f.Account); err != nil {
-				errs = append(errs, f.Account.Address+": "+err.Error())
-				continue
-			}
-			n++
-		}
-		finish := func(mailRes mailcore.ImportResult, mailErr error, didMail bool) {
-			var b strings.Builder
-			if n > 0 {
-				fmt.Fprintf(&b, "Imported %d account(s) — set a password for each in Accounts.\n", n)
-			}
-			if didMail {
-				if mailErr != nil {
-					fmt.Fprintf(&b, "Local mail: %s\n", mailErr)
-				} else {
-					fmt.Fprintf(&b, "Imported %d message(s) into %d folder(s) under “%s”.\n", mailRes.Messages, mailRes.Folders, mailcore.LocalAccountName)
+		var accounts []mailcore.AccountConfig
+		var stores []mailcore.LocalMailStore
+		seen := map[string]bool{}
+		for _, sec := range sections {
+			for i, b := range sec.acctBoxes {
+				acc := sec.accounts[i].Account
+				key := strings.ToLower(acc.Address)
+				if b.Checked && !seen[key] {
+					seen[key] = true
+					accounts = append(accounts, acc)
 				}
 			}
-			for _, e := range errs {
-				fmt.Fprintf(&b, "%s\n", e)
+			if sec.mail != nil && sec.mail.Checked {
+				stores = append(stores, sec.src.Mail...)
 			}
+		}
+		if len(accounts) == 0 && len(stores) == 0 {
+			widgets.Warn(win.Content(), "Import", "Nothing is ticked.", nil)
+			return
+		}
+		imp.SetEnabled(false)
+		status.SetText("Importing…")
+		runAsync(a, func() (any, error) {
+			var r importOutcome
+			for _, acc := range accounts {
+				if _, err := cli.PutAccount(acc); err != nil {
+					r.errs = append(r.errs, acc.Address+": "+err.Error())
+					continue
+				}
+				r.accounts++
+			}
+			if len(stores) > 0 {
+				r.didMail = true
+				r.mail, r.mailErr = cli.ImportMail(stores)
+			}
+			return r, nil
+		}, func(v any, _ error) {
+			status.SetText("")
 			if onDone != nil {
 				onDone()
 			}
-			msg := strings.TrimSpace(b.String())
-			if msg == "" {
-				msg = "Nothing was selected."
-			}
-			widgets.Warn(win.Content(), "Import", msg, func() { win.Close() })
-		}
-		if mailCheck != nil && mailCheck.Checked {
-			status.SetText("Importing local mail…")
-			runAsync(a, func() (any, error) {
-				return cli.ImportMail()
-			}, func(v any, err error) {
-				var r mailcore.ImportResult
-				if err == nil {
-					r = v.(mailcore.ImportResult)
-				}
-				finish(r, err, true)
-			})
-			return
-		}
-		finish(mailcore.ImportResult{}, nil, false)
+			widgets.Warn(win.Content(), "Import", importSummary(v.(importOutcome)), func() { win.Close() })
+		})
 	})
 	imp.Primary = true
 	cancel := widgets.NewButton("Cancel", func() { win.Close() })
 
-	list := widgets.NewColumn(rows...).WithGap(8)
 	scroll := widgets.NewScrollView(list)
 	body := widgets.NewColumn(
 		scroll,
 		status,
-		widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(imp, widgets.RoleAccept),
+		widgets.NewRow(addFolder, widgets.NewSpacer(),
+			widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(imp, widgets.RoleAccept)).WithGap(8),
 	).WithGap(10)
 	body.AddFlex(scroll, 1)
 	win.SetContent(widgets.NewPad(12, body))
+	return win
+}
+
+// importSummary says what an import did, for the closing message.
+func importSummary(r importOutcome) string {
+	var b strings.Builder
+	if r.accounts > 0 {
+		fmt.Fprintf(&b, "Added %d account(s) — set a password for each in Accounts (or sign in).\n", r.accounts)
+	}
+	if r.didMail {
+		if r.mailErr != nil {
+			fmt.Fprintf(&b, "Emails: %s\n", r.mailErr)
+		} else {
+			fmt.Fprintf(&b, "Imported %d message(s) into %d folder(s) under “%s”.\n", r.mail.Messages, r.mail.Folders, mailcore.LocalAccountName)
+		}
+	}
+	for _, e := range r.errs {
+		fmt.Fprintf(&b, "%s\n", e)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// accountLine is one account in the import list: address, protocol, host.
+func accountLine(a mailcore.AccountConfig) string {
+	in, proto := a.IMAP, "IMAP"
+	if a.Protocol == mailcore.ProtoPOP3 {
+		in, proto = a.POP, "POP3"
+	}
+	line := fmt.Sprintf("%s  ·  %s %s", a.Address, proto, in.Host)
+	if a.Provider != "" {
+		line += "  ·  sign in with " + a.Provider
+	}
+	return line
+}
+
+// storeList names the folders an Emails checkbox covers, up to max.
+func storeList(st []mailcore.LocalMailStore, max int) string {
+	var names []string
+	for i, s := range st {
+		if i == max {
+			names = append(names, fmt.Sprintf("… and %d more", len(st)-max))
+			break
+		}
+		names = append(names, s.Name+"  ("+s.Kind+")")
+	}
+	return strings.Join(names, "\n")
+}
+
+func indent(c widget.Component) widget.Component {
+	p := widgets.NewPad(0, c)
+	p.L = 24
+	return p
 }
 
 // wrapLabel is a label that wraps to its width instead of eliding.
@@ -171,36 +261,4 @@ func wrapLabel(text string) *widgets.Label {
 	l := widgets.NewLabel(text)
 	l.Wrap = true
 	return l
-}
-
-// localMailSummary is the local-mail checkbox's label: how many folders, from
-// which clients.
-func localMailSummary(mail []mailcore.LocalMailStore) string {
-	by := map[string]int{}
-	for _, m := range mail {
-		by[m.Source]++
-	}
-	var srcs []string
-	for s := range by {
-		srcs = append(srcs, s)
-	}
-	sort.Strings(srcs)
-	var parts []string
-	for _, s := range srcs {
-		parts = append(parts, fmt.Sprintf("%d from %s", by[s], s))
-	}
-	return fmt.Sprintf("Import local mail — %d folder(s): %s", len(mail), strings.Join(parts, ", "))
-}
-
-// localMailFolderList names the folders that will be imported, up to max.
-func localMailFolderList(mail []mailcore.LocalMailStore, max int) string {
-	var names []string
-	for i, m := range mail {
-		if i == max {
-			names = append(names, fmt.Sprintf("… and %d more", len(mail)-max))
-			break
-		}
-		names = append(names, "   "+m.Source+" · "+m.Name)
-	}
-	return strings.Join(names, "\n")
 }

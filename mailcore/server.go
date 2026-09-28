@@ -338,22 +338,23 @@ func (s *Server) dispatch(req Request) Response {
 			result = s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter})
 		}
 	case MethodImportScan:
-		var all []ImportedAccount
-		if a, e := ImportThunderbird(); e == nil {
-			all = append(all, a...)
-		}
-		if a, e := ImportKMail(); e == nil {
-			all = append(all, a...)
-		}
-		result = all
-	case MethodImportMailScan:
-		result = DiscoverLocalMail()
-	case MethodImportMail:
-		var r ImportResult
-		r, err = s.Store.ImportLocalMail()
+		result = ScanImportSources()
+	case MethodImportScanPath:
+		var p importPathParams
+		p, err = decodeParams[importPathParams](req.Params)
 		if err == nil {
-			result = r
-			s.broadcast(EventChanged, eventParams{Reason: "import"})
+			result, err = ScanPath(p.Path)
+		}
+	case MethodImportMail:
+		var p importMailParams
+		p, err = decodeParams[importMailParams](req.Params)
+		if err == nil {
+			var r ImportResult
+			r, err = s.Store.ImportLocalMail(p.Stores)
+			if err == nil {
+				result = r
+				s.broadcast(EventChanged, eventParams{Reason: "import"})
+			}
 		}
 	case MethodFoldersDelete:
 		var p folderIDParams

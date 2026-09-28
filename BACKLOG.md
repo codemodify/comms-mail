@@ -43,10 +43,12 @@ new ones turn up.
 
 - **Import contacts / filters** (see below) — account settings and local
   mail import are done; these remain.
-- **Import: raw source for imported mail** — imported messages have no .eml
-  blob, so the Source tab is empty for them.
-- **Import: more clients** — Evolution, Claws Mail, Geary, mutt; a generic
-  "import an mbox / maildir / .eml folder"; Flatpak/Snap Thunderbird paths.
+- **Import: tests for the client config readers** — Evolution, Claws Mail,
+  Geary, mutt and Apple Mail settings parsing has no fixture tests yet (their
+  mail discovery goes through the tested generic scanner).
+- **Import: keep read/unread** — imported mail is all marked read; maildir
+  `:2,S` flags, mbox `Status:` and emlx flags could carry the real state.
+- **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 - **Import contacts** — Thunderbird address book (abook.sqlite / .mab) and
   KMail/KAddressBook vCards, to seed the address book beyond what the cached
   messages give.

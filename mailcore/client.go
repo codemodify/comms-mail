@@ -187,7 +187,9 @@ func callTimeout(method string) time.Duration {
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource:
 		return 5 * time.Minute
-	case MethodAccountsTest, MethodHostsProbe:
+	case MethodImportMail:
+		return 30 * time.Minute // a large mbox takes a while
+	case MethodAccountsTest, MethodHostsProbe, MethodImportScan, MethodImportScanPath:
 		return 2 * time.Minute
 	default:
 		return 30 * time.Second
@@ -319,25 +321,25 @@ func (c *Client) GetMessage(id MessageID) (Message, bool, error) {
 	return m, m.ID != "", nil
 }
 
-// ImportScan finds accounts configured in Thunderbird and KMail, passwords
-// blank, to be confirmed and saved.
-func (c *Client) ImportScan() ([]ImportedAccount, error) {
-	var out []ImportedAccount
+// ImportScan finds the mail clients installed for this user and what each
+// has: accounts (passwords blank) and on-disk mail.
+func (c *Client) ImportScan() ([]ImportSource, error) {
+	var out []ImportSource
 	err := c.call(MethodImportScan, nil, &out)
 	return out, err
 }
 
-// ImportMailScan lists the local mail folders found in Thunderbird and KMail.
-func (c *Client) ImportMailScan() ([]LocalMailStore, error) {
-	var out []LocalMailStore
-	err := c.call(MethodImportMailScan, nil, &out)
+// ImportScanPath finds the mail in a file or folder the user chose.
+func (c *Client) ImportScanPath(path string) (ImportSource, error) {
+	var out ImportSource
+	err := c.call(MethodImportScanPath, importPathParams{Path: path}, &out)
 	return out, err
 }
 
-// ImportMail reads on-disk mail into the local account.
-func (c *Client) ImportMail() (ImportResult, error) {
+// ImportMail reads the chosen on-disk stores into the local account.
+func (c *Client) ImportMail(stores []LocalMailStore) (ImportResult, error) {
 	var r ImportResult
-	err := c.call(MethodImportMail, nil, &r)
+	err := c.call(MethodImportMail, importMailParams{Stores: stores}, &r)
 	return r, err
 }
 
