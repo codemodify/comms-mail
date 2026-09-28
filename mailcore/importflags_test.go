@@ -71,7 +71,7 @@ func TestImportKeepsMboxState(t *testing.T) {
 	wantStates(t, got, map[string]state{
 		"seen":  {read: true, present: true},
 		"new":   {starred: true, present: true},
-		"gone":  {},                            // expunged in Thunderbird: not imported
+		"gone":  {},                          // expunged in Thunderbird: not imported
 		"plain": {read: true, present: true}, // nothing recorded: old mail, read
 	})
 }
