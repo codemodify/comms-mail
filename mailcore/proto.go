@@ -143,6 +143,8 @@ const (
 	EventFetched = "mail.fetched"
 	EventSynced  = "mail.synced"
 	EventNotify  = "mail.notify"
+	// EventProgress reports a long operation's progress (Title says it).
+	EventProgress = "mail.progress"
 )
 
 // Request is a JSON-RPC 2.0 request.

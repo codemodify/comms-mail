@@ -54,10 +54,6 @@ new ones turn up.
   pass servers' per-user connection limits; NOTIFY, RFC 5465, would not).
 
 
-## Message list / actions
-- **Bulk-action progress** — feedback for a move/delete over a large
-  selection.
-
 ## Storage / perf
 - **List payloads carry the text body** for downloaded messages; a
   headers-only list query would shrink them on large folders.

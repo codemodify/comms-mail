@@ -80,6 +80,10 @@ func ListenAndServe(ctx context.Context, socket string, store Store) error {
 		// Background work (IDLE, the periodic poll) tells connected clients
 		// what changed instead of leaving the UI to poll.
 		ls.SetOnChange(func(ev StoreEvent) {
+			if ev.Reason == "progress" {
+				srv.broadcast(EventProgress, eventParams{Title: ev.Title, Count: ev.Count})
+				return
+			}
 			srv.broadcast(EventChanged, eventParams{
 				FolderID: ev.FolderID, AccountID: ev.AccountID,
 				Count: ev.Count, Reason: ev.Reason,

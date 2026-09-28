@@ -78,6 +78,7 @@ type StoreEvent struct {
 	AccountID string
 	FolderID  FolderID
 	Count     int
+	Title     string // a "progress" event's words
 }
 
 // SetOnChange registers the daemon's broadcast hook. fn is always called
@@ -943,49 +944,102 @@ func (s *LocalStore) Move(ids []MessageID, dest FolderID) error {
 	}
 	s.mu.Unlock()
 
-	dremote := remoteName(df)
-	for _, j := range jobs {
-		var newUID uint32
-		var moveErr error
-		cli, err := s.client(j.msg.AccountID)
-		if err == nil {
-			moveErr = cli.inBox(func() error {
-				if err := selectFor(cli, j.src, false); err != nil {
-					return err
-				}
-				var err error
-				newUID, err = cli.uidMove(j.msg.UID, dremote)
-				return err
-			})
-		} else {
-			moveErr = err
-		}
-		s.mu.Lock()
-		i, ok := s.indexLocked(j.id)
-		if !ok {
-			s.mu.Unlock()
-			continue
-		}
-		if moveErr != nil {
-			if s.feat != nil {
-				s.feat.mu.Lock()
-				op := s.serverMoveOpLocked(j.msg, dest)
-				op.Error = moveErr.Error()
-				s.feat.enqueueLocked(op)
-				s.feat.mu.Unlock()
-			}
-			s.Messages[i].Folder = dest
-			s.mu.Unlock()
-			continue
-		}
-		s.rekeyMovedLocked(i, dest, newUID)
-		s.mu.Unlock()
+	mj := make([]moveJob, len(jobs))
+	for k, j := range jobs {
+		mj[k] = moveJob{id: j.id, msg: j.msg, src: j.src}
 	}
-	s.mu.Lock()
-	s.saveLocked()
-	s.mu.Unlock()
+	s.moveOnServer(mj, df, "Moving to "+df.Name)
 	return nil
 }
+
+// moveJob is one message a server move takes: where it is, as it was.
+type moveJob struct {
+	id  MessageID
+	msg Message
+	src Folder
+}
+
+// moveOnServer moves the jobs' messages to dest on the server — a folder at
+// a time and up to moveBatch messages a command: one SELECT and one UID
+// MOVE for many, where it used to be both for each (a thousand round trips
+// for five hundred messages) — and re-keys the cache to the UIDs the server
+// gives them. What fails waits in the Outbox. A long move reports its
+// progress (verb: "Moving to Archive", "Deleting").
+func (s *LocalStore) moveOnServer(jobs []moveJob, dest Folder, verb string) {
+	type group struct {
+		src  Folder
+		acct string
+		jobs []moveJob
+	}
+	var groups []*group
+	byFolder := map[FolderID]*group{}
+	for _, j := range jobs {
+		g := byFolder[j.src.ID]
+		if g == nil {
+			g = &group{src: j.src, acct: j.msg.AccountID}
+			byFolder[j.src.ID] = g
+			groups = append(groups, g)
+		}
+		g.jobs = append(g.jobs, j)
+	}
+	dremote := remoteName(dest)
+	done, total := 0, len(jobs)
+	for _, g := range groups {
+		for start := 0; start < len(g.jobs); start += moveBatch {
+			chunk := g.jobs[start:min(start+moveBatch, len(g.jobs))]
+			uids := make([]uint32, len(chunk))
+			for k, j := range chunk {
+				uids[k] = j.msg.UID
+			}
+			var moved map[uint32]uint32
+			cli, moveErr := s.client(g.acct)
+			if moveErr == nil {
+				moveErr = cli.inBox(func() error {
+					if err := selectFor(cli, g.src, false); err != nil {
+						return err
+					}
+					var err error
+					moved, err = cli.uidMoveSet(sortedUIDs(uids), dremote)
+					return err
+				})
+			}
+			s.mu.Lock()
+			for _, j := range chunk {
+				i, ok := s.indexLocked(j.id)
+				if !ok {
+					continue
+				}
+				if moveErr != nil {
+					// The cache has it; the server gets it when it answers.
+					if s.feat != nil {
+						s.feat.mu.Lock()
+						op := s.serverMoveOpLocked(j.msg, dest.ID)
+						op.Error = moveErr.Error()
+						s.feat.enqueueLocked(op)
+						s.feat.mu.Unlock()
+					}
+					s.Messages[i].Folder = dest.ID
+					continue
+				}
+				s.rekeyMovedLocked(i, dest.ID, moved[j.msg.UID])
+			}
+			s.saveLocked()
+			s.mu.Unlock()
+			done += len(chunk)
+			if total >= progressFrom {
+				s.Emit(StoreEvent{Reason: "progress", AccountID: g.acct, Count: done,
+					Title: fmt.Sprintf("%s… %d of %d", verb, done, total)})
+			}
+		}
+	}
+}
+
+// moveBatch is how many messages one UID MOVE carries; progressFrom is how
+// many a move must hold before it reports its progress.
+const (
+	moveBatch    = 200
+	progressFrom = 50
+)
 
 // rekeyMovedLocked applies a completed server-side move to the cache entry
 // at index i. newUID == 0 means the server gave us no UID: the entry is
@@ -1026,17 +1080,16 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 		ids[k] = s.resolveLocked(ids[k]) // a draft re-keyed since the window last saw it
 	}
 	offline := s.feat != nil && !s.feat.Online()
-	type purge struct {
-		msg Message
-		src Folder
-	}
 	type toTrash struct {
 		id    MessageID
 		msg   Message
 		src   Folder
 		trash Folder
 	}
-	var purges []purge
+	var purges []struct {
+		msg Message
+		src Folder
+	}
 	var moves []toTrash
 	for _, id := range ids {
 		i, ok := s.indexLocked(id)
@@ -1064,7 +1117,10 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 		}
 		if cur.Kind == FolderTrash || !hasTrash {
 			if !offline {
-				purges = append(purges, purge{msg: m, src: cur})
+				purges = append(purges, struct {
+					msg Message
+					src Folder
+				}{m, cur})
 			}
 			s.removeRawLocked(m)
 			if s.feat != nil && s.feat.index != nil {
@@ -1081,40 +1137,75 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 	s.saveLocked()
 	s.mu.Unlock()
 
-	for _, p := range purges {
-		if err := s.expungeOne(p.msg, p.src); err != nil {
-			s.queueFailed(p.msg, "delete", "", err)
-		}
-	}
+	s.purgeOnServer(purges)
+	// To each account's Trash, batched as moves are.
+	byTrash := map[FolderID][]moveJob{}
+	trashes := map[FolderID]Folder{}
+	var order []FolderID
 	for _, mv := range moves {
-		var newUID uint32
-		cli, err := s.client(mv.msg.AccountID)
-		if err != nil {
-			s.queueFailed(mv.msg, "move", mv.trash.ID, err)
-			continue
+		if _, ok := trashes[mv.trash.ID]; !ok {
+			trashes[mv.trash.ID] = mv.trash
+			order = append(order, mv.trash.ID)
 		}
-		err = cli.inBox(func() error {
-			if err := selectFor(cli, mv.src, false); err != nil {
-				return err
-			}
-			var err error
-			newUID, err = cli.uidMove(mv.msg.UID, remoteName(mv.trash))
-			return err
-		})
-		if err != nil {
-			s.queueFailed(mv.msg, "move", mv.trash.ID, err)
-			continue
-		}
-		s.mu.Lock()
-		if i, ok := s.indexLocked(mv.id); ok {
-			s.rekeyMovedLocked(i, mv.trash.ID, newUID)
-		}
-		s.mu.Unlock()
+		byTrash[mv.trash.ID] = append(byTrash[mv.trash.ID], moveJob{id: mv.id, msg: mv.msg, src: mv.src})
+	}
+	for _, id := range order {
+		s.moveOnServer(byTrash[id], trashes[id], "Deleting")
 	}
 	s.mu.Lock()
 	s.saveLocked()
 	s.mu.Unlock()
 	return nil
+}
+
+// purgeOnServer permanently removes messages that were already in Trash
+// (or in an account with none): a folder at a time, \Deleted then UID
+// EXPUNGE on exactly those UIDs. What fails waits in the Outbox.
+func (s *LocalStore) purgeOnServer(purges []struct {
+	msg Message
+	src Folder
+}) {
+	type group struct {
+		src  Folder
+		msgs []Message
+	}
+	var groups []*group
+	by := map[FolderID]*group{}
+	for _, p := range purges {
+		if p.msg.UID == 0 {
+			continue
+		}
+		g := by[p.src.ID]
+		if g == nil {
+			g = &group{src: p.src}
+			by[p.src.ID] = g
+			groups = append(groups, g)
+		}
+		g.msgs = append(g.msgs, p.msg)
+	}
+	for _, g := range groups {
+		for start := 0; start < len(g.msgs); start += moveBatch {
+			chunk := g.msgs[start:min(start+moveBatch, len(g.msgs))]
+			uids := make([]uint32, len(chunk))
+			for k, m := range chunk {
+				uids[k] = m.UID
+			}
+			cli, err := s.client(chunk[0].AccountID)
+			if err == nil {
+				err = cli.inBox(func() error {
+					if err := selectFor(cli, g.src, false); err != nil {
+						return err
+					}
+					return cli.purgeSet(sortedUIDs(uids))
+				})
+			}
+			if err != nil {
+				for _, m := range chunk {
+					s.queueFailed(m, "delete", "", err)
+				}
+			}
+		}
+	}
 }
 
 // expungeOne permanently removes one message from the server. UID EXPUNGE is

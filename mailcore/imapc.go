@@ -39,6 +39,7 @@ type imapClient struct {
 	lastVanished  []uint32
 	lastCopyUID   uint32 // destination UID from the most recent COPYUID
 	lastAppendUID uint32 // UID the server gave the most recent APPEND (APPENDUID)
+	lastTagged    string // the most recent tagged completion, for its response code
 
 	// cmdTimeout bounds a single command/response exchange. Without it a
 	// server that accepts the TCP connection and then stops talking wedges
@@ -788,6 +789,118 @@ func (c *imapClient) uidMove(uid uint32, dest string) (newUID uint32, err error)
 	return newUID, c.expungeUIDLocked(uid)
 }
 
+// uidMoveSet moves uids (sorted) from the selected mailbox to dest in one
+// command, and returns each moved message's UID there, as the server's
+// COPYUID reports them (none when it does not say).
+func (c *imapClient) uidMoveSet(uids []uint32, dest string) (map[uint32]uint32, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	box, err := IMAPMailbox(dest)
+	if err != nil {
+		return nil, err
+	}
+	set := uidSetString(uids)
+	var lines []string
+	if c.has("MOVE") {
+		lines, err = c.cmdLocked("UID MOVE %s %s", set, box)
+		if err != nil {
+			return nil, err
+		}
+		return copyUIDMap(append(lines, c.lastTagged)), nil
+	}
+	if lines, err = c.cmdLocked("UID COPY %s %s", set, box); err != nil {
+		return nil, err
+	}
+	moved := copyUIDMap(append(lines, c.lastTagged))
+	if _, err := c.cmdLocked("UID STORE %s +FLAGS.SILENT (\\Deleted)", set); err != nil {
+		return moved, err
+	}
+	if c.has("UIDPLUS") {
+		_, err = c.cmdLocked("UID EXPUNGE %s", set)
+	} else {
+		_, err = c.cmdLocked("EXPUNGE")
+	}
+	return moved, err
+}
+
+// purgeSet removes uids from the selected mailbox for good: \Deleted, then
+// UID EXPUNGE of exactly those (a bare EXPUNGE, without UIDPLUS, would also
+// take messages another client marked).
+func (c *imapClient) purgeSet(uids []uint32) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	set := uidSetString(uids)
+	if _, err := c.cmdLocked("UID STORE %s +FLAGS.SILENT (\\Deleted)", set); err != nil {
+		return err
+	}
+	if c.has("UIDPLUS") {
+		_, err := c.cmdLocked("UID EXPUNGE %s", set)
+		return err
+	}
+	_, err := c.cmdLocked("EXPUNGE")
+	return err
+}
+
+// copyUIDMap reads a [COPYUID validity src-set dst-set] response code into
+// source UID → destination UID (RFC 4315: the two sets pair up in order).
+func copyUIDMap(lines []string) map[uint32]uint32 {
+	for _, ln := range lines {
+		up := strings.ToUpper(ln)
+		i := strings.Index(up, "[COPYUID ")
+		if i < 0 {
+			continue
+		}
+		rest := ln[i+len("[COPYUID "):]
+		if j := strings.IndexByte(rest, ']'); j >= 0 {
+			rest = rest[:j]
+		}
+		f := strings.Fields(rest)
+		if len(f) != 3 {
+			continue
+		}
+		src, dst := expandUIDSet(f[1]), expandUIDSet(f[2])
+		if len(src) != len(dst) {
+			continue
+		}
+		out := make(map[uint32]uint32, len(src))
+		for k := range src {
+			out[src[k]] = dst[k]
+		}
+		return out
+	}
+	return map[uint32]uint32{}
+}
+
+// expandUIDSet lists a sequence set's UIDs in order ("3,7:9" → 3 7 8 9).
+func expandUIDSet(set string) []uint32 {
+	var out []uint32
+	for _, part := range strings.Split(set, ",") {
+		lo, hi, isRange := strings.Cut(part, ":")
+		a := atoi(lo)
+		if a <= 0 {
+			return nil
+		}
+		if !isRange {
+			out = append(out, uint32(a))
+			continue
+		}
+		b := atoi(hi)
+		if b <= 0 || b-a > 100000 || a-b > 100000 {
+			return nil
+		}
+		if a <= b {
+			for u := a; u <= b; u++ {
+				out = append(out, uint32(u))
+			}
+		} else {
+			for u := a; u >= b; u-- {
+				out = append(out, uint32(u))
+			}
+		}
+	}
+	return out
+}
+
 // expungeUIDLocked removes exactly one message. A bare EXPUNGE would purge
 // every \Deleted message in the mailbox, including ones another client
 // flagged, so UID EXPUNGE is used whenever UIDPLUS is advertised.
@@ -1101,6 +1214,7 @@ func (c *imapClient) readUntilTaggedLocked(tag string) ([]string, error) {
 		}
 		if strings.HasPrefix(ln, tag+" ") {
 			rest := strings.TrimSpace(ln[len(tag)+1:])
+			c.lastTagged = rest
 			if uid, ok := parseCopyUID(rest); ok {
 				c.lastCopyUID = uid
 			}

@@ -30,7 +30,7 @@ type folderServer struct {
 
 func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *folderServer {
 	fs := &folderServer{delim: delim, boxes: boxes}
-	fs.scriptIMAP = newScriptIMAP(t, "IMAP4rev1 UIDPLUS", func(s *imapSession, tag, cmd, line string) bool {
+	fs.scriptIMAP = newScriptIMAP(t, "IMAP4rev1 UIDPLUS MOVE", func(s *imapSession, tag, cmd, line string) bool {
 		fs.mu.Lock()
 		defer fs.mu.Unlock()
 		switch {
@@ -99,6 +99,44 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 			s.send("* OK [UIDVALIDITY 5]")
 			s.send("* OK [UIDNEXT 99]")
 			s.send("%s OK selected", tag)
+		case strings.Contains(strings.ToUpper(line), "UID MOVE"):
+			// UID MOVE <set> "dest": renumber into dest from 1000, report COPYUID.
+			f := strings.Fields(strings.TrimPrefix(line, tag+" "))
+			set, dest := f[2], strings.Trim(strings.Join(f[3:], " "), `"`)
+			fs.log = append(fs.log, s.box+": UID MOVE "+set+" "+dest)
+			moving := map[uint32]bool{}
+			for _, u := range expandUIDSet(set) {
+				moving[u] = true
+			}
+			var keep, src, dst []uint32
+			for _, u := range fs.boxes[s.box] {
+				if moving[u] {
+					src = append(src, u)
+					nu := uint32(1000 + len(fs.boxes[dest]))
+					fs.boxes[dest] = append(fs.boxes[dest], nu)
+					dst = append(dst, nu)
+				} else {
+					keep = append(keep, u)
+				}
+			}
+			fs.boxes[s.box] = keep
+			s.send("%s OK [COPYUID 5 %s %s] moved", tag, uidSetString(src), uidSetString(dst))
+		case strings.Contains(strings.ToUpper(line), "UID STORE"), strings.Contains(strings.ToUpper(line), "UID EXPUNGE"):
+			fs.log = append(fs.log, s.box+": "+strings.TrimPrefix(line, tag+" "))
+			if strings.Contains(strings.ToUpper(line), "UID EXPUNGE") {
+				gone := map[uint32]bool{}
+				for _, u := range expandUIDSet(strings.Fields(line)[3]) {
+					gone[u] = true
+				}
+				var keep []uint32
+				for _, u := range fs.boxes[s.box] {
+					if !gone[u] {
+						keep = append(keep, u)
+					}
+				}
+				fs.boxes[s.box] = keep
+			}
+			s.send("%s OK done", tag)
 		case strings.Contains(strings.ToUpper(line), "UID SEARCH"):
 			rest := strings.TrimPrefix(line, tag+" ")
 			if strings.HasSuffix(line, "}") {

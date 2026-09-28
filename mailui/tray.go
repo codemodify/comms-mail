@@ -161,6 +161,13 @@ func (s *session) onDaemonEvent(ev mailcore.Event) {
 		if s.refresher != nil {
 			s.refresher.request()
 		}
+	case mailcore.EventProgress:
+		// A long move or delete says how far it is ("Moving to Archive…
+		// 200 of 500").
+		if ev.Title != "" {
+			title := ev.Title
+			s.post(func() { s.mark(title) })
+		}
 	case mailcore.EventNotify:
 		title := ev.Title
 		if title == "" {

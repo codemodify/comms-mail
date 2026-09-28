@@ -2065,7 +2065,11 @@ func (s *session) takeUndo() *pendingRemoval {
 }
 
 func (s *session) runRemoval(p *pendingRemoval) {
-	s.mark(p.what + "…")
+	if len(p.ids) > 1 {
+		s.mark(p.what + " " + pluralize(len(p.ids), "message") + "…") // the daemon then counts them off
+	} else {
+		s.mark(p.what + "…")
+	}
 	s.async(func() (any, error) {
 		return nil, p.call()
 	}, func(_ any, err error) {
