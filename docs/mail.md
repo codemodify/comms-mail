@@ -607,6 +607,11 @@ close button alike): **Yes** keeps the draft, **No** throws away a draft
 only autosave made (a draft you saved or opened is kept, as last saved).
 Sending removes the draft.
 
+A message that went closes its Write window, and is in Sent — no dialog to
+dismiss. Only what needs attention asks for it: a send that failed (the
+window stays, with the error), or one the server could not be reached for
+("Not sent yet": it waits in the Outbox and goes when the server answers).
+
 On an IMAP account a saved draft is appended to the server's Drafts and
 the cached copy takes the UID the server gives it (UIDPLUS `APPENDUID`),
 so a sync does not add it a second time; saving again appends the new

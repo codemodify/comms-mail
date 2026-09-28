@@ -312,12 +312,13 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 				widgets.Warn(win.Content(), "Send", err.Error(), nil)
 				return
 			}
+			// Sent: the window goes, as in Thunderbird, and the message is in
+			// Sent. Only what needs the writer's attention asks for it — a
+			// failure, or a message left waiting in the Outbox.
 			if opts.OnChange != nil {
 				opts.OnChange()
 			}
-			widgets.Info(win.Content(), "Sent",
-				"Message handed to comms-maild: submitted over SMTP and filed in Sent\n(queued in the Outbox when offline).",
-				func() { win.Close() })
+			win.Close()
 		})
 	}
 
