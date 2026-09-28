@@ -1561,6 +1561,15 @@ func imapFlagDeleted(flags []string) bool {
 	return false
 }
 
+func imapFlagForwarded(flags []string) bool {
+	for _, f := range flags {
+		if strings.EqualFold(f, "$Forwarded") {
+			return true
+		}
+	}
+	return false
+}
+
 func imapFlagAnswered(flags []string) bool {
 	for _, f := range flags {
 		if strings.EqualFold(f, `\Answered`) {

@@ -498,9 +498,15 @@ func (c *Client) SendIdent(accountID, identityID string, msg Message, draftID Me
 // SendFiles submits a message. A *QueuedError means it was not sent now
 // but waits in the Outbox to be sent again: done, not failed.
 func (c *Client) SendFiles(accountID, identityID string, msg Message, draftID MessageID, files []AttachedFile) (MessageID, error) {
+	return c.SendForward(accountID, identityID, msg, draftID, files, "")
+}
+
+// SendForward is SendFiles for a message that forwards forwardOf, which is
+// marked forwarded once it is sent.
+func (c *Client) SendForward(accountID, identityID string, msg Message, draftID MessageID, files []AttachedFile, forwardOf MessageID) (MessageID, error) {
 	var r appendResult
 	err := c.call(MethodComposeSend, ComposeParams{
-		AccountID: accountID, IdentityID: identityID, Message: msg, ID: draftID, Attachments: files,
+		AccountID: accountID, IdentityID: identityID, Message: msg, ID: draftID, Attachments: files, ForwardOf: forwardOf,
 	}, &r)
 	if err == nil && r.Queued != "" {
 		err = &QueuedError{Reason: r.Queued}
@@ -875,6 +881,9 @@ func (c *Client) patchCachedBody(id MessageID, patch FlagPatch) {
 	}
 	if patch.Answered != nil {
 		m.Answered = *patch.Answered
+	}
+	if patch.Forwarded != nil {
+		m.Forwarded = *patch.Forwarded
 	}
 	if patch.Starred != nil {
 		m.Starred = *patch.Starred

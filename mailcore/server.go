@@ -1001,6 +1001,7 @@ func (s *Server) send(p ComposeParams) (appendResult, error) {
 			_ = s.Store.Delete([]MessageID{p.ID})
 		}
 		s.markAnswered(accountID, msg.InReplyTo)
+		s.markForwarded(p.ForwardOf)
 		s.broadcast(EventChanged, eventParams{Reason: "send"})
 		r := appendResult{ID: id}
 		if queued != nil {
@@ -1020,6 +1021,7 @@ func (s *Server) send(p ComposeParams) (appendResult, error) {
 		_ = s.Store.Delete([]MessageID{p.ID})
 	}
 	s.markAnswered(accountID, msg.InReplyTo)
+	s.markForwarded(p.ForwardOf)
 	s.broadcast(EventChanged, eventParams{FolderID: sent.ID, Reason: "send"})
 	return appendResult{ID: id}, nil
 }
@@ -1036,6 +1038,17 @@ func (s *Server) markAnswered(accountID, inReplyTo string) {
 			_ = s.Store.SetFlags(m.ID, FlagPatch{Answered: BoolPtr(true)})
 			return
 		}
+	}
+}
+
+// markForwarded marks the message a sent message forwarded, here and on
+// the server.
+func (s *Server) markForwarded(id MessageID) {
+	if id == "" {
+		return
+	}
+	if m, ok := s.Store.GetMessage(id); ok && !m.Forwarded {
+		_ = s.Store.SetFlags(id, FlagPatch{Forwarded: BoolPtr(true)})
 	}
 }
 

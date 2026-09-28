@@ -371,3 +371,15 @@ func TestRuleMovesAndMarksOnTheServer(t *testing.T) {
 		t.Fatal("a rule moved mail to another account")
 	}
 }
+
+// Forwarding marks the original $Forwarded, on the server too.
+func TestForwardMarksTheOriginal(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	srv := NewServer(st, filepath.Join(t.TempDir(), "s.sock"))
+	srv.markForwarded("home/inbox:7")
+	if m, _ := st.CachedMessage("home/inbox:7"); !m.Forwarded {
+		t.Fatal("not forwarded")
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT ($Forwarded)`)
+}

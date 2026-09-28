@@ -1,6 +1,7 @@
 package mailcore
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -111,5 +112,27 @@ func TestDeletedElsewhereHidesAndUndeleteReturns(t *testing.T) {
 	}
 	if _, ok := st.CachedMessage("home/inbox:2"); !ok {
 		t.Fatal("an undeleted message did not come back")
+	}
+}
+
+func TestForwardedSyncsAndImports(t *testing.T) {
+	fs := newFolderServer(t, "/", map[string][]uint32{"INBOX": {1}})
+	fs.flags = map[uint32]string{1: `\Seen $Forwarded`}
+	st := newFolderStore(t, fs)
+	if m, _ := st.CachedMessage("home/inbox:1"); !m.Forwarded || HasTag(m.Tags, "$Forwarded") {
+		t.Fatalf("synced %+v", m)
+	}
+	dir := t.TempDir()
+	mustWrite(t, filepath.Join(dir, "cur", "1.host:2,PS"), msg("1@ex", "passed"))
+	ls := newImportStore(t)
+	if _, err := ls.ImportLocalMail([]LocalMailStore{{Source: "T", Name: "Inbox", Path: dir, Kind: StoreMaildir}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range ls.ListFolders(LocalAccountID) {
+		for _, m := range ls.ListMessages(f.ID) {
+			if !m.Forwarded {
+				t.Fatalf("imported %s not forwarded", m.Subject)
+			}
+		}
 	}
 }

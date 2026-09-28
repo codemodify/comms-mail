@@ -1437,11 +1437,11 @@ func (s *session) showHeaders(m mailcore.Message) {
 		if m.HasAttach {
 			extra += fmt.Sprintf("%d attachment(s)", len(m.Attachments))
 		}
-		if m.Answered {
+		if did := repliedForwarded(m); did != "" {
 			if extra != "" {
 				extra += "  ·  "
 			}
-			extra += "You replied"
+			extra += did
 		}
 		s.hdrExtra.SetText(extra)
 	}
@@ -3363,4 +3363,18 @@ func PrepareShotCards(w *app.Window) {
 			tv.SetVisible(false)
 		}
 	})
+}
+
+// repliedForwarded says what the user did with m: "You replied", "You
+// forwarded", both, or "".
+func repliedForwarded(m mailcore.Message) string {
+	switch {
+	case m.Answered && m.Forwarded:
+		return "You replied and forwarded"
+	case m.Answered:
+		return "You replied"
+	case m.Forwarded:
+		return "You forwarded"
+	}
+	return ""
 }

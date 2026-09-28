@@ -40,9 +40,9 @@ new ones turn up.
 - **Import: Apple Mail on macOS 10.11+** — accounts live in
   `~/Library/Accounts/Accounts4.sqlite` (NSKeyedArchiver blobs), not read;
   the import says to add them by hand.
-- **Forwarded state** — answered is tracked ($Forwarded / maildir P /
-  emlx bit 8 are not), and neither shows in the message list yet (the UI
-  font has no ↩ glyph; the reading pane says "You replied").
+- **Replied / forwarded in the message list** — both are tracked and the
+  reading pane says so; the list has no mark for them (the UI font has no
+  ↩ / ↪ glyph and the toolkit draws no stand-in — uitoolkit-gaps.md #2).
 - **Import: KMail filters and Apple Mail contacts** — Thunderbird's filters
   and the address books of Thunderbird, Evolution, KAddressBook, Claws Mail
   and mutt import; these two do not yet.

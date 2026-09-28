@@ -322,6 +322,9 @@ func (s *MemoryStore) SetFlags(id MessageID, patch FlagPatch) error {
 	if patch.Answered != nil {
 		s.messages[i].Answered = *patch.Answered
 	}
+	if patch.Forwarded != nil {
+		s.messages[i].Forwarded = *patch.Forwarded
+	}
 	if patch.Tags != nil {
 		s.messages[i].Tags = append([]string(nil), (*patch.Tags)...)
 	}

@@ -58,11 +58,12 @@ func (s LocalMailStore) validate() error {
 // mailFlags is what a store records about a message's state, when it
 // records anything.
 type mailFlags struct {
-	known    bool // the store says; else the importer decides
-	read     bool
-	starred  bool
-	answered bool
-	deleted  bool // marked for deletion and not yet purged: not imported
+	known     bool // the store says; else the importer decides
+	read      bool
+	starred   bool
+	answered  bool
+	forwarded bool
+	deleted   bool // marked for deletion and not yet purged: not imported
 }
 
 // each calls fn with every message in the store, in order, and what the
@@ -122,7 +123,8 @@ func headerFlags(raw []byte) mailFlags {
 	}
 	switch {
 	case moz >= 0:
-		fl = mailFlags{known: true, read: moz&0x1 != 0, answered: moz&0x2 != 0, starred: moz&0x4 != 0, deleted: moz&0x8 != 0}
+		fl = mailFlags{known: true, read: moz&0x1 != 0, answered: moz&0x2 != 0, starred: moz&0x4 != 0, deleted: moz&0x8 != 0,
+			forwarded: moz&0x1000 != 0}
 	case status != "" || xstatus != "":
 		fl = mailFlags{known: true, read: strings.Contains(status, "R"),
 			answered: strings.Contains(xstatus, "A") || strings.Contains(status, "r"),
@@ -187,6 +189,7 @@ func eachMaildirRaw(dir string, fn func(raw []byte, fl mailFlags)) {
 				fl.read = strings.Contains(info, "S")
 				fl.starred = strings.Contains(info, "F")
 				fl.answered = strings.Contains(info, "R")
+				fl.forwarded = strings.Contains(info, "P") // "passed"
 				fl.deleted = strings.Contains(info, "T")
 			}
 			fn(raw, fl)
@@ -225,7 +228,8 @@ func mhFlags(dir string) func(n int) mailFlags {
 						f = clawsNew | clawsUnread // no record: new
 					}
 					return mailFlags{known: true, read: f&(clawsNew|clawsUnread) == 0,
-						starred: f&clawsMarked != 0, answered: f&clawsReplied != 0, deleted: f&clawsDeleted != 0}
+						starred: f&clawsMarked != 0, answered: f&clawsReplied != 0, forwarded: f&clawsForwarded != 0,
+						deleted: f&clawsDeleted != 0}
 				}
 			}
 		}
@@ -242,11 +246,12 @@ func mhFlags(dir string) func(n int) mailFlags {
 
 // Claws Mail's permanent message flags (procmsg.h).
 const (
-	clawsNew     = 1 << 0
-	clawsUnread  = 1 << 1
-	clawsMarked  = 1 << 2
-	clawsDeleted = 1 << 3
-	clawsReplied = 1 << 4
+	clawsNew       = 1 << 0
+	clawsUnread    = 1 << 1
+	clawsMarked    = 1 << 2
+	clawsDeleted   = 1 << 3
+	clawsReplied   = 1 << 4
+	clawsForwarded = 1 << 5
 )
 
 // parseClawsMark reads a .claws_mark: a 4-byte version (2), then 8-byte
@@ -369,7 +374,8 @@ func decodeEMLX(b []byte) ([]byte, mailFlags) {
 	if n < len(body) {
 		if m := emlxFlagsRe.FindSubmatch(body[n:]); m != nil {
 			if v, err := strconv.ParseInt(string(m[1]), 10, 64); err == nil {
-				fl = mailFlags{known: true, read: v&1 != 0, deleted: v&2 != 0, answered: v&4 != 0, starred: v&16 != 0}
+				fl = mailFlags{known: true, read: v&1 != 0, deleted: v&2 != 0, answered: v&4 != 0, starred: v&16 != 0,
+					forwarded: v&256 != 0}
 			}
 		}
 		body = body[:n]

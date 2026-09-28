@@ -63,6 +63,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	// Threading headers for the outgoing message. Without them a reply
 	// starts a new conversation in the recipient's client.
 	inReplyTo, references := "", ""
+	forwardOf := mailcore.MessageID("")
 	if opts.Draft != nil {
 		d := opts.Draft
 		to0, cc0, bcc0, subj0, body0 = d.To, d.Cc, d.Bcc, d.Subject, d.Body
@@ -82,6 +83,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		inReplyTo, references = mailcore.ReplyThreadHeaders(*m)
 	} else if opts.Forward != nil {
 		m := opts.Forward
+		forwardOf = m.ID // marked forwarded once this is sent
 		subj0 = "Fwd: " + strings.TrimSpace(m.Subject)
 		body0 = forwardBody(*m)
 		fromIdx = indexFrom(fromItems, m.To)
@@ -291,7 +293,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			if err != nil {
 				return nil, err
 			}
-			return cli.SendFiles(acct, ident, msg, did, files)
+			return cli.SendForward(acct, ident, msg, did, files, forwardOf)
 		}, func(_ any, err error) {
 			var queued *mailcore.QueuedError
 			if errors.As(err, &queued) {

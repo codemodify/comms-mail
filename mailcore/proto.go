@@ -299,6 +299,9 @@ type ComposeParams struct {
 	// Attachments are the file bytes themselves. The daemon never opens a
 	// path supplied by a client (see Server.send).
 	Attachments []AttachedFile `json:"attachments,omitempty"`
+	// ForwardOf is the message this one forwards: once sent, it is marked
+	// forwarded ($Forwarded), here and on the server.
+	ForwardOf MessageID `json:"forwardOf,omitempty"`
 }
 
 type identityListParams struct {

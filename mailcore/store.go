@@ -235,6 +235,8 @@ type Message struct {
 	Keywords []string `json:"keywords,omitempty"`
 	// Answered is IMAP's \Answered: the user replied (here or elsewhere).
 	Answered bool `json:"answered,omitempty"`
+	// Forwarded is the $Forwarded keyword: the user forwarded it.
+	Forwarded bool `json:"forwarded,omitempty"`
 }
 
 func messageHasBody(m Message) bool {
@@ -287,10 +289,11 @@ func FirstAddr(s string) string {
 
 // FlagPatch is a partial flag update (nil pointer = leave unchanged).
 type FlagPatch struct {
-	Read     *bool     `json:"read,omitempty"`
-	Starred  *bool     `json:"starred,omitempty"`
-	Answered *bool     `json:"answered,omitempty"`
-	Tags     *[]string `json:"tags,omitempty"`
+	Read      *bool     `json:"read,omitempty"`
+	Starred   *bool     `json:"starred,omitempty"`
+	Answered  *bool     `json:"answered,omitempty"`
+	Forwarded *bool     `json:"forwarded,omitempty"`
+	Tags      *[]string `json:"tags,omitempty"`
 }
 
 // SearchQuery is a daemon-side scan (Quick Filter or global search).
