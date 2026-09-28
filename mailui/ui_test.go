@@ -289,7 +289,7 @@ func TestMailPreviewReadOnlyAndListClamp(t *testing.T) {
 		}
 		pa, pb := s.PaneA(), s.PaneB()
 		var sash, mid paintengine2d.Point
-		if s.Vertical {
+		if s.Axis == widgets.SplitColumns {
 			sash = paintengine2d.Pt((pa.Max.X+pb.Min.X)*0.5, 8)
 			mid = paintengine2d.Pt(s.LocalBounds().Dx()*0.75, 8)
 		} else {

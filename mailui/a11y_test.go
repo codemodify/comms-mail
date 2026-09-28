@@ -1,11 +1,11 @@
 package mailui
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/a11y"
+	"github.com/codemodify/uitoolkit/a11y/a11ytest"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
 )
@@ -21,25 +21,11 @@ func TestMailIsAccessible(t *testing.T) {
 	defer w.Close()
 	w.SetContent(MailApp(a, w))
 	a.PumpOnce()
-	tree := w.AccessibleTree()
-	var lines []string
-	for _, p := range a11y.Check(tree) {
-		lines = append(lines, p.String())
+	tree := a11ytest.Audit(t, "mail", w.AccessibleTree())
+	if a11ytest.Find(tree, a11y.RoleTree, "Folders") == nil {
+		t.Error("no tree called Folders")
 	}
-	if len(lines) > 0 {
-		t.Errorf("%d accessibility problems:\n%s", len(lines), strings.Join(lines, "\n"))
-	}
-	var trees, tables int
-	tree.Walk(func(n *a11y.Node) bool {
-		switch n.Role {
-		case a11y.RoleTree:
-			trees++
-		case a11y.RoleTable, a11y.RoleList:
-			tables++
-		}
-		return true
-	})
-	if trees == 0 || tables == 0 {
-		t.Fatalf("folder trees %d, message lists %d", trees, tables)
+	if a11ytest.Find(tree, a11y.RoleTable, "Messages") == nil && a11ytest.Find(tree, a11y.RoleList, "Messages") == nil {
+		t.Error("no table or list called Messages")
 	}
 }

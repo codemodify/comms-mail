@@ -348,14 +348,14 @@ func (s *session) build() widget.Component {
 
 	var split *widgets.Splitter
 	if s.opts.Layout == LayoutClassic {
-		right := widgets.NewSplitter(false, s.center, previewCol)
+		right := widgets.NewSplitter(widgets.SplitRows, s.center, previewCol)
 		right.Ratio = 0.46
-		split = widgets.NewSplitter(true, sidebar, right)
+		split = widgets.NewSplitter(widgets.SplitColumns, sidebar, right)
 		split.Ratio = 0.18
 	} else {
-		mid := widgets.NewSplitter(true, s.center, previewCol)
+		mid := widgets.NewSplitter(widgets.SplitColumns, s.center, previewCol)
 		mid.Ratio = 0.58
-		split = widgets.NewSplitter(true, sidebar, mid)
+		split = widgets.NewSplitter(widgets.SplitColumns, sidebar, mid)
 		split.Ratio = 0.17
 	}
 
