@@ -88,7 +88,9 @@ func openSQLCache(dir string) (*sqlCache, error) {
 		return nil, err
 	}
 	_ = os.Chmod(path, 0o600)
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)")
+	// journal_size_limit: a WAL grown by one large write (the first index,
+	// a big sync) is cut back after its checkpoint, not kept at its largest.
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=journal_size_limit(8388608)")
 	if err != nil {
 		return nil, err
 	}
