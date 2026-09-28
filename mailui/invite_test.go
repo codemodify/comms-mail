@@ -35,7 +35,7 @@ func TestInviteCardInPreview(t *testing.T) {
 			t.Fatalf("who lacks %q:\n%s", want, c.who.Text)
 		}
 	}
-	if c.state.Text != "Will you attend?" || !c.btns.Visible() || !c.accept.Enabled() || !c.accept.Primary {
+	if c.state.Text != "Going?" || !c.btns.Visible() || !c.accept.Enabled() || !c.accept.Primary {
 		t.Fatalf("state %q buttons %v", c.state.Text, c.btns.Visible())
 	}
 	// The calendar part is not the body.

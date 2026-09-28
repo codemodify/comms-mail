@@ -50,9 +50,14 @@ func newInviteCard(s *session) *inviteCard {
 	c.when = wrapLabel("")
 	c.who = wrapLabel("")
 	c.state = wrapLabel("")
-	c.accept = widgets.NewButton("Accept", func() { c.answer(mailcore.PartStatAccepted) })
+	// Yes / Maybe / No, as calendars put it: short enough for a narrow
+	// reading pane.
+	c.accept = widgets.NewButton("Yes", func() { c.answer(mailcore.PartStatAccepted) })
+	c.accept.Tip = "Accept"
 	c.maybe = widgets.NewButton("Maybe", func() { c.answer(mailcore.PartStatTentative) })
-	c.decline = widgets.NewButton("Decline", func() { c.answer(mailcore.PartStatDeclined) })
+	c.maybe.Tip = "Accept tentatively"
+	c.decline = widgets.NewButton("No", func() { c.answer(mailcore.PartStatDeclined) })
+	c.decline.Tip = "Decline"
 	c.declineCounter = widgets.NewButton("Decline Proposal", func() { c.answer("DECLINECOUNTER") })
 	c.btns = widgets.NewRow(c.accept, c.maybe, c.decline, c.declineCounter).WithGap(8)
 	c.openCal = widgets.NewButton("Open in Calendar", c.openInCalendar)
@@ -65,14 +70,9 @@ func newInviteCard(s *session) *inviteCard {
 	c.note = widgets.NewTextField("", "Add a note (optional)", nil)
 	c.asLabel = widgets.NewLabel("Answer as")
 	c.as = widgets.NewComboBox(nil, 0, nil)
-	c.opts = widgets.NewRow(c.tell, c.asLabel, c.as, c.note).WithGap(8)
-	c.opts.AddFlex(c.note, 1)
-	// The question sits beside the buttons, to keep the card short: it
-	// takes room from the message body.
-	foot := widgets.NewRow(c.state, c.btns).WithGap(12)
-	foot.AddFlex(c.state, 1)
+	c.opts = widgets.NewColumn(widgets.NewRow(c.tell, c.asLabel, c.as).WithGap(8), c.note).WithGap(4)
 	tools := widgets.NewRow(c.openCal, c.more).WithGap(8)
-	c.view = widgets.NewPanel("", c.what, c.when, c.who, c.opts, foot, tools)
+	c.view = widgets.NewPanel("", c.what, c.when, c.who, c.opts, c.state, c.btns, tools)
 	c.view.Content().WithGap(4)
 	c.view.SetAccessibleName("Calendar invitation")
 	c.view.SetVisible(false)
@@ -449,7 +449,7 @@ func inviteState(inv mailcore.Invite, now time.Time) string {
 		case mailcore.PartStatDeclined:
 			s = "You declined."
 		default:
-			s = "Will you attend?"
+			s = "Going?"
 		}
 		if inv.Answer != "" && inv.Answer != "NEEDS-ACTION" && inv.NeedsReply() {
 			s += " You can change your answer."

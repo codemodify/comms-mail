@@ -89,7 +89,10 @@ new ones turn up.
   further and persist.
 
 ## Layout
-- **Audit windows for min-size clipping** — the Settings Accounts tab clipped its buttons at small sizes (fixed); other dialogs (compose, add-account, import) should be checked, or long fixed headers made scrollable, so controls are never below the fold.
+- **Invite card at the minimum window size** — the reading pane's header
+  scrolls when it would leave the body under ~200 px, so at 860×560 the
+  card's buttons are a scroll away (every control stays reachable; a
+  test checks each window at its minimum size).
 
 ## Accounts / setup / trust
 - **OAuth (Gmail / Microsoft 365)** — needs the client-id decision (own

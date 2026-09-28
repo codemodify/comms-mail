@@ -302,17 +302,16 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		labeled("OAuth client secret", clientSecret),
 		oauthNote,
 	).WithGap(6)
-	// Two rows, so a narrow window still shows Cancel and Save: the sign-in
-	// choices, then testing and the dialog's own buttons.
-	signIn := widgets.NewRow(google, ms, device).WithGap(8)
+	// Three rows, so the narrowest window still shows every button: the
+	// sign-in choices, device code and testing, then the dialog's own. The
+	// form scrolls; the buttons stay put.
+	signIn := widgets.NewRow(google, ms).WithGap(8)
 	box := widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)
-	actions := widgets.NewRow(test, box).WithGap(8)
-	actions.AddFlex(box, 1)
-	tools := widgets.NewPad(8, widgets.NewColumn(signIn, actions).WithGap(8))
+	tools := widgets.NewPad(8, widgets.NewColumn(signIn, widgets.NewRow(device, test).WithGap(8), box).WithGap(8))
 	chrome := widgets.NewTitleBar("Add account", "IMAP or POP3 · Test connection · typed password or OAuth · mail.json 0600")
-	pad := widgets.NewPad(12, form)
-	root := widgets.NewColumn(chrome, pad, tools, status).WithGap(0)
-	root.AddFlex(pad, 1)
+	scroll := widgets.NewScrollView(widgets.NewPad(12, form))
+	root := widgets.NewColumn(chrome, scroll, tools, status).WithGap(0)
+	root.AddFlex(scroll, 1)
 	return root
 }
 

@@ -296,17 +296,20 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 	if nameLocked {
 		hint = initial.Name + " is a system tag. You can change its color."
 	}
+	// The fields scroll in a short window; Save and Cancel stay in view.
+	fields := widgets.NewScrollView(widgets.NewPad(12, widgets.NewColumn(
+		widgets.NewLabel("Name"),
+		name,
+		widgets.NewLabel("Color"),
+		color,
+		wrapLabel(hint),
+	).WithGap(8)))
 	root := widgets.NewColumn(
 		widgets.NewTitleBar(title, "v"+uitoolkit.Version),
-		widgets.NewPad(12, widgets.NewColumn(
-			widgets.NewLabel("Name"),
-			name,
-			widgets.NewLabel("Color"),
-			color,
-			widgets.NewLabel(hint),
-			widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept),
-		).WithGap(8)),
+		fields,
+		widgets.NewPad(12, widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)),
 	).WithGap(0)
+	root.AddFlex(fields, 1)
 	win.SetContent(root)
 	return win, nil
 }

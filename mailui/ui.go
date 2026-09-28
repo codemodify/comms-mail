@@ -374,7 +374,7 @@ func (s *session) build() widget.Component {
 	s.previewRich.Placeholder = "This message has no HTML part."
 	s.previewImg = widgets.NewLabel("Remote images are not shown — loading them tells the sender you opened this.")
 	s.previewImg.Wrap = true
-	s.alwaysImgs = widgets.NewButton("Always from This Sender", s.alwaysShowImages)
+	s.alwaysImgs = widgets.NewButton("Always", s.alwaysShowImages)
 	s.imgBar = widgets.NewColumn(s.previewImg,
 		widgets.NewRow(widgets.NewButton("Show Images", s.showRemoteImages), s.alwaysImgs).WithGap(8)).WithGap(4)
 	s.imgBar.SetVisible(false)
@@ -414,7 +414,11 @@ func (s *session) build() widget.Component {
 	s.retryBar.SetVisible(false)
 	s.invite = newInviteCard(s)
 	headCol := widgets.NewColumn(s.hdrSubj, s.hdrFrom, s.hdrTo, s.hdrDate, s.hdrExtra, s.invite.view, s.attachPane, s.retryBar).WithGap(3).WithPad(10)
-	previewCol := widgets.NewColumn(headCol, widgets.NewSeparator(), tabs).WithGap(0)
+	// The header grows with what the message carries (an invitation,
+	// attachments) but always leaves the message body room for a few
+	// lines: past that it scrolls.
+	headBox := newReserveBox(200, widgets.NewScrollView(headCol))
+	previewCol := widgets.NewColumn(headBox, widgets.NewSeparator(), tabs).WithGap(0)
 	previewCol.AddFlex(tabs, 1)
 
 	s.table.SetVisible(!s.cardView)
@@ -1753,13 +1757,16 @@ func (s *session) newSmartFolder() {
 	})
 	save.Primary = true
 	cancel := widgets.NewButton("Cancel", func() { win.Close() })
-	form := widgets.NewColumn(
+	// The fields scroll in a short window; Save and Cancel stay in view.
+	fields := widgets.NewScrollView(widgets.NewColumn(
 		widgets.NewTitle("Saved search"),
 		widgets.NewLabel("Name"), name,
 		widgets.NewLabel("Query"), query,
-		widgets.NewLabel("Unread / starred / attachment pins on the Tags tree are included."),
-		widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept),
-	).WithGap(8)
+		wrapLabel("Unread / starred / attachment pins on the Tags tree are included."),
+	).WithGap(8))
+	form := widgets.NewColumn(fields,
+		widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)).WithGap(8)
+	form.AddFlex(fields, 1)
 	win.SetContent(widgets.NewPad(12, form))
 }
 
