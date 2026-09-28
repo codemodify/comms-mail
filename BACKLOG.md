@@ -71,6 +71,9 @@ new ones turn up.
 - **Search index is in-memory**, rebuilt on load; SQLite FTS would scale
   further and persist.
 
+## Layout
+- **Audit windows for min-size clipping** — the Settings Accounts tab clipped its buttons at small sizes (fixed); other dialogs (compose, add-account, import) should be checked, or long fixed headers made scrollable, so controls are never below the fold.
+
 ## Accounts / setup / trust
 - **OAuth (Gmail / Microsoft 365)** — needs the client-id decision (own
   registration vs a project app) before it is usable.
