@@ -249,10 +249,13 @@ Type the incoming/SMTP password (masked field); **Save account** writes `protoco
 
 ### Message view: text and HTML
 
-A message with a real `text/plain` part is shown as plain text. HTML-only
-mail (and mail whose text part is empty) is **rendered** in a read-only
-`RichText` — headings, lists, tables, colours and clickable links — through
-uitoolkit's HTML subset: no scripts, no external CSS, nothing executed.
+The preview pane has three tabs: **Message**, **Source** and **HTML**.
+Message (the default) is the `text/plain` body. HTML renders the message's
+HTML part when it has one — headings, lists, tables, colours and clickable
+links — in a read-only `RichText` through uitoolkit's HTML subset: no
+scripts, no external CSS, nothing executed. Most mail is
+`multipart/alternative` and carries both, so Message shows the text and HTML
+shows the render.
 
 The renderer never touches the network. A `data:` image carried in the
 message draws; every remote (`http(s)`) or `cid:` image is left as a
@@ -547,7 +550,7 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
 - **Empty by default** — no demo accounts unless `UITK_MAIL=memory`. First-run Yes/No is only “There are no accounts, want to add one?” Password / `0600` notes are on the Add Account form.
 - **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Settings. `passEnv` remains an optional fallback.
 - **Remove account** — File menu, Account Central, and Settings → Accounts. Confirm, then drop the account from `mail.json` and the local cache. The folder tree refreshes; if none remain, the first-run “add one?” prompt returns.
-- **Message tab** — a `text/plain` part shows as text; HTML-only mail is rendered read-only (uitoolkit HTML subset: formatting + links, no scripts/CSS, remote images blocked). The Source tab and Compose/Write are unchanged.
+- **Message / Source / HTML tabs** — Message is the `text/plain` body (default), Source the raw RFC822, HTML the rendered HTML part (uitoolkit subset: formatting + clickable links, no scripts/CSS, remote images blocked). Opening a message in its own tab shows the text body.
 - **3-pane splitters** — dragging folder|list or list|preview keeps exclusive pane bounds; preview chrome cannot paint over the thread list.
 - **Overflow scrollbars** — thread list, folder tree, and long message bodies show a vertical track/thumb; wheel/trackpad still scroll; offset clamps at the last row. The thread table clips rows under the sticky header (flush at the top; no paint-through while scrolling).
 - **Thread columns** — ★, 📎, Topic, Who, When. No Size. Click a column header to sort.

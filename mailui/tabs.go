@@ -23,8 +23,6 @@ type messageTab struct {
 	full bool // msg has its body
 	view widget.Component
 	body *widgets.TextArea
-	rich *widgets.RichText
-	img  *widgets.Label
 	head *widgets.Label
 }
 
@@ -162,17 +160,10 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	mt.head = widgets.NewLabel(messageHeaderText(m))
 	mt.body = widgets.NewTextView("", "Loading message…")
 	mt.body.MinRows = 8
-	mt.rich = newReadOnlyRich(s.openLink)
-	mt.rich.SetVisible(false)
-	mt.img = widgets.NewLabel("🚫 Remote images not shown (they can tell the sender you opened this).")
-	mt.img.SetVisible(false)
-	bodyStack := widgets.NewStack(mt.body, mt.rich)
-	bodyArea := widgets.NewColumn(mt.img, bodyStack).WithGap(4)
-	bodyArea.AddFlex(bodyStack, 1)
 	col := widgets.NewColumn(
 		widgets.NewColumn(subj, mt.head).WithGap(4).WithPad(10),
 		widgets.NewSeparator(),
-		widgets.NewPad(8, bodyArea),
+		widgets.NewPad(8, mt.body),
 	).WithGap(0)
 	col.AddFlex(col.Children()[2], 1)
 	mt.view = col
@@ -186,7 +177,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	s.tabs.AddTab(widgets.BrowserTab{Title: title, Tip: title + "\n" + m.From, Data: mt})
 
 	if mt.full {
-		renderMessage(mt.rich, mt.body, mt.img, m)
+		mt.body.SetText(mailcore.DisplayBody(m))
 		return s.tabs.Len() - 1
 	}
 	id := m.ID
@@ -194,8 +185,6 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		return s.getMessage(id)
 	}, func(v any, err error) {
 		if err != nil {
-			mt.body.SetVisible(true)
-			mt.rich.SetVisible(false)
 			mt.body.SetText("Couldn't load this message.\n\n" + err.Error())
 			return
 		}
@@ -204,7 +193,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		full.Read, full.Starred, full.Tags = mt.msg.Read, mt.msg.Starred, mt.msg.Tags
 		mt.msg, mt.full = full, true
 		mt.head.SetText(messageHeaderText(full))
-		renderMessage(mt.rich, mt.body, mt.img, full)
+		mt.body.SetText(mailcore.DisplayBody(full))
 	})
 	return s.tabs.Len() - 1
 }

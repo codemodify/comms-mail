@@ -21,22 +21,6 @@ import (
 // message) draws, and every `cid:` or `http(s)` image is left as a
 // placeholder. A message with such images shows a line saying so.
 
-// hasHTMLBody reports whether m is best shown as HTML rather than plain text.
-func hasHTMLBody(m mailcore.Message) bool {
-	if strings.TrimSpace(m.HTML) == "" {
-		return false
-	}
-	// A message with a real text/plain part is shown as text; HTML is for
-	// mail that is only HTML, or whose text part is empty.
-	return strings.TrimSpace(m.Body) == "" || looksLikeHTMLBody(m.Body)
-}
-
-func looksLikeHTMLBody(s string) bool {
-	low := strings.ToLower(s)
-	return strings.Contains(low, "<html") || strings.Contains(low, "<body") ||
-		strings.Contains(low, "<div") || strings.Contains(low, "<table")
-}
-
 var remoteImgRe = regexp.MustCompile(`(?i)<img\b[^>]*\bsrc\s*=\s*["']?\s*(https?:|//|cid:)`)
 
 // htmlHasRemoteImages reports whether html references an image the renderer
@@ -60,28 +44,6 @@ func newReadOnlyRich(onLink func(string)) *widgets.RichText {
 	rt.OnLink = onLink
 	rt.ResolveImage = blockedImageResolver
 	return rt
-}
-
-// renderMessage shows m in whichever of the two views fits it: the HTML in
-// rich when m is HTML mail, the plain text in plain otherwise. imgBar is
-// shown when the HTML holds images the renderer will not fetch.
-func renderMessage(rich *widgets.RichText, plain *widgets.TextArea, imgBar *widgets.Label, m mailcore.Message) {
-	if hasHTMLBody(m) {
-		rich.SetHTML(m.HTML)
-		rich.SetVisible(true)
-		plain.SetVisible(false)
-		if imgBar != nil {
-			imgBar.SetVisible(htmlHasRemoteImages(m.HTML))
-		}
-		return
-	}
-	plain.Placeholder = "This message has no text"
-	plain.SetText(mailcore.DisplayBody(m))
-	plain.SetVisible(true)
-	rich.SetVisible(false)
-	if imgBar != nil {
-		imgBar.SetVisible(false)
-	}
 }
 
 // openLink follows a link from a message: a mailto: opens a pre-addressed
