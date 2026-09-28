@@ -15,7 +15,7 @@ import (
 // OpenPrefs opens Settings: Accounts / Signatures / Tags.
 func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: "Settings", Width: 640, Height: 480, MinWidth: 440, MinHeight: 320,
+		Title: "Settings", Width: 700, Height: 560, MinWidth: 520, MinHeight: 440,
 	})
 	if err != nil {
 		return nil, err
@@ -97,8 +97,8 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 		health = "ok"
 	}
 	info := widgets.NewLabel(fmt.Sprintf(
-		"Backend: %s   Socket: %s\nHealth: %s   Accounts: %d\nConfig: %s\nPasswords: mail.json (mode 0600, temporary plaintext) or passEnv / OAuth. See docs/mail.md.",
-		st.Backend, cli.Socket, health, st.Accounts, mailcore.ConfigPath(),
+		"Backend: %s · Health: %s · %d account(s)\nConfig: %s   ·   Passwords: 0600 plaintext or OAuth (docs/mail.md)",
+		st.Backend, health, st.Accounts, mailcore.ConfigPath(),
 	))
 	add := widgets.NewButton("Add account…", func() {
 		_, _ = OpenAddAccount(a, cli, func() {
