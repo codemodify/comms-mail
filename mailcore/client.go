@@ -319,6 +319,16 @@ func (c *Client) GetMessage(id MessageID) (Message, bool, error) {
 	return m, m.ID != "", nil
 }
 
+// SuggestContacts completes a recipient from the address book.
+func (c *Client) SuggestContacts(query string, limit int) ([]Contact, error) {
+	var out []Contact
+	err := c.call(MethodContactsSuggest, contactsSuggestParams{Query: query, Limit: limit}, &out)
+	if out == nil {
+		out = []Contact{}
+	}
+	return out, err
+}
+
 func (c *Client) Search(q SearchQuery) ([]Message, error) {
 	var out []Message
 	err := c.call(MethodMessagesSearch, searchParams{AccountID: q.AccountID, FolderID: q.Folder, Filter: q.Filter}, &out)

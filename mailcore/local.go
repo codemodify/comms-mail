@@ -121,6 +121,12 @@ func NewLocalStoreDir(cfg MailConfig, dir string) (*LocalStore, error) {
 
 func (s *LocalStore) Backend() string { return "imap" }
 
+// SuggestContacts completes a recipient from the address book built out of
+// the cached messages.
+func (s *LocalStore) SuggestContacts(query string, limit int) []Contact {
+	return s.feat.suggest(query, limit)
+}
+
 func (s *LocalStore) Health() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1051,6 +1057,7 @@ func (s *LocalStore) Sync(accountID string) (SyncResult, error) {
 	}
 	s.mu.Lock()
 	s.saveLocked()
+	s.feat.setContacts(buildContacts(s.Messages))
 	health := s.health
 	s.mu.Unlock()
 	s.prefetchBodies()
@@ -2056,6 +2063,7 @@ func (s *LocalStore) loadLocked() {
 	assignThreadIDs(s.Messages)
 	if s.feat.index != nil {
 		s.feat.index.rebuild(s.Messages)
+		s.feat.setContacts(buildContacts(s.Messages))
 	}
 	for _, m := range s.Messages {
 		if n := idSeq(m.ID); n >= s.nextID {

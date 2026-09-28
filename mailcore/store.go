@@ -315,6 +315,9 @@ type Store interface {
 	// GetRaw is the on-disk / IMAP RFC822 bytes (Thunderbird message source).
 	GetRaw(id MessageID) ([]byte, error)
 	Search(q SearchQuery) []Message
+	// SuggestContacts completes a recipient from the address book built out
+	// of the cached messages, best match first.
+	SuggestContacts(query string, limit int) []Contact
 
 	SetFlags(id MessageID, patch FlagPatch) error
 	Move(ids []MessageID, dest FolderID) error

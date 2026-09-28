@@ -95,9 +95,30 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 
 	status := widgets.NewStatusBar("Write a message.", "Offline demo", "v"+uitoolkit.Version)
 	from := widgets.NewComboBox(fromItems, fromIdx, nil)
-	to := widgets.NewTextField(to0, "To", nil)
-	cc := widgets.NewTextField(cc0, "Cc", nil)
-	bcc := widgets.NewTextField(bcc0, "Bcc", nil)
+	// To / Cc / Bcc complete addresses from the address book as you type.
+	newRcpt := func(placeholder, initial string) *recipientField {
+		var rf *recipientField
+		var gen uint64
+		rf = newRecipientField(placeholder, func(token string) {
+			gen++
+			g := gen
+			runAsync(a, func() (any, error) {
+				return cli.SuggestContacts(token, maxSuggestRows)
+			}, func(v any, err error) {
+				if err != nil || g != gen {
+					return
+				}
+				rf.setSuggestions(v.([]mailcore.Contact))
+			})
+		})
+		if initial != "" {
+			rf.SetText(initial)
+		}
+		return rf
+	}
+	to := newRcpt("To", to0)
+	cc := newRcpt("Cc", cc0)
+	bcc := newRcpt("Bcc", bcc0)
 	subject := widgets.NewTextField(subj0, "Subject", func(s string) {
 		t := strings.TrimSpace(s)
 		if t == "" {
@@ -157,9 +178,9 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	collect := func() mailcore.Message {
 		return mailcore.Message{
 			From:       fromText(),
-			To:         to.Text,
-			Cc:         cc.Text,
-			Bcc:        bcc.Text,
+			To:         to.Text(),
+			Cc:         cc.Text(),
+			Bcc:        bcc.Text(),
 			Subject:    subject.Text,
 			Body:       body.Text,
 			InReplyTo:  inReplyTo,
@@ -199,7 +220,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	}
 
 	send := func() {
-		if strings.TrimSpace(to.Text) == "" {
+		if strings.TrimSpace(to.Text()) == "" {
 			widgets.Warn(win.Content(), "Send", "Please enter a To: address.", nil)
 			return
 		}

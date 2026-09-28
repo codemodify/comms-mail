@@ -238,6 +238,17 @@ func (s *IMAPStore) CachedMessage(id MessageID) (Message, bool) {
 	return m.Clone(), true
 }
 
+// SuggestContacts builds a small address book from the cached messages.
+func (s *IMAPStore) SuggestContacts(query string, limit int) []Contact {
+	s.mu.Lock()
+	msgs := make([]Message, 0, len(s.cache))
+	for _, m := range s.cache {
+		msgs = append(msgs, m)
+	}
+	s.mu.Unlock()
+	return suggestContacts(buildContacts(msgs), query, limit)
+}
+
 func (s *IMAPStore) GetMessage(id MessageID) (Message, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

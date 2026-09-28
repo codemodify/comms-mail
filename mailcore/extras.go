@@ -90,16 +90,31 @@ type OutboxOp struct {
 
 // featureHost is the shared Tier A/B state (MemoryStore + LocalStore).
 type featureHost struct {
-	mu     sync.Mutex
-	smart  []SmartFolder
-	vips   []VIP
-	muted  []string
-	cats   []SenderCat
-	notify NotifyPrefs
-	outbox []OutboxOp
-	online bool
-	index  *searchIndex
-	nextOp int
+	mu       sync.Mutex
+	smart    []SmartFolder
+	vips     []VIP
+	muted    []string
+	cats     []SenderCat
+	notify   NotifyPrefs
+	outbox   []OutboxOp
+	online   bool
+	index    *searchIndex
+	contacts []Contact // address book, rebuilt when the message set changes
+	nextOp   int
+}
+
+// setContacts replaces the cached address book.
+func (f *featureHost) setContacts(c []Contact) {
+	f.mu.Lock()
+	f.contacts = c
+	f.mu.Unlock()
+}
+
+// suggest returns up to limit book entries matching query.
+func (f *featureHost) suggest(query string, limit int) []Contact {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return suggestContacts(f.contacts, query, limit)
 }
 
 func newFeatureHost() *featureHost {

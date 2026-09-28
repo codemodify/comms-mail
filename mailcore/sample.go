@@ -307,6 +307,7 @@ func seedDemo(s *MemoryStore) {
 	assignThreadIDs(s.messages)
 	if s.feat != nil && s.feat.index != nil {
 		s.feat.index.rebuild(s.messages)
+		s.feat.setContacts(buildContacts(s.messages))
 	}
 }
 

@@ -49,6 +49,11 @@ func NewDemoStore() *MemoryStore {
 
 func (s *MemoryStore) Backend() string { return "memory" }
 
+// SuggestContacts completes a recipient from the demo messages.
+func (s *MemoryStore) SuggestContacts(query string, limit int) []Contact {
+	return s.feat.suggest(query, limit)
+}
+
 func (s *MemoryStore) Health() error { return nil }
 
 func (s *MemoryStore) Accounts() []Account {
@@ -597,6 +602,7 @@ func (s *MemoryStore) DeleteAccount(id string) error {
 	s.messages = msgs
 	if s.feat != nil && s.feat.index != nil {
 		s.feat.index.rebuild(s.messages)
+		s.feat.setContacts(buildContacts(s.messages))
 	}
 	return nil
 }
