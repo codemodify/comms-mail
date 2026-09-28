@@ -439,7 +439,14 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		text := "Your saved passwords and sign-ins are kept in " + mailcore.StoreLabel(st.Store) + "."
 		switch st.Store {
 		case "":
-			text = "Your mail passwords are saved as readable text in mail.json, where any program running as you can read them. Choose a safer place for them."
+			switch {
+			case len(st.PlainAccounts) > 0:
+				text = "Your mail passwords are saved as readable text in mail.json, where any program running as you can read them. Choose a safer place for them."
+			case st.PlainTokens:
+				text = "Your Google or Microsoft sign-ins are saved in files whose key is kept beside them. Choose a safer place for them."
+			default:
+				text = "No passwords are saved yet. Choose where comms-mail should keep them."
+			}
 		case mailcore.StoreEncrypted:
 			text += " comms-mail asks for its passphrase once each time it starts."
 		case mailcore.StoreKeyring:
@@ -472,7 +479,7 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		}
 		intro := switchIntro
 		if cur.Store == "" {
-			intro = plainIntro(cur.PlainAccounts)
+			intro = plainIntro(cur)
 		}
 		openStoreChooser(a, cli, intro, cur, refresh)
 	})

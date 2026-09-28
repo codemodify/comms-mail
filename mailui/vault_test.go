@@ -235,3 +235,75 @@ func TestUnlockAndChangePassphrase(t *testing.T) {
 		t.Fatalf("the new passphrase: %v", err)
 	}
 }
+
+// The chooser's text says what is actually saved: named accounts, only
+// old sign-ins, or nothing yet — and always opens with the motto.
+func TestChooserTextFitsWhatIsSaved(t *testing.T) {
+	withAccounts := plainIntro(mailcore.SecretsStatus{PlainAccounts: []string{"ada@example.com", "bob@example.org"}, PlainTokens: true})
+	tokensOnly := plainIntro(mailcore.SecretsStatus{PlainSecrets: true, PlainTokens: true})
+	nothing := plainIntro(mailcore.SecretsStatus{})
+	for name, text := range map[string]string{"accounts": withAccounts, "tokens": tokensOnly, "nothing": nothing} {
+		if !strings.HasPrefix(text, "Secrets. Secrets. Secrets. Keep'em safe.\n\n") {
+			t.Errorf("%s: does not open with the motto:\n%s", name, text)
+		}
+	}
+	if !strings.Contains(withAccounts, "ada@example.com, bob@example.org") || !strings.Contains(withAccounts, "sign-ins") {
+		t.Errorf("accounts:\n%s", withAccounts)
+	}
+	if strings.Contains(tokensOnly, "passwords for") || !strings.Contains(tokensOnly, "sign-ins") {
+		t.Errorf("tokens only:\n%s", tokensOnly)
+	}
+	if !strings.Contains(nothing, "No passwords are saved yet.") || strings.Contains(nothing, "mail.json") || strings.Contains(nothing, "passwords for") {
+		t.Errorf("nothing saved:\n%s", nothing)
+	}
+}
+
+// With no accounts, the window starting asks nothing, and Settings says
+// no passwords are saved yet — and offers the choice with that text.
+func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(mailcore.EnvConfig, filepath.Join(dir, "mail.json"))
+	st, err := mailcore.NewLocalStoreDir(mailcore.MailConfig{}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock, stop, err := mailcore.StartStore(context.Background(), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	cli, err := mailcore.DialWait(sock, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	status, _ := cli.SecretsStatus()
+	if status.Store != "" || status.PlainSecrets || len(status.PlainAccounts) != 0 {
+		t.Fatalf("status %+v", status)
+	}
+
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1100, Height: 720, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(a, main, cli, AppOptions{})
+	main.SetContent(s.build())
+	before := len(a.Windows())
+	s.checkVault()
+	a.PumpOnce()
+	if len(a.Windows()) != before {
+		t.Fatal("the window asked where to keep passwords when none are saved")
+	}
+
+	section := passphraseSection(a, cli)
+	var texts []string
+	widget.Walk(section, func(c widget.Component) {
+		if l, ok := c.(*widgets.Label); ok {
+			texts = append(texts, l.Text)
+		}
+	})
+	if joined := strings.Join(texts, "\n"); !strings.Contains(joined, "No passwords are saved yet.") {
+		t.Fatalf("Settings says:\n%s", joined)
+	}
+}

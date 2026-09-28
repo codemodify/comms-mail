@@ -161,7 +161,7 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 			{"Message source", 480, 320, func() { _, _ = OpenMessageSource(a, inbox[0], "From: a\r\n\r\nbody") }},
 			{"Rule editor", 520, 420, func() { openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil) }},
 			{"Where passwords are kept", 460, 420, func() {
-				openStoreChooser(a, cli, plainIntro([]string{"ada@example.com"}), mailcore.SecretsStatus{Supported: true, KeyringName: "the desktop keyring", KeyringAvailable: true}, nil)
+				openStoreChooser(a, cli, plainIntro(mailcore.SecretsStatus{PlainAccounts: []string{"ada@example.com"}}), mailcore.SecretsStatus{Supported: true, KeyringName: "the desktop keyring", KeyringAvailable: true}, nil)
 			}},
 			{"Passphrase (unlock)", 440, 300, func() { openPassphrase(a, cli, passUnlock, nil) }},
 			{"Passphrase (change)", 440, 300, func() { openPassphrase(a, cli, passChange, nil) }},

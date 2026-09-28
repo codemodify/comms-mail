@@ -545,6 +545,9 @@ type SecretsStatus struct {
 	// files with their key beside them); PlainAccounts are whose.
 	PlainSecrets  bool     `json:"plainSecrets"`
 	PlainAccounts []string `json:"plainAccounts,omitempty"`
+	// PlainTokens: OAuth sign-ins sit readable (the old token files with
+	// their key beside them, or the plain store's tokens file).
+	PlainTokens bool `json:"plainTokens,omitempty"`
 	// The desktop keyring: what it is here, and whether it can be used.
 	KeyringName      string `json:"keyringName"`
 	KeyringAvailable bool   `json:"keyringAvailable"`
@@ -665,7 +668,12 @@ func (s *LocalStore) SecretsStatus() SecretsStatus {
 		}
 		s.mu.Unlock()
 		if kind == "" && len(DefaultTokenStore().legacyTokens()) > 0 {
-			st.PlainSecrets = true
+			st.PlainSecrets, st.PlainTokens = true, true
+		}
+		if kind == StorePlain {
+			if toks, err := readPlainTokens(); err == nil && len(toks) > 0 {
+				st.PlainSecrets, st.PlainTokens = true, true
+			}
 		}
 	}
 	switch err := keyringReady(); {

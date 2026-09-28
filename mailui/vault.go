@@ -19,18 +19,34 @@ import (
 // forgetText is what a forgotten passphrase costs.
 const forgetText = "If you forget the passphrase, the saved passwords cannot be recovered: you would type each account's password again."
 
-// plainIntro is the text for passwords found readable: an install from
-// before the choice was offered. accounts are whose they are.
-func plainIntro(accounts []string) string {
-	whose := "your accounts"
-	if len(accounts) > 0 {
-		whose = strings.Join(accounts, ", ")
+// secretsMotto opens the chooser.
+const secretsMotto = "Secrets. Secrets. Secrets. Keep'em safe."
+
+// plainIntro is the chooser's text before a store is chosen: what is
+// saved readable now — accounts' passwords, old sign-in files — or that
+// nothing is saved yet (no accounts, or none with a password).
+func plainIntro(st mailcore.SecretsStatus) string {
+	var now, next string
+	switch {
+	case len(st.PlainAccounts) > 0:
+		now = "At the moment the passwords for " + strings.Join(st.PlainAccounts, ", ") + " are stored as readable text in " +
+			mailcore.ConfigPath() + ", where any program running as you can read them."
+		if st.PlainTokens {
+			now += " So are your Google or Microsoft sign-ins."
+		}
+		next = "Choose where they should be kept. They all move there and leave mail.json (unless you keep the plain file). " +
+			"Not now leaves everything as it is; you can choose later in Settings › Privacy."
+	case st.PlainTokens:
+		now = "At the moment your Google or Microsoft sign-ins are saved in files whose key is kept right beside them, " +
+			"so any program running as you can read them."
+		next = "Choose where they should be kept. They all move there, and the old files are removed. " +
+			"Not now leaves everything as it is; you can choose later in Settings › Privacy."
+	default:
+		now = "No passwords are saved yet."
+		next = "Choose where comms-mail should keep them once you add an account. " +
+			"Not now leaves it for later: comms-mail asks again before it saves a password."
 	}
-	return "comms-mail can now keep your saved passwords somewhere safer.\n\n" +
-		"At the moment the passwords for " + whose + " are stored as readable text in " + mailcore.ConfigPath() +
-		", where any program running as you can read them.\n\n" +
-		"Choose where they should be kept. They all move there and leave mail.json (unless you keep the plain file). " +
-		"Not now leaves everything as it is; you can choose later in Settings › Privacy."
+	return secretsMotto + "\n\n" + now + "\n\n" + next
 }
 
 // accountIntro is the text before the first password is saved.
@@ -357,7 +373,7 @@ func (s *session) checkVault() {
 		case st.Locked:
 			s.promptUnlock()
 		case st.Store == "" && st.PlainSecrets:
-			openStoreChooser(s.app, s.cli, plainIntro(st.PlainAccounts), st, func() { s.mark("Passwords moved") })
+			openStoreChooser(s.app, s.cli, plainIntro(st), st, func() { s.mark("Passwords moved") })
 		case st.Problem != "":
 			widgets.Warn(s.win.Content(), "Passwords",
 				"comms-mail cannot read your saved passwords from "+mailcore.StoreLabel(st.Store)+": "+st.Problem+
