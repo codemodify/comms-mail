@@ -64,8 +64,9 @@ new ones turn up.
 - **Import: tests for the client config readers** — Evolution, Claws Mail,
   Geary, mutt and Apple Mail settings parsing has no fixture tests yet (their
   mail discovery goes through the tested generic scanner).
-- **Import: keep read/unread** — imported mail is all marked read; maildir
-  `:2,S` flags, mbox `Status:` and emlx flags could carry the real state.
+- **Import: answered / forwarded state** — read and starred carry over;
+  replied / forwarded (maildir R/P, mbox X-Status A, emlx bits 2/8) have no
+  field here yet.
 - **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 - **Import contacts** — Thunderbird address book (abook.sqlite / .mab) and
   KMail/KAddressBook vCards, to seed the address book beyond what the cached

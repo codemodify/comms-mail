@@ -3,12 +3,14 @@ package mailcore
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -53,8 +55,19 @@ func (s LocalMailStore) validate() error {
 	return nil
 }
 
-// each calls fn with every message in the store, in order.
-func (s LocalMailStore) each(fn func(raw []byte)) {
+// mailFlags is what a store records about a message's state, when it
+// records anything.
+type mailFlags struct {
+	known   bool // the store says; else the importer decides
+	read    bool
+	starred bool
+	deleted bool // marked for deletion and not yet purged: not imported
+}
+
+// each calls fn with every message in the store, in order, and what the
+// store says about its state. mbox and .eml carry theirs in the message's
+// own headers (headerFlags), read by the importer.
+func (s LocalMailStore) each(fn func(raw []byte, fl mailFlags)) {
 	switch s.Kind {
 	case StoreMbox:
 		f, err := os.Open(s.Path)
@@ -62,16 +75,58 @@ func (s LocalMailStore) each(fn func(raw []byte)) {
 			return
 		}
 		defer f.Close()
-		eachMboxRaw(f, fn)
+		eachMboxRaw(f, func(raw []byte) { fn(raw, mailFlags{}) })
 	case StoreMaildir:
 		eachMaildirRaw(s.Path, fn)
 	case StoreMH:
 		eachMHRaw(s.Path, fn)
 	case StoreEML:
-		eachEMLRaw(s.Path, fn)
+		eachEMLRaw(s.Path, func(raw []byte) { fn(raw, mailFlags{}) })
 	case StoreEMLX:
 		eachEMLXRaw(s.Path, fn)
 	}
+}
+
+// headerFlags reads the state a mail client wrote into a message's headers:
+// Thunderbird's X-Mozilla-Status (0x1 read, 0x4 starred, 0x8 expunged), or
+// the mbox convention mutt and Dovecot use — Status: R read (O alone is
+// old but unread), X-Status: F flagged, D deleted.
+func headerFlags(raw []byte) mailFlags {
+	end := bytes.Index(raw, []byte("\n\n"))
+	if e := bytes.Index(raw, []byte("\r\n\r\n")); e >= 0 && (end < 0 || e < end) {
+		end = e
+	}
+	if end < 0 {
+		end = len(raw)
+	}
+	var fl mailFlags
+	var status, xstatus string
+	moz := int64(-1)
+	for _, line := range strings.Split(string(raw[:end]), "\n") {
+		name, val, ok := strings.Cut(strings.TrimRight(line, "\r"), ":")
+		if !ok {
+			continue
+		}
+		val = strings.TrimSpace(val)
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "x-mozilla-status":
+			if n, err := strconv.ParseInt(val, 16, 64); err == nil {
+				moz = n
+			}
+		case "status":
+			status = val
+		case "x-status":
+			xstatus = val
+		}
+	}
+	switch {
+	case moz >= 0:
+		fl = mailFlags{known: true, read: moz&0x1 != 0, starred: moz&0x4 != 0, deleted: moz&0x8 != 0}
+	case status != "" || xstatus != "":
+		fl = mailFlags{known: true, read: strings.Contains(status, "R"),
+			starred: strings.Contains(xstatus, "F"), deleted: strings.Contains(xstatus, "D")}
+	}
+	return fl
 }
 
 // eachMboxRaw splits an mbox stream. A line beginning "From " at the start
@@ -109,30 +164,138 @@ func eachMboxRaw(r io.Reader, fn func(raw []byte)) {
 	flush()
 }
 
-// eachMaildirRaw reads a maildir's cur/ and new/.
-func eachMaildirRaw(dir string, fn func(raw []byte)) {
+// eachMaildirRaw reads a maildir's cur/ and new/. A message's state is in
+// its file name — "…:2,FRS" (or "!2," as Evolution may write it): S seen,
+// F flagged, T trashed; one in new/ has not been seen.
+func eachMaildirRaw(dir string, fn func(raw []byte, fl mailFlags)) {
 	for _, sub := range []string{"cur", "new"} {
 		for _, name := range sortedFiles(filepath.Join(dir, sub), nil) {
-			if raw, err := os.ReadFile(filepath.Join(dir, sub, name)); err == nil {
-				fn(raw)
+			raw, err := os.ReadFile(filepath.Join(dir, sub, name))
+			if err != nil {
+				continue
 			}
+			fl := mailFlags{known: true}
+			if sub == "cur" {
+				info := ""
+				if i := strings.LastIndex(name, ":2,"); i >= 0 {
+					info = name[i+3:]
+				} else if i := strings.LastIndex(name, "!2,"); i >= 0 {
+					info = name[i+3:]
+				}
+				fl.read = strings.Contains(info, "S")
+				fl.starred = strings.Contains(info, "F")
+				fl.deleted = strings.Contains(info, "T")
+			}
+			fn(raw, fl)
 		}
 	}
 }
 
 // eachMHRaw reads an MH folder: its all-digit file names, in numeric order.
-func eachMHRaw(dir string, fn func(raw []byte)) {
+// State comes from Claws Mail's .claws_mark when the folder has one, else
+// from the MH sequences (.mh_sequences: unseen, flagged).
+func eachMHRaw(dir string, fn func(raw []byte, fl mailFlags)) {
 	names := sortedFiles(dir, isAllDigits)
 	sort.Slice(names, func(i, j int) bool {
 		a, _ := strconv.Atoi(names[i])
 		b, _ := strconv.Atoi(names[j])
 		return a < b
 	})
+	flagsOf := mhFlags(dir)
 	for _, name := range names {
 		if raw, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-			fn(raw)
+			n, _ := strconv.Atoi(name)
+			fn(raw, flagsOf(n))
 		}
 	}
+}
+
+// mhFlags returns the state of message n of an MH folder, from the
+// folder's .claws_mark (or .sylpheed_mark), else its .mh_sequences.
+func mhFlags(dir string) func(n int) mailFlags {
+	for _, mark := range []string{".claws_mark", ".sylpheed_mark"} {
+		if b, err := os.ReadFile(filepath.Join(dir, mark)); err == nil {
+			if marks, ok := parseClawsMark(b); ok {
+				return func(n int) mailFlags {
+					f, ok := marks[uint32(n)]
+					if !ok {
+						f = clawsNew | clawsUnread // no record: new
+					}
+					return mailFlags{known: true, read: f&(clawsNew|clawsUnread) == 0,
+						starred: f&clawsMarked != 0, deleted: f&clawsDeleted != 0}
+				}
+			}
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, ".mh_sequences")); err == nil {
+		seqs := parseMHSequences(string(b))
+		unseen, flagged := seqs["unseen"], seqs["flagged"]
+		return func(n int) mailFlags {
+			return mailFlags{known: true, read: !unseen[n], starred: flagged[n]}
+		}
+	}
+	return func(int) mailFlags { return mailFlags{} }
+}
+
+// Claws Mail's permanent message flags (procmsg.h).
+const (
+	clawsNew     = 1 << 0
+	clawsUnread  = 1 << 1
+	clawsMarked  = 1 << 2
+	clawsDeleted = 1 << 3
+)
+
+// parseClawsMark reads a .claws_mark: a 4-byte version (2), then 8-byte
+// records of message number and flags, little-endian (a byte-swapped
+// version marks a file written big-endian).
+func parseClawsMark(b []byte) (map[uint32]uint32, bool) {
+	if len(b) < 4 {
+		return nil, false
+	}
+	order := binary.ByteOrder(binary.LittleEndian)
+	switch {
+	case binary.LittleEndian.Uint32(b) == 2:
+	case binary.BigEndian.Uint32(b) == 2:
+		order = binary.BigEndian
+	default:
+		return nil, false
+	}
+	out := map[uint32]uint32{}
+	for i := 4; i+8 <= len(b); i += 8 {
+		out[order.Uint32(b[i:])] = order.Uint32(b[i+4:])
+	}
+	return out, true
+}
+
+// parseMHSequences reads .mh_sequences lines like "unseen: 1-3 7".
+func parseMHSequences(text string) map[string]map[int]bool {
+	out := map[string]map[int]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		name, list, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		set := map[int]bool{}
+		for _, part := range strings.Fields(list) {
+			lo, hi, isRange := strings.Cut(part, "-")
+			a, err1 := strconv.Atoi(lo)
+			if err1 != nil {
+				continue
+			}
+			b := a
+			if isRange {
+				var err2 error
+				if b, err2 = strconv.Atoi(hi); err2 != nil || b < a || b-a > 1_000_000 {
+					continue
+				}
+			}
+			for n := a; n <= b; n++ {
+				set[n] = true
+			}
+		}
+		out[strings.ToLower(strings.TrimSpace(name))] = set
+	}
+	return out
 }
 
 // eachEMLRaw reads one .eml file, or every .eml in a directory.
@@ -153,11 +316,11 @@ func eachEMLRaw(p string, fn func(raw []byte)) {
 // eachEMLXRaw reads one .emlx file, or every .emlx beneath an Apple Mail
 // .mbox directory — skipping mailboxes nested inside it, which are folders
 // of their own.
-func eachEMLXRaw(p string, fn func(raw []byte)) {
+func eachEMLXRaw(p string, fn func(raw []byte, fl mailFlags)) {
 	if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
 		if b, err := os.ReadFile(p); err == nil {
-			if raw := decodeEMLX(b); raw != nil {
-				fn(raw)
+			if raw, fl := decodeEMLX(b); raw != nil {
+				fn(raw, fl)
 			}
 		}
 		return
@@ -178,30 +341,39 @@ func eachEMLXRaw(p string, fn func(raw []byte)) {
 	sort.Strings(files)
 	for _, q := range files {
 		if b, err := os.ReadFile(q); err == nil {
-			if raw := decodeEMLX(b); raw != nil {
-				fn(raw)
+			if raw, fl := decodeEMLX(b); raw != nil {
+				fn(raw, fl)
 			}
 		}
 	}
 }
 
-// decodeEMLX takes the message out of an Apple Mail .emlx: a line with the
-// message's length in bytes, the message, then an XML property list.
-func decodeEMLX(b []byte) []byte {
+// decodeEMLX takes the message out of an Apple Mail .emlx — a line with the
+// message's length in bytes, the message, then an XML property list — and
+// its state from the list's "flags" (bit 0 read, 1 deleted, 4 flagged).
+func decodeEMLX(b []byte) ([]byte, mailFlags) {
 	nl := bytes.IndexByte(b, '\n')
 	if nl < 0 {
-		return nil
+		return nil, mailFlags{}
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(string(b[:nl])))
 	if err != nil || n <= 0 {
-		return nil
+		return nil, mailFlags{}
 	}
 	body := b[nl+1:]
+	var fl mailFlags
 	if n < len(body) {
+		if m := emlxFlagsRe.FindSubmatch(body[n:]); m != nil {
+			if v, err := strconv.ParseInt(string(m[1]), 10, 64); err == nil {
+				fl = mailFlags{known: true, read: v&1 != 0, deleted: v&2 != 0, starred: v&16 != 0}
+			}
+		}
 		body = body[:n]
 	}
-	return body
+	return body, fl
 }
+
+var emlxFlagsRe = regexp.MustCompile(`<key>flags</key>\s*<(?:integer|real)>\s*(-?\d+)`)
 
 // sortedFiles lists dir's regular files that keep says yes to, sorted.
 func sortedFiles(dir string, keep func(string) bool) []string {

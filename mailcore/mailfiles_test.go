@@ -27,7 +27,7 @@ Second body.
 
 func collect(st LocalMailStore) []Message {
 	var out []Message
-	st.each(func(raw []byte) {
+	st.each(func(raw []byte, _ mailFlags) {
 		if m, err := ParseRFC822(raw, "f", "a"); err == nil {
 			out = append(out, m)
 		}
@@ -141,11 +141,11 @@ func TestScanSkipsNonMail(t *testing.T) {
 
 func TestDecodeEMLX(t *testing.T) {
 	m := msg("z@ex", "z")
-	raw := decodeEMLX([]byte(itoa(len(m)) + "\n" + m + "<?xml?><plist></plist>"))
+	raw, _ := decodeEMLX([]byte(itoa(len(m)) + "\n" + m + "<?xml?><plist></plist>"))
 	if string(raw) != m {
 		t.Fatalf("decodeEMLX = %q", raw)
 	}
-	if decodeEMLX([]byte("garbage")) != nil {
+	if raw, _ := decodeEMLX([]byte("garbage")); raw != nil {
 		t.Fatal("garbage should not decode")
 	}
 }

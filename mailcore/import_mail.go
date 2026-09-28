@@ -164,7 +164,13 @@ func (s *LocalStore) ImportLocalMail(stores []LocalMailStore) (ImportResult, err
 		s.mu.Unlock()
 
 		added := 0
-		st.each(func(raw []byte) {
+		st.each(func(raw []byte, fl mailFlags) {
+			if !fl.known {
+				fl = headerFlags(raw)
+			}
+			if fl.deleted {
+				return // the client had it marked for deletion
+			}
 			m, err := ParseRFC822(raw, fid, LocalAccountID)
 			if err != nil || !messageHasContent(m) {
 				return
@@ -186,7 +192,13 @@ func (s *LocalStore) ImportLocalMail(stores []LocalMailStore) (ImportResult, err
 			s.nextID++
 			m.ID = MessageID(fmt.Sprintf("%s-m-%04d", LocalAccountID, s.nextID))
 			m.Folder, m.AccountID = fid, LocalAccountID
-			m.Read = true // imported mail is old mail
+			// The state the client kept; a store that keeps none is old
+			// mail, read.
+			m.Read, m.Starred = true, false
+			if fl.known {
+				m.Read, m.Starred = fl.read, fl.starred
+			}
+			applyAutomaticTags(&m)
 			if m.Date.IsZero() {
 				m.Date = time.Now()
 			}
