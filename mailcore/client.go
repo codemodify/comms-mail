@@ -273,6 +273,9 @@ func (c *Client) ListFolders(accountID string) ([]Folder, error) {
 }
 
 func (c *Client) GetFolder(id FolderID) (Folder, bool, error) {
+	if id == "" {
+		return Folder{}, false, nil // no folder chosen (no account yet): nothing to ask
+	}
 	var f Folder
 	err := c.call(MethodFoldersGet, folderGetParams{ID: id}, &f)
 	if err != nil {
@@ -641,9 +644,15 @@ func (c *Client) AnswerInvite(id MessageID, ans InviteAnswer) (Invite, error) {
 	return inv, err
 }
 
+// OpenPart has the daemon write a part to its cache and open it. When the
+// daemon could not open it (started without a display), this process —
+// the window's, same user and machine — opens the file it wrote.
 func (c *Client) OpenPart(id MessageID, partID string) (PartData, error) {
 	var p PartData
 	err := c.call(MethodMessagesOpen, partParams{ID: id, PartID: partID}, &p)
+	if err == nil && p.Path != "" && !p.Opened {
+		p.Opened = openCachedFile(p.Path)
+	}
 	return p, err
 }
 

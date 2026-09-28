@@ -1,8 +1,8 @@
 // Command comms-mail is the comms-mail desktop UI. It connects to
 // comms-maild over a Unix socket and never speaks IMAP itself.
 //
-//	comms-maild    # other terminal (empty until add-account)
-//	comms-mail
+//	comms-mail            # starts comms-maild when it is not running
+//	comms-maild install   # or have it start at every login
 //
 //	UITK_MAIL_SOCK=/tmp/mail.sock comms-mail
 package main
@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/comms-mail/mailui"
@@ -36,9 +35,11 @@ func main() {
 		return
 	}
 
-	cli, err := mailcore.DialWait(*sock, 3*time.Second)
+	// Starts comms-maild when nothing answers (comms-maild install makes it
+	// start at every login instead).
+	cli, err := mailcore.EnsureDaemon(*sock)
 	if err != nil {
-		log.Fatalf("%v\nStart the daemon first: comms-maild", err)
+		log.Fatal(err)
 	}
 	defer cli.Close()
 

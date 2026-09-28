@@ -133,6 +133,8 @@ type PartData struct {
 	Part
 	Data []byte `json:"data,omitempty"`
 	Path string `json:"path,omitempty"`
+	// Opened says the daemon launched the desktop's opener on Path.
+	Opened bool `json:"opened,omitempty"`
 }
 
 // FilterRule is one Sorting Office / Outlook-style rule.

@@ -97,8 +97,6 @@ new ones turn up.
 ## Accounts / setup / trust
 - **OAuth (Gmail / Microsoft 365)** — needs the client-id decision (own
   registration vs a project app) before it is usable.
-- **Start the daemon at login** — a systemd user unit.
-- **A log file** — for diagnosing issues in daily use.
 - **Print / Save as PDF / Save as .eml.**
 
 ## From the roadmap (features, not polish)

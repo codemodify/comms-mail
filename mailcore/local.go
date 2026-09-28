@@ -1341,6 +1341,7 @@ func (s *LocalStore) syncAccount(accountID string) (int, error) {
 
 		n, err := s.syncFolder(cli, f)
 		if err != nil {
+			Logf("sync %s: %v", f.ID, err)
 			s.setHealth(err)
 			if isNetworkError(err) {
 				netErr = err
@@ -2227,7 +2228,7 @@ func (s *LocalStore) OpenPart(id MessageID, partID string) (PartData, error) {
 		return p, fmt.Errorf("mail: part %s has no data to open", partID)
 	}
 	p.Path = path
-	openCachedFile(path)
+	p.Opened = openCachedFile(path)
 	return p, nil
 }
 
@@ -2369,11 +2370,17 @@ func (s *LocalStore) noteNetwork(accountID string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err == nil {
+		if since, was := s.downSince[accountID]; was {
+			Logf("%s: connected again (down %s)", accountID, time.Since(since).Round(time.Second))
+		}
 		delete(s.downSince, accountID)
 		return
 	}
 	if isNetworkError(err) {
-		s.downSince[accountID] = time.Now()
+		if _, was := s.downSince[accountID]; !was {
+			Logf("%s: connection lost: %v", accountID, err)
+			s.downSince[accountID] = time.Now()
+		}
 		s.health = err
 	}
 }
@@ -2687,8 +2694,10 @@ func (s *LocalStore) sendViaSMTP(accountID, identityID string, msg Message, file
 	}
 	if err := SendSMTP(cfg.SMTP, ExtractAddr(msg.From), rcpts, raw); err != nil {
 		if !transientSendError(err) || retry {
+			Logf("send from %s: %v", accountID, err)
 			return "", err // retrying would fail the same way, or it is a retry
 		}
+		Logf("send from %s: %v — queued in the Outbox", accountID, err)
 		queue("", err.Error())
 		return "", &QueuedError{Reason: err.Error()}
 	}
@@ -2821,6 +2830,7 @@ func (s *LocalStore) flushOutbox(only func(OutboxOp) bool) (int, error) {
 	var last error
 	for _, op := range ops {
 		if err := s.flushOne(op); err != nil {
+			Logf("outbox %s %s (try %d): %v", op.Kind, op.ID, op.Tries+1, err)
 			last = err
 			s.feat.mu.Lock()
 			for i := range s.feat.outbox {

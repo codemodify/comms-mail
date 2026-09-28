@@ -972,7 +972,7 @@ func (s *MemoryStore) OpenPart(id MessageID, partID string) (PartData, error) {
 		return p, err
 	}
 	p.Path = path
-	openCachedFile(path)
+	p.Opened = openCachedFile(path)
 	return p, nil
 }
 func (s *MemoryStore) Sync(accountID string) (SyncResult, error) {

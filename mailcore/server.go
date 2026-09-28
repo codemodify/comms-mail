@@ -834,6 +834,7 @@ func (s *Server) dispatch(req Request) Response {
 		err = fmt.Errorf("unknown method %s", req.Method)
 	}
 	if err != nil {
+		Logf("rpc %s: %v", req.Method, err) // the method, never its params
 		return Response{Error: &RPCError{Code: -32000, Message: err.Error()}}
 	}
 	raw, jerr := json.Marshal(result)

@@ -46,7 +46,7 @@ func lockSocket(socket string) (*socketLock, error) {
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("comms-maild: another daemon is already serving %s (%w)", socket, err)
+		return nil, fmt.Errorf("comms-maild: another daemon is already serving %s: %w (%v)", socket, ErrDaemonRunning, err)
 	}
 	if err := f.Truncate(0); err == nil {
 		_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())

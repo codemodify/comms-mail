@@ -42,11 +42,33 @@ file means a second `comms-maild` refuses to start rather than silently
 stealing the path from the running one — if you see
 `another daemon is already serving …`, one is already up.
 
-```bash
-# Terminal 1 — daemon (empty until you add an account)
-go run ./cmd/comms-maild
+**Starting the daemon.** `comms-mail` starts `comms-maild` itself when
+nothing answers on the socket — the systemd user unit if one is installed,
+else the `comms-maild` beside `comms-mail` or on `PATH` — and the daemon
+keeps running after the window closes, so mail still syncs and notifies.
+To have it start at every login:
 
-# Terminal 2 — Thunderbird UI (first-run Yes/No if no accounts)
+```bash
+comms-maild install     # systemd user unit (enabled; started now unless one runs),
+                        # or ~/.config/autostart/comms-maild.desktop without systemd
+comms-maild uninstall   # stop starting it at login
+```
+
+The unit restarts the daemon if it fails, but not when it exits because
+another one already holds the socket (exit status 3). Started by systemd the
+daemon may have no display; opening an attachment then happens in the
+window instead.
+
+**Log.** The daemon writes `~/.data/comms-mail/logs/comms-maild.log` (mode
+0600, rotated to `.log.1` at 4 MB): start and stop, connections lost and
+back, folders that fail to sync, sends that fail or wait in the Outbox,
+Outbox retries, and every error the daemon answers to the window (the
+method, never its parameters). It never holds message content or
+credentials. The demo store writes none.
+
+```bash
+# By hand: the daemon (empty until you add an account), then the window
+go run ./cmd/comms-maild
 UITK_SCENE=auto go run ./cmd/comms-mail
 go run ./cmd/comms-mail -classic -light
 go run ./cmd/comms-mail -headless    # writes mail.png
