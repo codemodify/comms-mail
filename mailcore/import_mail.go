@@ -60,8 +60,9 @@ func ScanImportSources() []ImportSource {
 	add(ImportSource{Source: "Thunderbird", Accounts: tb, Mail: thunderbirdLocalMail(), Contacts: readThunderbirdAddressBooks(),
 		Filters: readThunderbirdFilters()})
 	km, _ := ImportKMail()
-	add(ImportSource{Source: "KMail", Accounts: km, Mail: kmailLocalMail(), Contacts: readVCardDirs(),
-		Note: "KMail's settings are read best-effort; check each account before you rely on it."})
+	kmFilters, kmNote := readKMailFilters(KMailConfigDir())
+	add(ImportSource{Source: "KMail", Accounts: km, Mail: kmailLocalMail(), Contacts: readVCardDirs(), Filters: kmFilters,
+		Note: strings.TrimSpace("KMail's settings are read best-effort; check each account before you rely on it. " + kmNote)})
 	add(ImportSource{Source: "Evolution", Accounts: importEvolution(), Mail: evolutionLocalMail(), Contacts: readEvolutionAddressBooks()})
 	add(ImportSource{Source: "Claws Mail", Accounts: importClaws(), Mail: clawsLocalMail(), Contacts: readClawsAddressBook()})
 	add(ImportSource{Source: "Geary", Accounts: importGeary(),

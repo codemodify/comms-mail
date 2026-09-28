@@ -733,7 +733,7 @@ func appleMailRoots() []string {
 // A newer macOS keeps accounts in its system account store, which is not
 // readable here; the note says so.
 func importAppleMail() ImportSource {
-	src := ImportSource{Source: "Apple Mail"}
+	src := ImportSource{Source: "Apple Mail", Contacts: readAppleContacts()}
 	roots := appleMailRoots()
 	if len(roots) == 0 {
 		return src
@@ -760,8 +760,15 @@ func importAppleMail() ImportSource {
 			src.Accounts = appleAccountsPlist(p)
 		}
 	}
+	// OS X 10.11 and later: Internet Accounts.
 	if len(src.Accounts) == 0 {
-		src.Note = "This macOS keeps mail accounts in System Settings → Internet Accounts, which cannot be read here — add those accounts by hand."
+		src.Accounts = appleAccounts4(filepath.Join(homeDir(), "Library", "Accounts", "Accounts4.sqlite"))
+		if len(src.Accounts) > 0 {
+			src.Note = "Accounts from Internet Accounts are read best-effort; check each one's servers before you rely on it."
+		}
+	}
+	if len(src.Accounts) == 0 {
+		src.Note = "No mail accounts could be read from this Mac's settings — add them by hand."
 	}
 	return src
 }
@@ -837,10 +844,19 @@ func appleAccountsPlist(path string) []ImportedAccount {
 	return dedupImported(out)
 }
 
-// decodePlist reads an XML property list into map[string]any, []any,
-// string, int64, float64, bool — enough for Mail's Accounts.plist.
+// decodePlist reads a property list into map[string]any, []any, string,
+// int64, float64, bool — enough for Mail's Accounts.plist. A binary one
+// (as preferences often are) is read by decodeBinaryPlist.
 func decodePlist(r io.Reader) (any, error) {
-	d := xml.NewDecoder(r)
+	br := bufio.NewReader(r)
+	if head, _ := br.Peek(8); isBinaryPlist(head) {
+		b, err := io.ReadAll(io.LimitReader(br, 64<<20))
+		if err != nil {
+			return nil, err
+		}
+		return decodeBinaryPlist(b)
+	}
+	d := xml.NewDecoder(br)
 	for {
 		tok, err := d.Token()
 		if err != nil {

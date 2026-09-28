@@ -66,8 +66,9 @@ func TestImportFiltersAndRunThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	host := strings.Split(fs.addr(), ":")[0]
-	res := st.ImportFilters([]FilterSet{{Host: host, User: "alice@example.com", Filters: parseThunderbirdFilters(tbFilterFile)},
-		{Host: "elsewhere.example", Filters: parseThunderbirdFilters(tbFilterFile)[:1]}})
+	file := strings.ReplaceAll(tbFilterFile, "imap.example.com", host) // the folder URIs name the server
+	res := st.ImportFilters([]FilterSet{{Host: host, User: "alice@example.com", Filters: parseThunderbirdFilters(file)},
+		{Host: "elsewhere.example", Filters: parseThunderbirdFilters(file)[:1]}})
 	if res.Added != 2 || len(res.Skipped) != 3 {
 		t.Fatalf("import %+v", res)
 	}
@@ -77,7 +78,7 @@ func TestImportFiltersAndRunThem(t *testing.T) {
 			t.Fatalf("skipped %q lacks %q", joined, want)
 		}
 	}
-	if again := st.ImportFilters([]FilterSet{{Host: host, Filters: parseThunderbirdFilters(tbFilterFile)}}); again.Added != 0 {
+	if again := st.ImportFilters([]FilterSet{{Host: host, Filters: parseThunderbirdFilters(file)}}); again.Added != 0 {
 		t.Fatalf("imported twice: %+v", again)
 	}
 

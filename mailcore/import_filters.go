@@ -16,17 +16,23 @@ import (
 // here cannot is left out, and the import says which and why — never
 // imported half, which could move mail it should not.
 
-// ThunderbirdFilter is one filter as Thunderbird wrote it.
+// ThunderbirdFilter is one filter as Thunderbird wrote it — or another
+// client's (KMail's), read into Thunderbird's words.
 type ThunderbirdFilter struct {
 	Name    string      `json:"name"`
 	Enabled bool        `json:"enabled"`
 	Match   string      `json:"match"` // AND, OR, ALL
 	Conds   [][3]string `json:"conds,omitempty"`
 	Actions [][2]string `json:"actions,omitempty"` // action, value
+	// Skip says why the filter cannot come as a rule, when reading it
+	// already showed that.
+	Skip string `json:"skip,omitempty"`
 }
 
 // FilterSet is the filters of one incoming server.
 type FilterSet struct {
+	// Source is the client they come from; "" is Thunderbird.
+	Source  string              `json:"source,omitempty"`
 	Host    string              `json:"host"`
 	User    string              `json:"user,omitempty"`
 	Local   bool                `json:"local,omitempty"` // Local Folders
@@ -225,10 +231,14 @@ func tbFolderPath(uri string) string {
 	return p
 }
 
-// tbRule turns a filter into a rule for account, or says why it cannot.
-func tbRule(f ThunderbirdFilter, account string, known []Tag) (FilterRule, string) {
-	r := FilterRule{Name: "Thunderbird: " + f.Name, Enabled: f.Enabled, Any: f.Match == "OR",
+// tbRule turns a filter of set into a rule for account, or says why it
+// cannot.
+func tbRule(f ThunderbirdFilter, set FilterSet, account string, known []Tag) (FilterRule, string) {
+	r := FilterRule{Name: firstNonEmpty(set.Source, "Thunderbird") + ": " + f.Name, Enabled: f.Enabled, Any: f.Match == "OR",
 		Conditions: []RuleCondition{{Field: "account", Value: account}, {Field: "inbox"}}}
+	if f.Skip != "" {
+		return r, f.Skip
+	}
 	for _, c := range f.Conds {
 		field, op := tbField(c[0]), tbOp(c[1])
 		if field == "" {
@@ -249,6 +259,9 @@ func tbRule(f ThunderbirdFilter, account string, known []Tag) (FilterRule, strin
 			if p == "" {
 				return r, "moves to a folder whose address cannot be read"
 			}
+			if !set.Local && !sameServer(a[1], set) {
+				return r, "moves mail to another account, which rules here cannot"
+			}
 			r.Actions = append(r.Actions, RuleAction{Type: "move", Account: account, Path: p})
 		case "Mark read":
 			r.Actions = append(r.Actions, RuleAction{Type: "markRead"})
@@ -260,6 +273,8 @@ func tbRule(f ThunderbirdFilter, account string, known []Tag) (FilterRule, strin
 			if tags := keywordTags([]string{a[1]}, known); len(tags) > 0 {
 				r.Actions = append(r.Actions, RuleAction{Type: "tag", Tag: tags[0]})
 			}
+		case "Tag": // a tag by name (KMail's)
+			r.Actions = append(r.Actions, RuleAction{Type: "tag", Tag: a[1]})
 		case "Delete":
 			r.Actions = append(r.Actions, RuleAction{Type: "delete"})
 		case "Stop execution":
@@ -275,6 +290,24 @@ func tbRule(f ThunderbirdFilter, account string, known []Tag) (FilterRule, strin
 		return r, "does nothing rules here can do"
 	}
 	return r, ""
+}
+
+// sameServer reports whether a folder URI is on set's server: a filter
+// moving mail to another account's folder cannot be a rule here (a rule
+// moves within its account), and taking only the path would move it to a
+// folder of that name in the wrong account.
+func sameServer(uri string, set FilterSet) bool {
+	u, err := url.Parse(uri)
+	if err != nil || u.Host == "" {
+		return true // a bare path is in the account's own tree
+	}
+	if !strings.EqualFold(u.Hostname(), set.Host) {
+		return false
+	}
+	if u.User == nil || set.User == "" {
+		return true
+	}
+	return strings.EqualFold(u.User.Username(), set.User)
 }
 
 func parsePrefsFile(path string) (map[string]string, error) {
@@ -294,16 +327,36 @@ func (s *LocalStore) ImportFilters(sets []FilterSet) FilterImport {
 	s.mu.Lock()
 	cfgs := append([]AccountConfig(nil), s.cfg.Accounts...)
 	tags := append([]Tag(nil), s.tags...)
+	// A filter runs on several accounts in KMail: one rule each. Already
+	// imported is by name and account.
+	key := func(r FilterRule) string {
+		for _, c := range r.Conditions {
+			if c.Field == "account" {
+				return r.Name + "\x00" + c.Value
+			}
+		}
+		return r.Name
+	}
 	have := map[string]bool{}
 	for _, r := range s.rules {
-		have[r.Name] = true
+		have[key(r)] = true
 	}
 	s.mu.Unlock()
+	said := map[string]bool{}
+	skip := func(why string) {
+		if !said[why] { // a KMail filter on two accounts is left out once
+			said[why] = true
+			res.Skipped = append(res.Skipped, why)
+		}
+	}
 	for _, set := range sets {
 		account := LocalAccountID
 		if !set.Local {
 			account = ""
 			for _, c := range cfgs {
+				if set.Host == "" {
+					break
+				}
 				in := c.Incoming()
 				host := in.Host
 				if h, _, ok := strings.Cut(host, ":"); ok {
@@ -319,23 +372,27 @@ func (s *LocalStore) ImportFilters(sets []FilterSet) FilterImport {
 			}
 		}
 		for _, f := range set.Filters {
+			if f.Skip != "" {
+				skip(fmt.Sprintf("%q %s", f.Name, f.Skip))
+				continue
+			}
 			if account == "" {
-				res.Skipped = append(res.Skipped, fmt.Sprintf("%q: its account (%s) is not set up here", f.Name, set.Host))
+				skip(fmt.Sprintf("%q: its account (%s) is not set up here", f.Name, set.Host))
 				continue
 			}
-			r, why := tbRule(f, account, tags)
+			r, why := tbRule(f, set, account, tags)
 			if why != "" {
-				res.Skipped = append(res.Skipped, fmt.Sprintf("%q %s", f.Name, why))
+				skip(fmt.Sprintf("%q %s", f.Name, why))
 				continue
 			}
-			if have[r.Name] {
+			if have[key(r)] {
 				continue
 			}
 			if _, err := s.PutRule(r); err != nil {
-				res.Skipped = append(res.Skipped, fmt.Sprintf("%q: %v", f.Name, err))
+				skip(fmt.Sprintf("%q: %v", f.Name, err))
 				continue
 			}
-			have[r.Name] = true
+			have[key(r)] = true
 			res.Added++
 		}
 	}

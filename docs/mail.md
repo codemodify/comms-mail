@@ -729,8 +729,10 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
 - **Empty by default** — no demo accounts unless `UITK_MAIL=memory`. First-run Yes/No is only “There are no accounts, want to add one?” Password / `0600` notes are on the Add Account form.
 - **Import from other mail clients** — Settings → Accounts → Import scans every client it knows and lists each one it finds as its own section, with two checkboxes:
   - *Config* — the accounts it has set up (servers, ports, encryption, user names, identities, signatures), with a checkbox per account beneath. Accounts already set up here are left out. Passwords are never read; each imported account gets an empty password to fill in, or sign in with OAuth (a Gmail / Outlook account from Geary is marked for it).
-  - *Contacts* — the people in its address book (Thunderbird's abook / collected addresses, Evolution's local books, KAddressBook vCards, Claws Mail's address books, mutt aliases), added to the address book the Write window completes from.
-  - *Filters* — Thunderbird's message filters, as rules (Settings → Filters), each scoped to its account's Inbox as Thunderbird ran it; a filter that tests or does something rules here cannot (age, priority, forward, reply…) is left out whole, and the import says which and why.
+  - *Contacts* — the people in its address book (Thunderbird's abook / collected addresses, Evolution's local books, KAddressBook vCards, Claws Mail's address books, mutt aliases, macOS Contacts), added to the address book the Write window completes from.
+  - *Filters* — Thunderbird's and KMail's message filters, as rules (Settings → Filters), each scoped to its account's Inbox as the client ran it; a filter that tests or does something rules here cannot (age, a header such as `List-Id`, priority, forward, reply, moving mail to another account…) is left out whole, and the import says which and why.
+    - Thunderbird: each server's `msgFilterRules.dat`.
+    - KMail: `akonadi_mailfilter_agentrc` (older KMail: `kmail2rc`). A KMail filter runs on the accounts it names, all of them, or — KMail's default — all but IMAP ones; it becomes a rule for each of those that is set up here. Filters that run only by hand or on sending are left out. KMail names the folder a filter moves mail to, and a tag it adds, by an id in Akonadi's database, which is looked up when Akonadi uses SQLite (the default since KDE Gear 26.04); with Akonadi on MySQL those filters are left out and the import says so.
   - *Emails* — mail kept only on disk. It goes into an **On This Computer** account that has no server and is never synced, one folder per source folder, read / unread and starred as the client had them (maildir `:2,S`/`F` file names, mbox `Status:` / `X-Status:` and Thunderbird's `X-Mozilla-Status`, Claws Mail's `.claws_mark`, MH `.mh_sequences`, Apple `.emlx` flags; mail from a store that records nothing comes in read), messages the client had marked deleted left out, its original bytes kept (so source and attachments open), de-duplicated by Message-ID (or a digest where there is none) so importing twice adds nothing. Mail on an IMAP server is not listed: it syncs once the account is added.
 
   | Client | Config from | Emails from |
@@ -741,8 +743,10 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
   | Claws Mail | `accountrc` | MH mailboxes from `folderlist.xml` |
   | Geary (also Flatpak) | `geary.ini` | — (IMAP cache only) |
   | mutt / neomutt | `muttrc` (`folder`, `spoolfile`, `smtp_url`, `from`, `source`) | local `folder`, spool, `mailboxes` |
-  | Apple Mail | `MailData/Accounts.plist` (older macOS) | "On My Mac" `.mbox` (`.emlx`) |
+  | Apple Mail | `MailData/Accounts.plist` (to OS X 10.10), else Internet Accounts (`~/Library/Accounts/Accounts4.sqlite`, best-effort) | "On My Mac" `.mbox` (`.emlx`) |
   | Any folder | — | **Add a folder or mailbox file…**: mbox, maildir, MH, `.eml`, `.emlx`, or a tree of them |
+
+  Other clients' databases (Thunderbird's address books, Akonadi, Contacts, Internet Accounts) are opened read-only, or a copy of them is, so a client left running is neither locked nor changed. macOS Contacts is `AddressBook-v22.abcddb` in `~/Library/Application Support/AddressBook` and each account's copy under `Sources/`. Property lists are read in XML or binary form, NSKeyedArchiver archives included.
 
   Outlook (`.pst`) is not supported yet.
 - **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Settings. `passEnv` remains an optional fallback.

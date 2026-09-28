@@ -35,15 +35,18 @@ new ones turn up.
 - **Drag a folder onto another** to move it — Move Folder To does it from
   the menu; the tree has no drag for its own nodes (uitoolkit).
 
-- **Import: Apple Mail on macOS 10.11+** — accounts live in
-  `~/Library/Accounts/Accounts4.sqlite` (NSKeyedArchiver blobs), not read;
-  the import says to add them by hand.
+- **Import: Apple Mail accounts on 10.11+ are best-effort** — read from
+  `Accounts4.sqlite` by the published layout, not yet tried on a real Mac
+  (which property holds the port, how Google / iCloud accounts nest).
 - **Replied / forwarded in the message list** — both are tracked and the
   reading pane says so; the list has no mark for them (the UI font has no
   ↩ / ↪ glyph and the toolkit draws no stand-in — uitoolkit-gaps.md #2).
-- **Import: KMail filters and Apple Mail contacts** — Thunderbird's filters
-  and the address books of Thunderbird, Evolution, KAddressBook, Claws Mail
-  and mutt import; these two do not yet.
+- **Import: KMail filters with Akonadi on MySQL** — their folders and tags
+  are ids in Akonadi's database; only SQLite is read, so with MySQL (the
+  default before KDE Gear 26.04) filters that move or tag are left out.
+- **Rules on any header** — a rule tests From, To/Cc, Subject and the body;
+  imported filters on `List-Id` and other headers (common in KMail) are left
+  out.
 - **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 
 ## Offline / sync
