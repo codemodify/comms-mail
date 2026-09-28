@@ -125,6 +125,7 @@ type session struct {
 	attachHits                                 []*attachHit
 	attachAll                                  *widgets.Button
 	attachBar                                  widget.Component
+	attachOpen, attachSave                     *widgets.Button
 	attachRows                                 *widgets.FlexBox
 	attachPane                                 *widgets.FlexBox
 	askedEmpty                                 bool
@@ -402,12 +403,23 @@ func (s *session) build() widget.Component {
 			s.mark("Message")
 		}
 	}
+	// Attachments: one bar of buttons acting on the selected attachment
+	// (double-click opens one, dragging one out hands it over), over a
+	// strip of fixed height — about three rows — that scrolls. However many
+	// a message carries, the strip stays the same size and the text below
+	// keeps its room.
 	s.attachAll = widgets.NewButton("Save All", s.saveAllAttachments)
 	s.attachAll.SetEnabled(false)
-	s.attachBar = widgets.NewRow(s.attachAll).WithGap(8)
+	// Short labels: the bar fits the narrowest reading pane (the header line
+	// already says how many there are).
+	s.attachOpen = widgets.NewButton("Open", func() { s.openAttachment(s.attachSel) })
+	s.attachOpen.Tip = "Open the selected attachment"
+	s.attachSave = widgets.NewButton("Save", func() { s.saveAttachment(s.attachSel) })
+	s.attachSave.Tip = "Save the selected attachment as…"
+	s.attachBar = widgets.NewRow(s.attachOpen, s.attachSave, s.attachAll).WithGap(8)
 	s.attachBar.SetVisible(false)
-	s.attachRows = widgets.NewColumn().WithGap(4)
-	s.attachPane = widgets.NewColumn(s.attachBar, s.attachRows).WithGap(4)
+	s.attachRows = widgets.NewColumn().WithGap(2)
+	s.attachPane = widgets.NewColumn(s.attachBar, widgets.NewHeightBox(attachStripHeight, widgets.NewScrollView(s.attachRows))).WithGap(4)
 	s.attachPane.SetVisible(false)
 	s.applyRowMetrics()
 	s.retryBar = widgets.NewRow(widgets.NewButton("Retry", s.loadPreview))
@@ -2636,12 +2648,24 @@ func (s *session) tagNames() []string {
 
 const attachActivateWindow = 400 * time.Millisecond
 
+// attachStripHeight is the attachment list's height (1x pixels): about
+// three rows, whatever the message carries; more scroll.
+const attachStripHeight = 92
+
 func (s *session) syncAttachPane() {
 	has := len(s.attNames) > 0
 	s.attachSel = -1
+	if has {
+		s.attachSel = 0 // Open and Save As act on the first until another is picked
+	}
 	s.attachClickI = -1
 	s.attachClickT = time.Time{}
 	s.rebuildAttachRows()
+	for _, b := range []*widgets.Button{s.attachOpen, s.attachSave} {
+		if b != nil {
+			b.SetEnabled(has)
+		}
+	}
 	if s.attachPane != nil {
 		s.attachPane.SetVisible(has)
 	}
@@ -2667,19 +2691,7 @@ func (s *session) rebuildAttachRows() {
 		i, name := i, name
 		hit := newAttachHit("📎  "+name, func() { s.selectAttachment(i) })
 		hit.Drag = func() *widget.Drag { return s.dragAttachment(i) }
-		open := widgets.NewButton("Open", func() {
-			s.attachSel = i
-			s.paintAttachSelection()
-			s.openAttachment(i)
-		})
-		save := widgets.NewButton("Save As", func() {
-			s.attachSel = i
-			s.paintAttachSelection()
-			s.saveAttachment(i)
-		})
-		row := widgets.NewRow(hit, open, save).WithGap(8)
-		row.AddFlex(hit, 1)
-		s.attachRows.Add(row)
+		s.attachRows.Add(hit)
 		s.attachHits = append(s.attachHits, hit)
 	}
 }

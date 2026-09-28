@@ -120,3 +120,14 @@ people drop them.
 ancestor that takes it over a descendant that only takes `text/plain`; or
 let `TextArea` decline file drops (an option, or by default).
 
+### 14. ScrollView cannot shrink to its content
+`ScrollView.Measure` always asks for the whole height it is offered, so a
+scrolling area that should be "as tall as what is in it, up to N" — a
+message header that grows with an invitation or attachments but must not
+push the body out — has to be wrapped in an app-side box that reads
+`ContentHeight()` after measuring. comms-mail's first attempt trusted the
+scroll view's answer, and the reading pane's header took every pixel up to
+its cap for every message.
+**Fix:** a `MaxHeight` (or `ShrinkToContent`) option: measure to the
+content's height, capped, and scroll past it.
+

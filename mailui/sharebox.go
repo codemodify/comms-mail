@@ -5,6 +5,7 @@ import (
 	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
+	"github.com/codemodify/uitoolkit/widgets"
 )
 
 // reserveBox gives its child the child's own height, but always leaves
@@ -36,6 +37,13 @@ func (b *reserveBox) Measure(c layout.Constraints) paintengine2d.Point {
 		cc.MaxH = max(c.MaxH-style.Dip(b.Look(), b.reserve), c.MaxH/3)
 	}
 	p := kids[0].Measure(cc)
+	// A scroll view asks for all the height it is offered; the box wants
+	// what is in it. (Taking the scroll view's word made the reading
+	// pane's header as tall as the cap for every message, the body squeezed
+	// under it — uitoolkit-gaps.md #14.)
+	if sv, ok := kids[0].(*widgets.ScrollView); ok && sv.ContentHeight() < p.Y {
+		p.Y = sv.ContentHeight()
+	}
 	if c.HasMaxH() && p.Y > cc.MaxH {
 		p.Y = cc.MaxH
 	}

@@ -1479,38 +1479,33 @@ func TestMailAttachmentSelectOpenSaveAs(t *testing.T) {
 	w.SetContent(MailApp(a, w))
 	a.PumpOnce()
 
+	// One bar — Open, Save As, Save All — acting on the selected
+	// attachment; the rows are just the attachments.
 	hits, opens, saves, saveAll := findAttachChrome(mailTree(w))
-	if len(hits) < 2 || len(opens) < 2 || len(saves) < 2 {
-		t.Fatalf("per-row chrome hits=%d open=%d saveAs=%d", len(hits), len(opens), len(saves))
+	if len(hits) < 2 || len(opens) != 1 || len(saves) != 1 {
+		t.Fatalf("attachment chrome hits=%d open=%d saveAs=%d", len(hits), len(opens), len(saves))
 	}
 	if saveAll == nil || !saveAll.Enabled() || saveAll.OnClick == nil {
 		t.Fatal("Save All should sit in the attachment toolbar and be enabled")
 	}
-	for i, b := range opens {
-		if !b.Enabled() {
-			t.Fatalf("row Open %d should be enabled without a shared selection", i)
-		}
-	}
-	for i, b := range saves {
-		if !b.Enabled() {
-			t.Fatalf("row Save As %d should be enabled without a shared selection", i)
-		}
+	if !opens[0].Enabled() || !saves[0].Enabled() || !hits[0].Selected {
+		t.Fatal("Open and Save As should act on the first attachment until another is picked")
 	}
 
 	before := globMailOpenDirs()
-	if hits[0].OnPress == nil {
+	if hits[1].OnPress == nil {
 		t.Fatal("attachment row press")
 	}
-	hits[0].OnPress()
+	hits[1].OnPress()
 	a.PumpOnce()
-	if !hits[0].Selected || hits[1].Selected {
+	if !hits[1].Selected || hits[0].Selected {
 		t.Fatal("single click should select that row only")
 	}
 	if n := globMailOpenDirs(); len(n) != len(before) {
 		t.Fatalf("single click opened a part: before=%d after=%d", len(before), len(n))
 	}
 
-	hits[0].OnPress()
+	hits[1].OnPress()
 	a.PumpOnce()
 	afterOpen := globMailOpenDirs()
 	if len(afterOpen) <= len(before) {
@@ -1518,19 +1513,15 @@ func TestMailAttachmentSelectOpenSaveAs(t *testing.T) {
 	}
 
 	beforeBtn := globMailOpenDirs()
-	if opens[1].OnClick == nil {
-		t.Fatal("row Open")
-	}
-	opens[1].OnClick()
+	opens[0].OnClick()
 	a.PumpOnce()
 	if n := globMailOpenDirs(); len(n) <= len(beforeBtn) {
-		t.Fatal("row Open should call messages.openPart")
+		t.Fatal("Open should call messages.openPart for the selected attachment")
 	}
 
+	hits[0].OnPress() // select the first again for Save As
+	a.PumpOnce()
 	dest := filepath.Join(t.TempDir(), "mail-shortcuts.txt")
-	if saves[0].OnClick == nil {
-		t.Fatal("Save As")
-	}
 	saves[0].OnClick()
 	a.PumpOnce()
 	if err := confirmFileDialog(t, w, dest); err != nil {
@@ -1604,7 +1595,7 @@ func findAttachChrome(root widget.Component) (hits []*attachHit, opens, saves []
 			switch v.Text {
 			case "Open":
 				opens = append(opens, v)
-			case "Save As":
+			case "Save":
 				saves = append(saves, v)
 			case "Save All":
 				saveAll = v
