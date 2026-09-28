@@ -104,7 +104,10 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 		s.checkVault()
 	})
 	radios, fields, buttons := chooserParts(w)
-	keep := buttons["Keep them there"]
+	keep := buttons["OK"]
+	if !strings.Contains(labelTexts(w), laterNote) {
+		t.Fatal("the window does not say this can be changed later in Settings")
+	}
 	if len(radios) != 4 || keep == nil || buttons["Not now"] == nil {
 		t.Fatalf("the window: radios %v, buttons %v", radios, buttons)
 	}
@@ -178,7 +181,7 @@ func TestChoosingThePlainFileKeepsMailJSON(t *testing.T) {
 	w := newWindowFrom(t, a, func() { openStoreChooser(a, cli, accountIntro, st, nil) })
 	radios, _, buttons := chooserParts(w)
 	radios["Plain file"].SetSelected(true)
-	buttons["Keep them there"].OnClick()
+	buttons["OK"].OnClick()
 	a.PumpOnce()
 	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StorePlain {
 		t.Fatalf("store %+v", st)
@@ -306,4 +309,15 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 	if joined := strings.Join(texts, "\n"); !strings.Contains(joined, "No passwords are saved yet.") {
 		t.Fatalf("Settings says:\n%s", joined)
 	}
+}
+
+// labelTexts are the texts of w's labels, one a line.
+func labelTexts(w *app.Window) string {
+	var texts []string
+	widget.Walk(w.Content(), func(c widget.Component) {
+		if l, ok := c.(*widgets.Label); ok {
+			texts = append(texts, l.Text)
+		}
+	})
+	return strings.Join(texts, "\n")
 }

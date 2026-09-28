@@ -35,12 +35,12 @@ func plainIntro(st mailcore.SecretsStatus) string {
 			now += " So are your Google or Microsoft sign-ins."
 		}
 		next = "Choose where they should be kept. They all move there and leave mail.json (unless you keep the plain file). " +
-			"Not now leaves everything as it is; you can choose later in Settings › Privacy."
+			"Not now leaves everything as it is."
 	case st.PlainTokens:
 		now = "At the moment your Google or Microsoft sign-ins are saved in files whose key is kept right beside them, " +
 			"so any program running as you can read them."
 		next = "Choose where they should be kept. They all move there, and the old files are removed. " +
-			"Not now leaves everything as it is; you can choose later in Settings › Privacy."
+			"Not now leaves everything as it is."
 	default:
 		now = "No passwords are saved yet."
 		next = "Choose where comms-mail should keep them once you add an account. " +
@@ -50,8 +50,10 @@ func plainIntro(st mailcore.SecretsStatus) string {
 }
 
 // accountIntro is the text before the first password is saved.
-const accountIntro = "Before comms-mail saves this account's password, choose where your passwords are kept. " +
-	"You can change it later in Settings › Privacy."
+const accountIntro = "Before comms-mail saves this account's password, choose where your passwords are kept."
+
+// laterNote is under the choices when they are first offered.
+const laterNote = "You can set this up later, or switch to another place at any time, in Settings › Privacy › Change where…"
 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
@@ -160,7 +162,7 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 	}
 	first.OnSubmit = func(string) { submit() }
 	again.OnSubmit = func(string) { submit() }
-	okBtn = widgets.NewButton("Keep them there", submit)
+	okBtn = widgets.NewButton("OK", submit)
 	okBtn.Primary = true
 	okBtn.SetEnabled(false)
 	cancelText := "Not now"
@@ -172,12 +174,18 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 		AddButton(okBtn, widgets.RoleAccept)
 
 	// The explanation and the choices scroll in a small window; the
-	// passphrase fields and the buttons stay in view.
+	// passphrase fields, the note that this can be changed later and the
+	// buttons stay in view.
 	body := widgets.NewColumn(wrapLabel(intro), list).WithGap(14)
 	body.AddFlex(widgets.NewSpacer(), 1)
 	scroll := widgets.NewScrollView(body)
-	col := widgets.NewColumn(scroll, passBox, buttons).WithGap(10)
+	col := widgets.NewColumn(scroll, passBox).WithGap(10)
 	col.AddFlex(scroll, 1)
+	if st.Store == "" {
+		// Asked from Settings it goes without saying.
+		col.Add(wrapLabel(laterNote))
+	}
+	col.Add(buttons)
 	win.SetContent(widgets.NewPad(14, col))
 	return win
 }
