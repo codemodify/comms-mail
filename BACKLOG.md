@@ -22,9 +22,6 @@ new ones turn up.
   the calendar application.
 
 ## Compose
-- **Drafts saved offline stay local** — a draft saved (or autosaved) while
-  offline is kept in the cache but not queued for the server's Drafts; it
-  reaches the server only if saved again once online after a sync.
 - **Chip/pill recipient fields** — removable recipient pills (uitoolkit
   gap #5); today they are comma-separated text.
 - **Spell check.**

@@ -37,7 +37,14 @@ type LocalStore struct {
 	// downSince is when each account's server last failed at the network
 	// level with no success since. Foreground fetches fail fast inside
 	// unreachableFor of it instead of waiting out a connect timeout per click.
-	downSince  map[string]time.Time
+	downSince map[string]time.Time
+	// rekeyed maps a message's old id to the one it has since the server
+	// gave it a UID, for a window still holding the old one (a draft
+	// being written when its queued APPEND went out).
+	rekeyed map[MessageID]MessageID
+	// flushMu lets one Outbox replay run at a time: two at once could send
+	// the same message twice.
+	flushMu    sync.Mutex
 	nextID     int
 	health     error
 	now        time.Time
@@ -979,6 +986,10 @@ func (s *LocalStore) rekeyMovedLocked(i int, dest FolderID, newUID uint32) {
 	m.Folder = dest
 	m.UID = newUID
 	m.ID = MessageID(fmt.Sprintf("%s:%d", dest, newUID))
+	if s.rekeyed == nil || len(s.rekeyed) > 1000 {
+		s.rekeyed = map[MessageID]MessageID{}
+	}
+	s.rekeyed[old.ID] = m.ID
 	if s.feat != nil && s.feat.index != nil {
 		s.feat.index.remove(old.ID)
 		s.feat.index.add(m)
@@ -990,6 +1001,10 @@ func (s *LocalStore) rekeyMovedLocked(i int, dest FolderID, newUID uint32) {
 }
 func (s *LocalStore) Delete(ids []MessageID) error {
 	s.mu.Lock()
+	ids = append([]MessageID(nil), ids...)
+	for k := range ids {
+		ids[k] = s.resolveLocked(ids[k]) // a draft re-keyed since the window last saw it
+	}
 	offline := s.feat != nil && !s.feat.Online()
 	type purge struct {
 		msg Message
@@ -1156,26 +1171,101 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 // finds the message it already has instead of adding a second copy. It
 // returns the message's id afterwards.
 func (s *LocalStore) appendToServer(f Folder, accountID string, id MessageID, raw []byte) MessageID {
-	if f.Virtual || accountID == LocalAccountID || (s.feat != nil && !s.feat.Online()) {
+	if f.Virtual || f.Remote == "" || accountID == LocalAccountID {
 		return id
 	}
+	if s.feat != nil && !s.feat.Online() {
+		s.queueAppend(accountID, id, f.ID, "")
+		return id
+	}
+	newID, err := s.appendNow(f, accountID, id, raw)
+	if err != nil {
+		// The cache has it; the server gets it when it answers.
+		Logf("append to %s: %v — queued", f.ID, err)
+		s.queueAppend(accountID, id, f.ID, err.Error())
+	}
+	return newID
+}
+
+// appendNow is the APPEND itself, re-keying the cached copy to the UID the
+// server gives it.
+func (s *LocalStore) appendNow(f Folder, accountID string, id MessageID, raw []byte) (MessageID, error) {
 	cli, err := s.client(accountID)
 	if err != nil {
-		return id
+		return id, err
 	}
 	uid, err := cli.appendRaw(remoteName(f), raw, `\Seen`)
 	if err != nil || uid == 0 {
-		return id
+		return id, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	i, ok := s.indexLocked(id)
 	if !ok {
-		return id
+		return id, nil
 	}
 	s.rekeyMovedLocked(i, f.ID, uid)
 	s.saveLocked()
-	return s.Messages[i].ID
+	return s.Messages[i].ID, nil
+}
+
+// queueAppend queues a message written here (a draft saved offline) for
+// the server's copy of its folder, once.
+func (s *LocalStore) queueAppend(accountID string, id MessageID, folder FolderID, cause string) {
+	if s.feat == nil {
+		return
+	}
+	s.feat.mu.Lock()
+	for _, op := range s.feat.outbox {
+		if op.Kind == "append" && op.MessageID == id {
+			s.feat.mu.Unlock()
+			return // one APPEND sends whatever the message holds by then
+		}
+	}
+	s.feat.enqueueLocked(OutboxOp{Kind: "append", AccountID: accountID, MessageID: id, Dest: folder, Error: cause})
+	s.feat.mu.Unlock()
+	s.mu.Lock()
+	s.saveLocked()
+	s.mu.Unlock()
+}
+
+// replayAppend sends a message written offline to the server, as it is
+// now — a draft saved again since has its latest text.
+func (s *LocalStore) replayAppend(op OutboxOp) error {
+	s.mu.Lock()
+	i, ok := s.indexLocked(op.MessageID)
+	if !ok || s.Messages[i].UID != 0 {
+		s.mu.Unlock()
+		return nil // gone (sent, deleted), or on the server already
+	}
+	m := s.Messages[i].Clone()
+	f, hasFolder := s.folderLocked(m.Folder)
+	raw := s.readRawLocked(m)
+	s.mu.Unlock()
+	if !hasFolder || len(raw) == 0 {
+		return nil
+	}
+	_, err := s.appendNow(f, m.AccountID, m.ID, raw)
+	return err
+}
+
+// maxAutoTries is how often the background tick retries a queued op before
+// leaving it for a flush by hand.
+const maxAutoTries = 10
+
+// resolveLocked follows a message's re-keys to its id now.
+func (s *LocalStore) resolveLocked(id MessageID) MessageID {
+	for n := 0; n < 4; n++ {
+		if _, ok := s.indexLocked(id); ok {
+			return id
+		}
+		next, ok := s.rekeyed[id]
+		if !ok {
+			return id
+		}
+		id = next
+	}
+	return id
 }
 
 // newMessageID makes a Message-ID for a message written here.
@@ -1203,6 +1293,7 @@ func (s *LocalStore) Update(id MessageID, msg Message) error {
 // server copy gives it a new UID.
 func (s *LocalStore) update(id MessageID, msg Message) (MessageID, error) {
 	s.mu.Lock()
+	id = s.resolveLocked(id)
 	i, ok := s.indexLocked(id)
 	if !ok {
 		s.mu.Unlock()
@@ -3064,6 +3155,10 @@ func (s *LocalStore) flushOutbox(only func(OutboxOp) bool) (int, error) {
 	if s.feat == nil {
 		return 0, nil
 	}
+	if !s.flushMu.TryLock() {
+		return 0, nil // a replay is already running; it takes these too
+	}
+	defer s.flushMu.Unlock()
 	s.feat.mu.Lock()
 	var ops []OutboxOp
 	for _, op := range s.feat.outbox {
@@ -3137,6 +3232,8 @@ func (s *LocalStore) flushOne(op OutboxOp) error {
 			add, rem = op.Add, op.Rem
 		}
 		return s.pushFlags(m, f, add, rem)
+	case "append":
+		return s.replayAppend(op)
 	case "read":
 		src, _, ok := s.replayFolders(OutboxOp{Src: op.Src, UID: 1})
 		if !ok || len(op.UIDs) == 0 {

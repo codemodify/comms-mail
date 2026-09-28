@@ -477,6 +477,12 @@ Conflict-safe cache:
 - Flush of a vanished UID is a no-op (dropped).
 - `UIDVALIDITY` change drops stale UIDs; the user re-syncs.
 
+
+What waits in the Outbox — sends, drafts, moves, flag and tag changes — is
+retried every two minutes while online, not only when you go back online;
+an op that has failed ten times waits for a flush by hand. Only one replay
+runs at a time, and a send that fails again on retry is not queued a second
+time, so nothing is sent twice.
 ## Cache integrity
 
 `mail.db` is SQLite in WAL mode. A save writes only the messages whose
@@ -586,7 +592,9 @@ the cached copy takes the UID the server gives it (UIDPLUS `APPENDUID`),
 so a sync does not add it a second time; saving again appends the new
 version and removes the old one, so the server holds one draft, the latest.
 A server that does not report UIDs gets its copy recognised by Message-ID
-on the next sync. Sent copies are filed the same way.
+on the next sync. Sent copies are filed the same way. A draft saved while offline is kept here and
+appended to the server's Drafts — once, with its latest text — when the
+account is reachable again.
 
 ## VIP, notifications, categories
 

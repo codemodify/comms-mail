@@ -219,3 +219,47 @@ func TestAppendedCopyAdoptedBySyncWithoutUIDPLUS(t *testing.T) {
 		t.Fatalf("adopted draft lost its body: %q", d[0].Body)
 	}
 }
+
+// A draft saved offline (and saved again) reaches the server once, with its
+// latest text, when back online; the window, still holding the id it had
+// before, keeps saving to it and can remove it.
+func TestDraftSavedOfflineReachesTheServer(t *testing.T) {
+	ds := newDraftServer(t, true)
+	st, srv := newDraftStore(t, ds)
+	st.SetOnline(false)
+	r, err := srv.saveDraft(ComposeParams{AccountID: "home", Message: Message{Subject: "plan", Body: "v1\n"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := r.ID
+	if _, err := srv.saveDraft(ComposeParams{AccountID: "home", ID: old, Message: Message{Subject: "plan", Body: "v2\n"}}); err != nil {
+		t.Fatal(err)
+	}
+	if n := ds.count("Drafts"); n != 0 {
+		t.Fatalf("offline, the server got %d drafts", n)
+	}
+	if ops := st.ListOutbox(); len(ops) != 1 || ops[0].Kind != "append" {
+		t.Fatalf("outbox %+v", ops)
+	}
+	st.SetOnline(true)
+	if _, err := st.FlushOutbox(); err != nil {
+		t.Fatal(err)
+	}
+	if raw := ds.only(t, "Drafts"); !strings.Contains(raw, "v2") {
+		t.Fatalf("the server's draft:\n%s", raw)
+	}
+	// The window still says `old`.
+	r, err = srv.saveDraft(ComposeParams{AccountID: "home", ID: old, Message: Message{Subject: "plan", Body: "v3\n"}})
+	if err != nil {
+		t.Fatalf("saving to the old id: %v", err)
+	}
+	if raw := ds.only(t, "Drafts"); !strings.Contains(raw, "v3") {
+		t.Fatalf("after saving again:\n%s", raw)
+	}
+	if err := st.Delete([]MessageID{old}); err != nil {
+		t.Fatalf("delete by the old id: %v", err)
+	}
+	if len(draftsIn(st)) != 0 {
+		t.Fatal("the draft is still here")
+	}
+}

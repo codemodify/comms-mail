@@ -58,10 +58,12 @@ func (s *LocalStore) pushLoop(ctx context.Context) {
 				continue
 			}
 			s.rewatch(ctx, watched)
-			// Flag changes that failed to reach the server go again. Only
-			// flags: replaying one is idempotent and addresses the message
-			// where it now is.
-			_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" || op.Kind == "read" })
+			// What waits in the Outbox goes again — sends, drafts, moves,
+			// flag changes. Each replay addresses the message where the
+			// server has it and refuses renumbered folders, and a send
+			// retried is not queued again. An op that has failed ten times
+			// waits for a flush by hand (going online, or Outbox → Send).
+			_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Tries < maxAutoTries })
 			res, _ := s.Sync("")
 			if res.New > 0 {
 				s.Emit(StoreEvent{Reason: "poll", Count: res.New})
