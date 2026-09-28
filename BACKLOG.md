@@ -46,9 +46,6 @@ new ones turn up.
 - **Import: KMail filters and Apple Mail contacts** — Thunderbird's filters
   and the address books of Thunderbird, Evolution, KAddressBook, Claws Mail
   and mutt import; these two do not yet.
-- **Rule editor for several tests / actions** — Settings → Filters edits a
-  rule with one test and one action; a larger one (an imported filter) can
-  be turned on or off and deleted, not edited.
 - **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 
 ## Offline / sync

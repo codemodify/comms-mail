@@ -22,54 +22,54 @@ func TestRuleSummary(t *testing.T) {
 	if got != want {
 		t.Fatalf("summary\n %q\nwant\n %q", got, want)
 	}
-	if simpleRule(r) {
-		t.Fatal("a two-test rule is not simple")
+	if !editableRule(r) {
+		t.Fatal("a rule of tests and actions the editor offers should be editable")
+	}
+	if editableRule(mailcore.FilterRule{Conditions: []mailcore.RuleCondition{{Field: "size"}}}) {
+		t.Fatal("a test the editor does not offer is not editable")
 	}
 }
 
-// The editor makes a rule the Filters tab lists; the tab turns it off and
-// deletes it.
+// The editor makes a rule with several tests and actions, which the
+// Filters tab lists, turns off, and edits again.
 func TestFiltersTabAndEditor(t *testing.T) {
 	cli := demoClient(t)
 	before, _ := cli.Rules()
 	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
-	openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true, Conditions: []mailcore.RuleCondition{{Field: "inbox"}}}, nil)
-	a.PumpOnce()
-	ws := a.Windows()
-	ed := ws[len(ws)-1]
-	var value *widgets.TextField
-	var combos []*widgets.ComboBox
-	var save *widgets.Button
-	widget.Walk(ed.Content(), func(c widget.Component) {
-		switch v := c.(type) {
-		case *widgets.TextField:
-			if v.Placeholder == "text" {
-				value = v
-			}
-		case *widgets.ComboBox:
-			combos = append(combos, v)
-		case *widgets.Button:
-			if v.Text == "Save" {
-				save = v
-			}
-		}
-	})
-	if value == nil || len(combos) != 4 || save == nil {
-		t.Fatalf("editor parts: value %v combos %d save %v", value, len(combos), save)
+	e := openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true, Conditions: []mailcore.RuleCondition{{Field: "inbox"}}}, nil)
+	if e == nil || len(e.condRows) != 1 || len(e.actRows) != 1 || !e.inbox.Checked {
+		t.Fatalf("new editor %+v", e)
 	}
-	combos[0].Selected = 2 // Subject
-	combos[1].Selected = 4 // begins with
-	value.SetText("Invoice")
-	combos[2].Selected = 1 // Tag
-	combos[2].OnChange(1)
-	save.OnClick()
+	// Subject begins with "Invoice" OR From contains "billing@" → tag, mark read, stop.
+	e.condRows[0].field.Selected = keyIndex(editorFields, "subject")
+	e.condRows[0].field.OnChange(0)
+	e.condRows[0].op.Selected = keyIndex(ruleOps, "begins")
+	e.condRows[0].value.SetText("Invoice")
+	e.addCond(mailcore.RuleCondition{Field: "from", Op: "contains", Value: "billing@"})
+	e.match.Selected = 1
+	e.actRows[0].action.Selected = keyIndex(editorActions, "tag")
+	e.actRows[0].action.OnChange(0)
+	e.addAct(mailcore.RuleAction{Type: "markRead"})
+	e.stop.SetChecked(true)
+	if err := e.save(); err != nil {
+		t.Fatal(err)
+	}
 	after, _ := cli.Rules()
 	if len(after) != len(before)+1 {
 		t.Fatalf("rules %d → %d", len(before), len(after))
 	}
 	r := after[len(after)-1]
-	if r.Name != "Subject begins with Invoice" || r.Actions[0].Type != "tag" || r.Actions[0].Tag == "" || r.Conditions[1].Field != "inbox" {
+	if !r.Any || !r.Stop || len(r.Conditions) != 3 || len(r.Actions) != 3 || r.Actions[0].Type != "tag" || r.Actions[1].Type != "markRead" || r.Actions[2].Type != "stop" {
 		t.Fatalf("rule %+v", r)
+	}
+	if r.Name != "Subject begins with Invoice" {
+		t.Fatalf("name %q", r.Name)
+	}
+
+	// Editing it again shows it whole.
+	e2 := openRuleEditor(a, cli, r, nil)
+	if len(e2.condRows) != 2 || len(e2.actRows) != 2 || !e2.stop.Checked || e2.match.Selected != 1 {
+		t.Fatalf("reopened: %d tests, %d actions, stop %v", len(e2.condRows), len(e2.actRows), e2.stop.Checked)
 	}
 
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 560, Headless: true})
@@ -91,11 +91,33 @@ func TestFiltersTabAndEditor(t *testing.T) {
 	})
 	table.Selected = len(after) - 1
 	table.OnSelect(table.Selected)
-	if !buttons["Edit…"].Enabled() || !strings.Contains(table.CellText(table.Selected, 2), "Subject begins with “Invoice”") {
+	if !buttons["Edit…"].Enabled() || !strings.Contains(table.CellText(table.Selected, 2), "Subject begins with “Invoice” or From contains “billing@”") {
 		t.Fatalf("row %q edit %v", table.CellText(table.Selected, 2), buttons["Edit…"].Enabled())
 	}
 	buttons["Turn Off"].OnClick()
 	if got, _ := cli.Rules(); got[len(got)-1].Enabled {
 		t.Fatal("Turn Off left it on")
+	}
+}
+
+// An imported rule — account scope, a move by server path — edits without
+// losing either.
+func TestEditorKeepsScopeAndServerPath(t *testing.T) {
+	cli := demoClient(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	r := mailcore.FilterRule{ID: "rule-x", Name: "Thunderbird: News", Enabled: true,
+		Conditions: []mailcore.RuleCondition{{Field: "account", Value: "ada"}, {Field: "inbox"}, {Field: "from", Op: "contains", Value: "news@"}},
+		Actions:    []mailcore.RuleAction{{Type: "move", Account: "ada", Path: "Lists/News"}}}
+	e := openRuleEditor(a, cli, r, nil)
+	if len(e.scope) != 1 || !e.actRows[0].pathItem {
+		t.Fatalf("scope %v path item %v", e.scope, e.actRows[0].pathItem)
+	}
+	if err := e.save(); err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := cli.Rules()
+	got := rules[len(rules)-1]
+	if got.Conditions[0].Field != "account" || got.Actions[0].Path != "Lists/News" || got.Actions[0].Folder != "" {
+		t.Fatalf("saved %+v", got)
 	}
 }

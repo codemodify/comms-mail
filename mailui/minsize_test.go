@@ -159,7 +159,7 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 					func(string) error { return nil }, nil)
 			}},
 			{"Message source", 480, 320, func() { _, _ = OpenMessageSource(a, inbox[0], "From: a\r\n\r\nbody") }},
-			{"Rule editor", 420, 340, func() { openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil) }},
+			{"Rule editor", 520, 420, func() { openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil) }},
 		}
 		for _, win := range wins {
 			w := newWindowFrom(t, a, win.open)
