@@ -90,20 +90,20 @@ type OutboxOp struct {
 
 // featureHost is the shared Tier A/B state (MemoryStore + LocalStore).
 type featureHost struct {
-	mu       sync.Mutex
-	smart    []SmartFolder
-	vips     []VIP
-	muted    []string
-	cats     []SenderCat
-	notify   NotifyPrefs
-	outbox   []OutboxOp
-	answers  map[string]string // invite answers sent from here, by event
+	mu      sync.Mutex
+	smart   []SmartFolder
+	vips    []VIP
+	muted   []string
+	cats    []SenderCat
+	notify  NotifyPrefs
+	outbox  []OutboxOp
+	answers map[string]string // invite answers sent from here, by event
 	// imageSenders are the senders whose remote images load without asking.
 	imageSenders []string
-	online   bool
-	index    *searchIndex
-	contacts []Contact // address book, rebuilt when the message set changes
-	nextOp   int
+	online       bool
+	index        *searchIndex
+	contacts     []Contact // address book, rebuilt when the message set changes
+	nextOp       int
 }
 
 // setContacts replaces the cached address book.
