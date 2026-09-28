@@ -170,6 +170,10 @@ type session struct {
 	images     map[string]*paintengine2d.Image
 	imgSenders map[string]bool
 	imgGen     uint64
+	// srv is the "On server" search: its toggle and its latest answer;
+	// srvAdded is how many rows it added to the list showing.
+	srv      serverSearch
+	srvAdded int
 
 	// undo is the move or delete waiting out its undo window; its messages
 	// are hidden from the list until it is committed or undone.
@@ -543,7 +547,9 @@ func (s *session) toolBar() *widgets.ToolBar {
 	s.qfBtn.Down = s.opts.ShowFilter
 	s.allBtn = widgets.ToolToggle("All folders", s.searchAll, s.toggleSearchAll)
 	s.allBtn.Tip = "Search every folder, not just this one"
-	return widgets.NewToolBar(s.qfBtn, s.allBtn)
+	s.srv.btn = widgets.ToolToggle("On server", s.srv.on, s.toggleServerSearch)
+	s.srv.btn.Tip = "Ask the mail server too — finds words in mail not downloaded yet"
+	return widgets.NewToolBar(s.qfBtn, s.allBtn, s.srv.btn)
 }
 
 // toggleSearchAll switches the message list between the current folder and a
@@ -707,6 +713,10 @@ func (s *session) loadVisible() ([]mailcore.Message, error) {
 	if err != nil {
 		return nil, err
 	}
+	var fromServer int
+	all, fromServer = s.mergeServerHits(all)
+	s.srvAdded = fromServer
+	s.maybeSearchServer()
 	if ids, err := s.cli.MutedThreads(); err == nil {
 		s.muted = map[string]bool{}
 		for _, id := range ids {
@@ -1541,7 +1551,11 @@ func (s *session) refreshStatus() {
 		sel = fmt.Sprintf("  ·  %d selected", n)
 	}
 	s.status.Set(0, fmt.Sprintf("%d unread%s", unread, sel))
-	s.status.Set(1, fmt.Sprintf("%s  ·  %d shown", name, len(s.rows)))
+	shown := fmt.Sprintf("%s  ·  %d shown", name, len(s.rows))
+	if s.srvAdded > 0 {
+		shown += fmt.Sprintf(" (%d from the server)", s.srvAdded)
+	}
+	s.status.Set(1, shown)
 	line := s.backendLabel()
 	if ops, err := s.cli.Outbox(); err == nil && len(ops) > 0 {
 		line += fmt.Sprintf(" · %d queued", len(ops))

@@ -73,6 +73,7 @@ const (
 	MethodMessagesGet     = "messages.get"
 	MethodMessagesSource  = "messages.getSource"
 	MethodMessagesSearch  = "messages.search"
+	MethodSearchServer    = "messages.searchServer"
 	MethodContactsSuggest = "contacts.suggest"
 	MethodFoldersDelete   = "folders.delete"
 	MethodFoldersRename   = "folders.rename"
@@ -319,6 +320,11 @@ type tagNameParams struct {
 
 type applyRulesParams struct {
 	FolderID FolderID `json:"folderId,omitempty"`
+}
+
+type searchServerParams struct {
+	FolderID FolderID `json:"folderId,omitempty"`
+	Query    string   `json:"query"`
 }
 
 type imagesFetchParams struct {

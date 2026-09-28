@@ -337,6 +337,24 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			result = s.Store.Search(SearchQuery{AccountID: p.AccountID, Folder: p.FolderID, Filter: p.Filter})
 		}
+	case MethodSearchServer:
+		var p searchServerParams
+		p, err = decodeParams[searchServerParams](req.Params)
+		if err == nil {
+			hits := []Message{}
+			if ls, ok := s.Store.(*LocalStore); ok {
+				var found []Message
+				found, err = ls.SearchServer(p.FolderID, p.Query)
+				if len(found) > 0 {
+					// What was found is worth showing even when a folder
+					// could not be searched.
+					hits, err = found, nil
+				}
+			}
+			if err == nil {
+				result = hits
+			}
+		}
 	case MethodImportScan:
 		result = ScanImportSources()
 	case MethodImportScanPath:

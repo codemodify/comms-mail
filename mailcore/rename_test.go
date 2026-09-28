@@ -1,8 +1,10 @@
 package mailcore
 
 import (
+	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +18,8 @@ type folderServer struct {
 	delim string
 	boxes map[string][]uint32 // wire (modified UTF-7) name → UIDs
 	log   []string
+	// hits answers UID SEARCH in a mailbox (every UID there when nil).
+	hits map[string][]uint32
 }
 
 func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *folderServer {
@@ -66,6 +70,27 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 			s.send("* OK [UIDVALIDITY 5]")
 			s.send("* OK [UIDNEXT 99]")
 			s.send("%s OK selected", tag)
+		case strings.Contains(strings.ToUpper(line), "UID SEARCH"):
+			rest := strings.TrimPrefix(line, tag+" ")
+			if strings.HasSuffix(line, "}") {
+				n, _ := strconv.Atoi(line[strings.LastIndexByte(line, '{')+1 : len(line)-1])
+				s.send("+ go ahead")
+				buf := make([]byte, n)
+				_, _ = io.ReadFull(s.r, buf)
+				_, _ = s.r.ReadString('\n')
+				rest += " " + string(buf)
+			}
+			fs.log = append(fs.log, s.box+": "+rest)
+			uids := fs.boxes[s.box]
+			if fs.hits != nil {
+				uids = fs.hits[s.box]
+			}
+			parts := []string{"* SEARCH"}
+			for _, u := range uids {
+				parts = append(parts, strconv.Itoa(int(u)))
+			}
+			s.send("%s", strings.Join(parts, " "))
+			s.send("%s OK search", tag)
 		case strings.Contains(strings.ToUpper(line), "UID FETCH") && strings.Contains(strings.ToUpper(line), "(UID)"):
 			for i, u := range fs.boxes[s.box] {
 				s.send("* %d FETCH (UID %d)", i+1, u)

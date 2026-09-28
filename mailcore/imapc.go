@@ -860,6 +860,23 @@ func (c *imapClient) search(args string) ([]uint32, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseSearchUIDs(lines), nil
+}
+
+// searchLiteral is UID SEARCH <prefix> {n} with lit sent as a literal: the
+// way to search for text that is not 7-bit.
+func (c *imapClient) searchLiteral(prefix, lit string) ([]uint32, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	lines, err := c.cmdLiteralLocked(fmt.Sprintf("UID SEARCH %s {%d}", prefix, len(lit)), lit)
+	if err != nil {
+		return nil, err
+	}
+	return parseSearchUIDs(lines), nil
+}
+
+// parseSearchUIDs reads the UIDs of the untagged SEARCH responses.
+func parseSearchUIDs(lines []string) []uint32 {
 	var out []uint32
 	for _, ln := range lines {
 		u := strings.ToUpper(ln)
@@ -872,7 +889,7 @@ func (c *imapClient) search(args string) ([]uint32, error) {
 			}
 		}
 	}
-	return out, nil
+	return out
 }
 
 func (c *imapClient) noop() error {

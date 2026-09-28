@@ -190,7 +190,7 @@ func callTimeout(method string) time.Duration {
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
-	case MethodAccountsTest, MethodHostsProbe, MethodImportScan, MethodImportScanPath, MethodImagesFetch:
+	case MethodAccountsTest, MethodHostsProbe, MethodImportScan, MethodImportScanPath, MethodImagesFetch, MethodSearchServer:
 		return 2 * time.Minute
 	default:
 		return 30 * time.Second
@@ -572,6 +572,15 @@ func (c *Client) GetPart(id MessageID, partID string) (PartData, error) {
 	var p PartData
 	err := c.call(MethodMessagesPart, partParams{ID: id, PartID: partID}, &p)
 	return p, err
+}
+
+// SearchServer asks the mail server which messages contain every word of
+// query — in folder, or every folder when it is empty — including mail
+// whose body is not downloaded.
+func (c *Client) SearchServer(folder FolderID, query string) ([]Message, error) {
+	var out []Message
+	err := c.call(MethodSearchServer, searchServerParams{FolderID: folder, Query: query}, &out)
+	return out, err
 }
 
 // InlineImages returns message id's image parts by Content-ID, for the

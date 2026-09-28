@@ -52,9 +52,8 @@ new ones turn up.
   listed flat (Parent is only set for folders made here); nesting them by
   the server's delimiter would show `Archives/2023` under `Archives`.
 - **Move a folder** (drag it onto another) — rename covers the name only.
-- **Server-side search** — find mail not yet downloaded (IMAP `UID SEARCH`),
-  fetching envelopes for hits. Today's search covers synced headers +
-  downloaded bodies only.
+- **Gmail search syntax** — On server uses IMAP TEXT; Gmail's `X-GM-RAW`
+  would allow its own operators (`has:attachment`, `older_than:`).
 - **Show the folder of each search result** — a folder column in search /
   unified views.
 - **Compact folders** — `EXPUNGE` deleted messages (the menu stub was
