@@ -1084,6 +1084,11 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	}
 	applyAutomaticTags(&msg)
 	ident := s.defaultIdentLocked(f.AccountID)
+	if strings.TrimSpace(msg.RFCMessageID) == "" {
+		// Kept on the cached copy too, so a sync can tell the server's copy
+		// of this message is this one.
+		msg.RFCMessageID = newMessageID(msg.Date, ident.Address)
+	}
 	raw, buildErr := BuildRFC822Strict(msg, ident, nil)
 	if buildErr != nil {
 		s.mu.Unlock()
@@ -1099,17 +1104,65 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	s.mu.Unlock()
 
 	// APPEND is network I/O.
-	if cli, err := s.client(accountID); err == nil {
-		_ = cli.appendRaw(remoteName(f), raw, `\Seen`)
-	}
-	return msg.ID, nil
+	return s.appendToServer(f, accountID, msg.ID, raw), nil
 }
-func (s *LocalStore) Update(id MessageID, msg Message) error {
+
+// appendToServer stores raw in f on the server and, when the server says
+// which UID it gave it, re-keys the cached copy id to that UID — so a sync
+// finds the message it already has instead of adding a second copy. It
+// returns the message's id afterwards.
+func (s *LocalStore) appendToServer(f Folder, accountID string, id MessageID, raw []byte) MessageID {
+	if f.Virtual || accountID == LocalAccountID || (s.feat != nil && !s.feat.Online()) {
+		return id
+	}
+	cli, err := s.client(accountID)
+	if err != nil {
+		return id
+	}
+	uid, err := cli.appendRaw(remoteName(f), raw, `\Seen`)
+	if err != nil || uid == 0 {
+		return id
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	i, ok := s.indexLocked(id)
 	if !ok {
-		return fmt.Errorf("mail: no message %s", id)
+		return id
+	}
+	s.rekeyMovedLocked(i, f.ID, uid)
+	s.saveLocked()
+	return s.Messages[i].ID
+}
+
+// newMessageID makes a Message-ID for a message written here.
+func newMessageID(date time.Time, addr string) string {
+	if date.IsZero() {
+		date = time.Now()
+	}
+	host := "comms-mail.local"
+	if at := strings.LastIndexByte(ExtractAddr(addr), '@'); at >= 0 {
+		host = ExtractAddr(addr)[at+1:]
+	}
+	return fmt.Sprintf("<%d.%s@%s>", date.UnixNano(), randID(8), host)
+}
+
+// Update replaces a message's content — a draft saved again. The cached
+// copy and its stored source change at once; a copy on the server is
+// replaced (the new version appended, the old one removed), so the server's
+// Drafts does not keep the first version, or gain one per save.
+func (s *LocalStore) Update(id MessageID, msg Message) error {
+	_, err := s.update(id, msg)
+	return err
+}
+
+// update is Update, returning the message's id afterwards: replacing the
+// server copy gives it a new UID.
+func (s *LocalStore) update(id MessageID, msg Message) (MessageID, error) {
+	s.mu.Lock()
+	i, ok := s.indexLocked(id)
+	if !ok {
+		s.mu.Unlock()
+		return "", fmt.Errorf("mail: no message %s", id)
 	}
 	keep := s.Messages[i]
 	msg.ID = keep.ID
@@ -1122,10 +1175,51 @@ func (s *LocalStore) Update(id MessageID, msg Message) error {
 	if msg.Date.IsZero() {
 		msg.Date = keep.Date
 	}
+	if strings.TrimSpace(msg.RFCMessageID) == "" {
+		msg.RFCMessageID = keep.RFCMessageID
+	}
+	if msg.ThreadID == "" {
+		msg.ThreadID = keep.ThreadID
+	}
 	msg.UID = keep.UID
+	applyAutomaticTags(&msg)
+	ident := s.defaultIdentLocked(msg.AccountID)
+	raw, buildErr := BuildRFC822Strict(msg, ident, nil)
+	if buildErr != nil {
+		s.mu.Unlock()
+		return "", buildErr
+	}
 	s.Messages[i] = msg
+	s.WriteRawLocked(msg, raw)
+	if s.feat != nil && s.feat.index != nil {
+		s.feat.index.remove(msg.ID)
+		s.feat.index.add(msg)
+	}
+	f, hasFolder := s.folderLocked(msg.Folder)
 	s.saveLocked()
-	return nil
+	s.mu.Unlock()
+
+	if !hasFolder || keep.UID == 0 {
+		return msg.ID, nil
+	}
+	// Network I/O: the new version goes in before the old one goes, so a
+	// failure half way leaves a copy rather than none.
+	newID := s.appendToServer(f, msg.AccountID, msg.ID, raw)
+	if newID == msg.ID {
+		return msg.ID, nil // not replaced (offline, or no UID back); kept locally
+	}
+	if cli, err := s.client(msg.AccountID); err == nil {
+		_ = cli.inBox(func() error {
+			if err := selectFor(cli, f, false); err != nil {
+				return err
+			}
+			if err := cli.uidStore(keep.UID, []string{`\Deleted`}, nil); err != nil {
+				return err
+			}
+			return cli.expungeUID(keep.UID)
+		})
+	}
+	return newID, nil
 }
 
 func (s *LocalStore) Fetch(accountID string) (int, error) {
@@ -1455,6 +1549,12 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 		if _, ok := s.indexLocked(id); ok {
 			continue
 		}
+		if j, ok := s.localCopyLocked(f.ID, im.RFCMessageID); ok {
+			// A message written here (a draft, a sent copy) that the server
+			// did not give a UID for when it was appended: this is it.
+			s.rekeyMovedLocked(j, f.ID, im.UID)
+			continue
+		}
 		m := Message{
 			ID: id, Folder: f.ID, AccountID: f.AccountID,
 			From: im.From, To: im.To, Cc: im.Cc, Subject: im.Subject,
@@ -1534,6 +1634,21 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 		UIDValidity: st.UIDValidity, UIDNext: maxUID, HighestMod: st.HighestMod, Remote: remote,
 	})
 	return added, nil
+}
+
+// localCopyLocked finds a message in folder that was written here and has
+// no server UID yet, by its Message-ID.
+func (s *LocalStore) localCopyLocked(folder FolderID, rfcID string) (int, bool) {
+	rfcID = strings.TrimSpace(rfcID)
+	if rfcID == "" {
+		return 0, false
+	}
+	for i, m := range s.Messages {
+		if m.Folder == folder && m.UID == 0 && strings.TrimSpace(m.RFCMessageID) == rfcID {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // cachedAfterSync is how many messages the folder will hold once a sync

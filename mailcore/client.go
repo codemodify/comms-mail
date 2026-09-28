@@ -404,7 +404,9 @@ func (c *Client) Append(folder FolderID, msg Message) (MessageID, error) {
 }
 
 func (c *Client) Update(id MessageID, msg Message) error {
-	return c.call(MethodMessagesUpdate, updateParams{ID: id, Message: msg}, nil)
+	err := c.call(MethodMessagesUpdate, updateParams{ID: id, Message: msg}, nil)
+	c.dropCachedBodies(id)
+	return err
 }
 
 func (c *Client) Fetch(accountID string) (int, error) {
@@ -482,6 +484,8 @@ const maxAttachmentBytes = 32 << 20
 func (c *Client) SaveDraft(accountID string, msg Message, draftID MessageID) (MessageID, error) {
 	var r appendResult
 	err := c.call(MethodComposeDraft, ComposeParams{AccountID: accountID, Message: msg, ID: draftID}, &r)
+	// The draft's old text must not come back from the body cache.
+	c.dropCachedBodies(draftID, r.ID)
 	return r.ID, err
 }
 

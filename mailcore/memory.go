@@ -360,6 +360,7 @@ func (s *MemoryStore) Update(id MessageID, msg Message) error {
 		msg.Size = len(msg.Subject) + len(msg.Body) + 80
 	}
 	s.messages[i] = msg
+	delete(s.raw, id) // rebuilt from the new content when asked for
 	return nil
 }
 

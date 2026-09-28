@@ -892,11 +892,20 @@ func (s *Server) saveDraft(p ComposeParams) (appendResult, error) {
 	msg := p.Message
 	msg.Read = true
 	if p.ID != "" {
-		if err := s.Store.Update(p.ID, msg); err != nil {
+		id := p.ID
+		if ls, ok := s.Store.(*LocalStore); ok {
+			// Replacing the server's copy gives the draft a new UID, and so
+			// a new id, which the Write window must save to next time.
+			next, err := ls.update(p.ID, msg)
+			if err != nil {
+				return appendResult{}, err
+			}
+			id = next
+		} else if err := s.Store.Update(p.ID, msg); err != nil {
 			return appendResult{}, err
 		}
 		s.broadcast(EventChanged, eventParams{FolderID: drafts.ID, Reason: "draft"})
-		return appendResult{ID: p.ID}, nil
+		return appendResult{ID: id}, nil
 	}
 	id, err := s.Store.Append(drafts.ID, msg)
 	if err != nil {

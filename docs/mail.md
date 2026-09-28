@@ -481,6 +481,23 @@ with the attachment's **base** name, so a `filename="../../…"` cannot escape. 
 - Attachment filenames are reduced to a base name before they go into the
   `filename=` parameter.
 
+### Drafts and autosave
+
+The Write window saves a changed message to Drafts on its own every 10
+seconds — the same draft, updated in place — so a crash or a lost window
+costs at most that much; the status line says when it last did. Closing
+asks first when something is unsaved (the menu's Close and the window's
+close button alike): **Yes** keeps the draft, **No** throws away a draft
+only autosave made (a draft you saved or opened is kept, as last saved).
+Sending removes the draft.
+
+On an IMAP account a saved draft is appended to the server's Drafts and
+the cached copy takes the UID the server gives it (UIDPLUS `APPENDUID`),
+so a sync does not add it a second time; saving again appends the new
+version and removes the old one, so the server holds one draft, the latest.
+A server that does not report UIDs gets its copy recognised by Message-ID
+on the next sync. Sent copies are filed the same way.
+
 ## VIP, notifications, categories
 
 - **VIP** senders (Message → Add sender to VIP). The VIP smart folder is **not** shown in the sidebar; Settings still lists VIP contacts, and VIP-only notifications still work.

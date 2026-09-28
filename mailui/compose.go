@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
@@ -193,30 +194,82 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 
 	// Both of these are daemon round trips (a send can take a while): run
 	// them off the UI goroutine and apply the result back on it.
-	saveDraft := func() {
+	//
+	// Drafts are also saved on their own: every autosaveEvery, a message
+	// changed since it was last saved is written to Drafts (the same draft
+	// each time), so a crash or a lost window costs at most that much.
+	lastSaved := collect() // what is on disk (or what the window opened with)
+	var saving, again, sent, autoOnly bool
+	sentDraft := mailcore.MessageID("")
+	var saveNow func(auto bool)
+	saveNow = func(auto bool) {
 		acct := accountID()
 		if acct == "" {
-			widgets.Warn(win.Content(), "Save Draft", "No account is configured.", nil)
+			if !auto {
+				widgets.Warn(win.Content(), "Save Draft", "No account is configured.", nil)
+			}
+			return
+		}
+		if saving {
+			// One save at a time, or the second would make a second draft
+			// before the first reported its id. A click waits its turn.
+			again = again || !auto
 			return
 		}
 		msg := collect()
-		if ident := identityID(); ident != "" && msg.From == "" {
-			msg.From = fromText()
+		did := draftID
+		saving = true
+		if !auto {
+			status.Set(0, "Saving draft…")
 		}
-		status.Set(0, "Saving draft…")
 		runAsync(a, func() (any, error) {
-			return cli.SaveDraft(acct, msg, draftID)
+			return cli.SaveDraft(acct, msg, did)
 		}, func(v any, err error) {
+			saving = false
 			if err != nil {
-				widgets.Warn(win.Content(), "Save Draft", err.Error(), nil)
+				if auto {
+					status.Set(0, "Autosave failed: "+err.Error())
+				} else {
+					widgets.Warn(win.Content(), "Save Draft", err.Error(), nil)
+				}
 				return
 			}
-			draftID = v.(mailcore.MessageID)
-			status.Set(0, "Saved draft")
-			if opts.OnChange != nil {
-				opts.OnChange()
+			id := v.(mailcore.MessageID)
+			if sent {
+				// Sent (or thrown away) while this save was in flight: the
+				// send could not know this draft to remove it.
+				if id != sentDraft {
+					runAsync(a, func() (any, error) { return nil, cli.Delete([]mailcore.MessageID{id}) }, nil)
+				}
+				return
+			}
+			if did == "" {
+				autoOnly = auto // a draft only autosave made, not the writer
+			} else if !auto {
+				autoOnly = false
+			}
+			draftID, lastSaved = id, msg
+			if auto {
+				status.Set(0, "Draft autosaved at "+time.Now().Format("15:04"))
+			} else {
+				status.Set(0, "Saved draft")
+				autoOnly = false
+				if opts.OnChange != nil {
+					opts.OnChange()
+				}
+			}
+			if again {
+				again = false
+				saveNow(false)
 			}
 		})
+	}
+	saveDraft := func() { saveNow(false) }
+	dirty := func() bool { return !sameDraft(collect(), lastSaved) }
+	autosave := func() {
+		if !sent && dirty() {
+			saveNow(true)
+		}
 	}
 
 	send := func() {
@@ -229,6 +282,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		ident := identityID()
 		did := draftID
 		status.Set(0, "Sending…")
+		sent, sentDraft = true, did
 		runAsync(a, func() (any, error) {
 			// Attachments are read here and shipped as bytes: comms-maild
 			// does not open paths on a client's behalf.
@@ -239,6 +293,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			return cli.SendFiles(acct, ident, msg, did, files)
 		}, func(_ any, err error) {
 			if err != nil {
+				sent = false
 				status.Set(0, "Send failed")
 				widgets.Warn(win.Content(), "Send", err.Error(), nil)
 				return
@@ -252,8 +307,10 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		})
 	}
 
+	// closeWin asks before closing a message with unsaved work, or one only
+	// autosave kept: No throws that draft away.
 	closeWin := func() {
-		if strings.TrimSpace(body.Text) == "" && strings.TrimSpace(subject.Text) == "" {
+		if sent || (!dirty() && !autoOnly) {
 			win.Close()
 			return
 		}
@@ -262,9 +319,55 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			func(yes bool) {
 				if yes {
 					saveDraft()
+					win.Close()
+					return
+				}
+				// A save still in flight lands after this; drop what it
+				// makes unless it is the draft this window was opened on.
+				keep := draftID
+				if autoOnly {
+					keep = ""
+				}
+				sent, sentDraft = true, keep
+				if autoOnly && draftID != "" {
+					id := draftID
+					runAsync(a, func() (any, error) { return nil, cli.Delete([]mailcore.MessageID{id}) }, func(any, error) {
+						if opts.OnChange != nil {
+							opts.OnChange()
+						}
+					})
 				}
 				win.Close()
 			})
+	}
+	if win != nil {
+		// The window's close button asks too.
+		win.SetOnCloseRequest(func() bool {
+			if sent || (!dirty() && !autoOnly) {
+				return true
+			}
+			closeWin()
+			return false
+		})
+		if appLooping(a) {
+			go func() {
+				tick := time.NewTicker(autosaveEvery)
+				defer tick.Stop()
+				for range tick.C {
+					if win.Closed() {
+						return
+					}
+					a.Post(func() {
+						if !win.Closed() {
+							autosave()
+						}
+					})
+				}
+			}()
+		}
+	}
+	if composeSeam != nil {
+		composeSeam(autosave, closeWin)
 	}
 
 	menubar := widgets.NewMenuBar(
@@ -351,6 +454,20 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			status.Set(0, fmt.Sprintf("Attached %d files", len(paths)))
 		}
 	})
+}
+
+// autosaveEvery is how often the Write window saves a changed message to
+// Drafts on its own.
+var autosaveEvery = 10 * time.Second
+
+// composeSeam, when set (tests), is handed each Write window's autosave
+// step and its close action.
+var composeSeam func(autosave, close func())
+
+// sameDraft reports whether two states of a message would save the same.
+func sameDraft(a, b mailcore.Message) bool {
+	return a.From == b.From && a.To == b.To && a.Cc == b.Cc && a.Bcc == b.Bcc &&
+		a.Subject == b.Subject && a.Body == b.Body
 }
 
 // replyToAddr honours Reply-To when the sender set one.

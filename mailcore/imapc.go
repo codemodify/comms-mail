@@ -34,9 +34,10 @@ type imapClient struct {
 	exists   int
 	modseq   uint64
 
-	idle         bool
-	lastVanished []uint32
-	lastCopyUID  uint32 // destination UID from the most recent COPYUID
+	idle          bool
+	lastVanished  []uint32
+	lastCopyUID   uint32 // destination UID from the most recent COPYUID
+	lastAppendUID uint32 // UID the server gave the most recent APPEND (APPENDUID)
 
 	// cmdTimeout bounds a single command/response exchange. Without it a
 	// server that accepts the TCP connection and then stops talking wedges
@@ -783,22 +784,50 @@ func (c *imapClient) expunge() error {
 	return err
 }
 
-func (c *imapClient) appendRaw(mbox string, raw []byte, flags string) error {
+// appendRaw stores raw in mbox and returns the UID the server gave it, or
+// 0 when the server does not say (no UIDPLUS).
+func (c *imapClient) appendRaw(mbox string, raw []byte, flags string) (uint32, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err := c.connectLocked(); err != nil {
-		return err
+		return 0, err
 	}
 	box, err := IMAPMailbox(mbox)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	head := fmt.Sprintf("APPEND %s {%d}", box, len(raw))
 	if flags != "" {
 		head = fmt.Sprintf("APPEND %s (%s) {%d}", box, flags, len(raw))
 	}
-	_, err = c.cmdLiteralLocked(head, string(raw))
-	return err
+	c.lastAppendUID = 0
+	if _, err = c.cmdLiteralLocked(head, string(raw)); err != nil {
+		return 0, err
+	}
+	return c.lastAppendUID, nil
+}
+
+// parseAppendUID pulls the new message's UID out of an
+// [APPENDUID uidvalidity uid] response code (RFC 4315).
+func parseAppendUID(line string) (uint32, bool) {
+	up := strings.ToUpper(line)
+	i := strings.Index(up, "[APPENDUID ")
+	if i < 0 {
+		return 0, false
+	}
+	rest := line[i+len("[APPENDUID "):]
+	if j := strings.IndexByte(rest, ']'); j >= 0 {
+		rest = rest[:j]
+	}
+	fields := strings.Fields(rest)
+	if len(fields) != 2 {
+		return 0, false
+	}
+	n := atoi(fields[1])
+	if n <= 0 {
+		return 0, false
+	}
+	return uint32(n), true
 }
 
 func (c *imapClient) search(args string) ([]uint32, error) {
@@ -997,6 +1026,9 @@ func (c *imapClient) readUntilTaggedLocked(tag string) ([]string, error) {
 			rest := strings.TrimSpace(ln[len(tag)+1:])
 			if uid, ok := parseCopyUID(rest); ok {
 				c.lastCopyUID = uid
+			}
+			if uid, ok := parseAppendUID(rest); ok {
+				c.lastAppendUID = uid
 			}
 			if strings.HasPrefix(strings.ToUpper(rest), "OK") {
 				return lines, nil

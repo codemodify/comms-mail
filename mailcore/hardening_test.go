@@ -30,6 +30,7 @@ type scriptIMAP struct {
 
 type imapSession struct {
 	w   *bufio.Writer
+	r   *bufio.Reader // for handlers that take a literal (APPEND)
 	srv *scriptIMAP
 	box string // the mailbox this connection last selected, for handlers that track it
 	// hangUp, set by a handler, closes the connection once it returns: a
@@ -93,7 +94,7 @@ func (srv *scriptIMAP) session(c net.Conn) {
 	defer c.Close()
 	w := bufio.NewWriter(c)
 	r := bufio.NewReader(c)
-	s := &imapSession{w: w, srv: srv}
+	s := &imapSession{w: w, r: r, srv: srv}
 	s.send("* OK script imap")
 	for {
 		line, err := r.ReadString('\n')
