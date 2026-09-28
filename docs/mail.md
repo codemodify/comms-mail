@@ -20,7 +20,7 @@ and tray live in [`mailui`](../mailui).
 | One fail-closed `tlsMode` (`ssl` / `starttls` / `plain`) | A `starttls` server that stops offering STARTTLS is now an **error**, not a silent cleartext login. `"tls": true` on port 143/110/587 now upgrades instead of going cleartext |
 | No plaintext credentials to a remote host | An account deliberately on a custom cleartext port must say `"tlsMode": "plain"`, and even then only loopback will authenticate |
 | `compose.send` takes attachment **bytes** | `attachPaths` is gone from the wire; the daemon no longer opens client-supplied paths. `Client.SendIdent` still takes paths and reads them UI-side |
-| Secrets moved into the vault | Passwords and OAuth tokens are encrypted with your passphrase (`secrets/vault.json`); `mail.json` no longer holds passwords, and `master.key`, `*.tok` and the `secret-tool` entry are gone once the passphrase is set |
+| A choice of where secrets live | The desktop keyring, an encrypted file, or `mail.json` (and, later, secretvault); choosing one moves every password and token there, and `master.key`, `*.tok` and the old `secret-tool` entry go |
 | `Bcc` is no longer written into the message | Blind recipients still receive it; they are just no longer disclosed |
 | Moves re-key on `COPYUID` | Cache entries change id after a move; a server without UIDPLUS drops the entry until the next sync |
 | Deletion reconciliation without QRESYNC | Messages deleted elsewhere finally disappear from the cache |
@@ -132,7 +132,7 @@ var DesktopNotifier func(title, body string)
 
 ## Real IMAP or POP3 + SMTP (primary path)
 
-`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept in the **vault**, encrypted and locked with your passphrase (see [Passwords and the passphrase](#passwords-and-the-passphrase)), never in `mail.json`. OAuth sign-ins are kept there too. Optional `passEnv` / `UITK_MAIL_PASS` still work when no password is saved.
+`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept where you chose — the desktop keyring, an encrypted file, or `mail.json` (see [Where passwords are kept](#where-passwords-are-kept)). OAuth sign-ins are kept there too. Optional `passEnv` / `UITK_MAIL_PASS` still work when no password is saved.
 
 ### Connection security (`tlsMode`)
 
@@ -181,13 +181,13 @@ What lives in it:
 | `mail.db` (+ `-wal`, `-shm`) | SQLite, mode `0600`. `messages`: one row per message — headers, flags, tags, thread, parts — plus its decoded text once downloaded. `message_text`: the search index — each downloaded message's text in trigrams (FTS5, no copy of the text). `folder_meta`: each folder's UIDVALIDITY / UIDNEXT / HIGHESTMODSEQ. `kv`: accounts, identities and signatures, folders, tags, filter rules, smart folders, VIPs, muted threads, categories, notification settings, the offline outbox. |
 | `raw/<account>/<message>.eml` | The message exactly as the server sent it, once downloaded (a click, or the background prefetch). Source view, attachments and re-parsing read it. |
 | `open/` | Attachment copies written for **Open** to hand to the desktop; removed after a day (the next time one is opened, and at start). |
-| `secrets/` | `vault.json`: passwords and OAuth tokens, encrypted with your passphrase. |
+| `secrets/` | `vault.json`: passwords and OAuth tokens, encrypted with your passphrase (the encrypted-file store). |
 
-Settings are not in the cache: `mail.json` (accounts; passwords are in the vault) is in the
+Settings are not in the cache: `mail.json` (accounts; passwords only for the plain-file store) is in the
 config directory above, and the window's own settings (layout, density, card
 view) are in `mailui.json` beside it.
 
-Example `mail.json` (written mode `0600`). An install that has not set a passphrase yet keeps `password` here in plain text; setting one moves it into the vault and takes it out of this file:
+Example `mail.json` (written mode `0600`). With the plain-file store (and before a store is chosen) `password` is here in plain text; any other store takes it out of this file:
 
 ```json
 {
@@ -391,7 +391,7 @@ Device flow: **Device code…** on the same dialog (useful when loopback cannot 
 
 ### Token storage
 
-Refresh/access tokens are **never** written to `mail.json`. They are entries in the vault, beside the passwords (next section). The OAuth **client id** (and secret, when the app is confidential) is stored with the token, so refreshing an hour later works even if the `UITK_MAIL_OAUTH_*` variables are no longer exported.
+Refresh/access tokens are **never** written to `mail.json`. They are kept beside the passwords, in the store you chose ([Where passwords are kept](#where-passwords-are-kept)). The OAuth **client id** (and secret, when the app is confidential) is stored with the token, so refreshing an hour later works even if the `UITK_MAIL_OAUTH_*` variables are no longer exported.
 
 Expired access tokens are refreshed with the stored refresh token.
 
@@ -511,45 +511,46 @@ cannot write (or, on `accounts.delete`, `RemoveAll`) outside the cache.
 `mail.json` is re-`chmod`ed to `0600` on every save, including a file you
 created by hand with a looser umask.
 
-### Passwords and the passphrase
+### Where passwords are kept
 
 comms-mail keeps every secret it needs — account passwords and OAuth
-sign-ins — in the **vault**, `~/.data/comms-mail/secrets/vault.json` (mode
-`0600`): its contents are encrypted with AES-256-GCM under a key derived
-from your **passphrase** with Argon2id (the file records the salt and cost,
-and they are bound into the encryption, so they cannot be swapped for
-weaker ones). Without the passphrase nothing in it can be read — not from a
-backup, a copied file, or by another program reading the disk.
+sign-ins (later the private keys for PGP and S/MIME) — in one of four
+places, chosen by you (`"secretStore"` in `mail.json`):
 
-- **Setting it.** The window offers it when it finds passwords in plain
-  text (an install from before the vault), and before the first account is
-  saved. Setting it moves every secret in — the passwords out of
-  `mail.json`, the old token files and `master.key` (deleted), and the copy
-  of that key older builds put in the desktop keyring through `secret-tool`
-  (cleared). The vault is written first, so a crash part-way leaves the
-  secrets in both places, never in neither; the next unlock finishes the
-  move.
-- **Unlocking.** comms-maild asks once per run: when the window opens and
-  the daemon is locked, it asks for the passphrase and the daemon keeps the
-  key in memory until it stops. While locked the daemon connects to **no
+| Store | Where | Unlocking |
+| --- | --- | --- |
+| **Desktop keyring** | The system's own: the freedesktop Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC), the Keychain on macOS, the Credential Manager on Windows. Items are labelled `comms-mail: <name>` (attributes `application=comms-mail`, `name=…`). | The desktop unlocks it at login; a locked one shows its own prompt. |
+| **secretvault** | [codemodify/secretvault](https://github.com/codemodify/secretvault) — listed, **not available yet**; `TODO(secretvault)` in `mailcore/secrets.go` is where it plugs in. | — |
+| **Encrypted file** | `~/.data/comms-mail/secrets/vault.json` (mode `0600`): AES-256-GCM under a key from your passphrase (Argon2id; the salt and cost are bound into the encryption, so they cannot be swapped for weaker ones). | Your passphrase, once each time comms-maild starts. |
+| **Plain file** | Passwords in `mail.json`, as comms-mail always kept them; OAuth tokens in `oauth-tokens.json` beside it (both `0600`). Readable by any program running as you. | — |
+
+- **Choosing.** The window asks — with nothing picked beforehand — when
+  it finds passwords readable in `mail.json` (an install from before the
+  choice), and before the first account's password is saved. **Not now**
+  leaves everything as it is.
+- **Moving.** Settings › Privacy › **Change where…** moves every secret to
+  another store: they are written there first and taken out of the old
+  place last (the encrypted file deleted, keyring items removed, or the
+  passwords taken out of `mail.json`), so a failure part-way leaves them
+  where they were. Moving from an install before the choice also deletes
+  the old token files, `master.key`, and the copy of that key older builds
+  put in the keyring through `secret-tool`.
+- **Locked.** While the store in use cannot be read — the encrypted file
+  not yet unlocked, the keyring locked — the daemon connects to **no
   server** (it never tries a login without its password): mail already
   downloaded shows, a message you send waits in the Outbox, and accounts
-  cannot be changed. Fetch on a locked daemon asks for the passphrase.
-- **Changing it** — Settings → Privacy → **Change passphrase…**.
-- **Forgetting it** — **Forgot it…** on the unlock window starts over:
-  every saved password and sign-in is deleted (they cannot be read without
-  the passphrase), the accounts and their mail stay, and each account needs
-  its password again.
-- A passphrase has at least 8 characters. The RPC log records `vault.*`
-  requests by name only, never the passphrase.
+  cannot be changed. The window unlocks at start and on Fetch.
+- **The passphrase** (encrypted file): at least 8 characters; Settings ›
+  Privacy › **Change passphrase…**; **Forgot it…** on the unlock window
+  starts over — every saved secret is deleted, no store is chosen, the
+  accounts and their mail stay, and each account needs its password again.
+- The RPC log records these requests by name only, never a passphrase.
 
-`vault.status`, `vault.create`, `vault.unlock`, `vault.change` and
-`vault.reset` are the daemon's side of this. A store that keeps no secrets
-(the demo) reports `supported: false`, and the window asks nothing.
-
-The desktop keyring is not used. A keyring of the owner's own is planned;
-`TODO(keyring)` in `mailcore/vault.go` marks where it will provide the key
-instead of a typed passphrase.
+`secrets.status`, `secrets.use` (`{store, passphrase}`), `secrets.unlock`,
+`vault.change` and `vault.reset` are the daemon's side of this. A store
+that keeps no secrets (the demo) reports `supported: false`, and the window
+asks nothing. Tests never reach your real keyring: they run the keyring
+code against a fake Secret Service on a private D-Bus.
 
 ## Folders
 

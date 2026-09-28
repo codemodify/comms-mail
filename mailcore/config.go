@@ -29,6 +29,9 @@ const (
 // for now (temporary; a secret store comes later).
 type MailConfig struct {
 	Accounts []AccountConfig `json:"accounts"`
+	// SecretStore is where passwords and tokens are kept (secrets.go):
+	// keyring, secretvault, encrypted or plain; empty before a choice.
+	SecretStore string `json:"secretStore,omitempty"`
 }
 
 // AccountConfig is one IMAP or POP3 login plus SMTP submission.

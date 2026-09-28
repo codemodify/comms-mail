@@ -235,7 +235,7 @@ Read from the code on 28 September 2026, and updated the same day as fixes lande
 
 | Area | What comms-mail does | State |
 |---|---|---|
-| Passwords | Kept in the vault, `~/.data/comms-mail/secrets/vault.json`, encrypted with a key from your passphrase (Argon2id, AES-256-GCM). `mail.json` holds none. The daemon asks for the passphrase once per run and connects to nothing until it has it. | In place |
+| Passwords | Kept where you choose: the desktop keyring, an encrypted file (Argon2id, AES-256-GCM, your passphrase once per run), or `mail.json` as before; secretvault is listed for later. While the store is locked the daemon connects to nothing. | In place |
 | OAuth sign-in | Google and Microsoft, with PKCE and a local redirect, device-code as a fallback. IMAP and SMTP use `XOAUTH2`. POP has no OAuth. | In place |
 | OAuth tokens | In the vault beside the passwords. The old token files, `master.key` and its copy in the desktop keyring are gone. | In place |
 | Client ID | You supply it (wizard or environment). None is built in. | Your call |
@@ -296,7 +296,7 @@ Still to do:
 >
 > - **Contacts:** both PGP and S/MIME. First recognise and check both kinds of signed and encrypted mail, then sending and decrypting for both.
 > - **Engine:** built into comms-mail (pure Go), not GnuPG. PGP with Proton's `go-crypto`; S/MIME's message format (CMS) written in comms-mail itself, with no extra library.
-> - **Secrets:** a passphrase-locked vault now; the owner's own keyring will plug in later. Done.
+> - **Secrets:** a choice of four stores — the desktop keyring, secretvault (the owner's own, wired in once it has an API), an encrypted file, a plain file — offered at start with nothing picked, and switchable in Settings. Done.
 > - **Unlock:** once per run of the daemon.
 > - **Searching encrypted mail:** off by default, with a setting to turn it on.
 > - **OAuth:** the owner's own client ID while comms-mail has one user.

@@ -60,11 +60,36 @@ func passFields(w *app.Window) (fields []*widgets.TextField, buttons map[string]
 	return fields, buttons
 }
 
-// The window starting on passwords in plain text offers a passphrase;
-// once set, mail.json no longer holds the password.
-func TestWindowOffersAPassphraseForPlainPasswords(t *testing.T) {
+// shownFields counts the fields on screen (a hidden one's parent is).
+func shownFields(fields []*widgets.TextField) int {
+	n := 0
+	for _, f := range fields {
+		if on, _ := shownOnScreen(f); on {
+			n++
+		}
+	}
+	return n
+}
+
+// chooserParts are the store chooser's radios by title, its fields and
+// its buttons.
+func chooserParts(w *app.Window) (radios map[string]*widgets.RadioButton, fields []*widgets.TextField, buttons map[string]*widgets.Button) {
+	radios = map[string]*widgets.RadioButton{}
+	fields, buttons = passFields(w)
+	widget.Walk(w.Content(), func(c widget.Component) {
+		if rb, ok := c.(*widgets.RadioButton); ok {
+			radios[strings.TrimSuffix(rb.Text, " (in use now)")] = rb
+		}
+	})
+	return
+}
+
+// The window starting on passwords in plain text asks where to keep them,
+// with nothing picked; the encrypted file takes a passphrase, and then
+// mail.json no longer holds the password.
+func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 	cli, _ := vaultDaemon(t)
-	if st, _ := cli.VaultStatus(); !st.Supported || st.Exists || !st.PlainSecrets {
+	if st, _ := cli.SecretsStatus(); !st.Supported || st.Store != "" || !st.PlainSecrets {
 		t.Fatalf("before: %+v", st)
 	}
 	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
@@ -78,57 +103,103 @@ func TestWindowOffersAPassphraseForPlainPasswords(t *testing.T) {
 		main.SetContent(s.build())
 		s.checkVault()
 	})
-	fields, buttons := passFields(w)
-	if len(fields) != 2 || buttons["Protect"] == nil || buttons["Not now"] == nil {
-		t.Fatalf("the window: %d fields, buttons %v", len(fields), buttons)
+	radios, fields, buttons := chooserParts(w)
+	keep := buttons["Keep them there"]
+	if len(radios) != 4 || keep == nil || buttons["Not now"] == nil {
+		t.Fatalf("the window: radios %v, buttons %v", radios, buttons)
+	}
+	for title, rb := range radios {
+		if rb.Selected {
+			t.Fatalf("%s is picked beforehand", title)
+		}
+	}
+	if keep.Enabled() {
+		t.Fatal("Keep is on with nothing picked")
+	}
+	if radios["secretvault"].Enabled() {
+		t.Fatal("secretvault can be picked, and is not there yet")
+	}
+	if shownFields(fields) != 0 {
+		t.Fatal("passphrase fields show before the encrypted file is picked")
+	}
+
+	radios["Encrypted file"].SetSelected(true)
+	a.PumpOnce()
+	_, fields, _ = chooserParts(w)
+	if !keep.Enabled() || shownFields(fields) != 2 {
+		t.Fatal("picking the encrypted file did not ask for a passphrase")
 	}
 	// Too short, then not the same: refused, the window stays.
 	fields[0].SetText("short")
 	fields[1].SetText("short")
-	buttons["Protect"].OnClick()
+	keep.OnClick()
 	answerOverlay(t, a, w, "OK")
 	fields[0].SetText("correct horse battery")
 	fields[1].SetText("correct horse batterie")
-	buttons["Protect"].OnClick()
+	keep.OnClick()
 	answerOverlay(t, a, w, "OK")
-	if st, _ := cli.VaultStatus(); st.Exists {
-		t.Fatal("a vault was made from a bad passphrase")
+	if st, _ := cli.SecretsStatus(); st.Store != "" {
+		t.Fatal("the secrets moved on a bad passphrase")
 	}
+	// Picking another hides the fields again.
+	radios["Plain file"].SetSelected(true)
+	if _, now, _ := chooserParts(w); shownFields(now) != 0 || radios["Encrypted file"].Selected {
+		t.Fatal("the choice did not move")
+	}
+	radios["Encrypted file"].SetSelected(true)
 	fields[1].SetText("correct horse battery")
-	buttons["Protect"].OnClick()
+	keep.OnClick()
 	a.PumpOnce()
 	if !w.Closed() {
-		t.Fatal("the window stayed after the passphrase was set")
+		t.Fatal("the window stayed after the secrets moved")
 	}
-	if st, _ := cli.VaultStatus(); !st.Exists || !st.Unlocked || st.PlainSecrets {
+	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StoreEncrypted || !st.Ready || st.PlainSecrets {
 		t.Fatalf("after: %+v", st)
 	}
 	raw, _ := os.ReadFile(mailcore.ConfigPath())
 	if strings.Contains(string(raw), "imap-secret") {
 		t.Fatalf("mail.json still holds the password:\n%s", raw)
 	}
-	// A second start asks nothing: the daemon is unlocked.
+	// A second start asks nothing: the store is unlocked.
 	s.vaultAsked = false
 	before := len(a.Windows())
 	s.checkVault()
 	a.PumpOnce()
 	if len(a.Windows()) != before {
-		t.Fatal("an unlocked daemon was asked for its passphrase")
+		t.Fatal("an unlocked store was asked about again")
 	}
 }
 
-// A locked daemon: the unlock window refuses a wrong passphrase and
-// takes the right one; Settings changes it.
+// Choosing the plain file keeps the password where it was.
+func TestChoosingThePlainFileKeepsMailJSON(t *testing.T) {
+	cli, _ := vaultDaemon(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	st, _ := cli.SecretsStatus()
+	w := newWindowFrom(t, a, func() { openStoreChooser(a, cli, accountIntro, st, nil) })
+	radios, _, buttons := chooserParts(w)
+	radios["Plain file"].SetSelected(true)
+	buttons["Keep them there"].OnClick()
+	a.PumpOnce()
+	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StorePlain {
+		t.Fatalf("store %+v", st)
+	}
+	if raw, _ := os.ReadFile(mailcore.ConfigPath()); !strings.Contains(string(raw), "imap-secret") {
+		t.Fatal("the plain file lost the password")
+	}
+}
+
+// A locked encrypted file: the unlock window refuses a wrong passphrase
+// and takes the right one; the change window replaces it.
 func TestUnlockAndChangePassphrase(t *testing.T) {
 	cli, dir := vaultDaemon(t)
-	if err := cli.CreateVault("correct horse battery"); err != nil {
+	if err := cli.UseStore(mailcore.StoreEncrypted, "correct horse battery"); err != nil {
 		t.Fatal(err)
 	}
 	mailcore.OpenVault(filepath.Join(dir, "secrets", "vault.json")).Lock() // the next run
 	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
 
 	var unlocked bool
-	w := newWindowFrom(t, a, func() { openPassphrase(a, cli, passUnlock, "", func() { unlocked = true }) })
+	w := newWindowFrom(t, a, func() { openPassphrase(a, cli, passUnlock, func() { unlocked = true }) })
 	fields, buttons := passFields(w)
 	if len(fields) != 1 || buttons["Unlock"] == nil || buttons["Forgot it…"] == nil {
 		t.Fatalf("unlock window: %d fields, %v", len(fields), buttons)
@@ -136,17 +207,17 @@ func TestUnlockAndChangePassphrase(t *testing.T) {
 	fields[0].SetText("not the passphrase")
 	buttons["Unlock"].OnClick()
 	answerOverlay(t, a, w, "OK")
-	if st, _ := cli.VaultStatus(); st.Unlocked || unlocked {
+	if st, _ := cli.SecretsStatus(); st.Ready || unlocked {
 		t.Fatal("a wrong passphrase unlocked it")
 	}
 	fields[0].SetText("correct horse battery")
 	buttons["Unlock"].OnClick()
 	a.PumpOnce()
-	if st, _ := cli.VaultStatus(); !st.Unlocked || !unlocked || !w.Closed() {
+	if st, _ := cli.SecretsStatus(); !st.Ready || !unlocked || !w.Closed() {
 		t.Fatalf("after unlock: %+v, done %v, closed %v", st, unlocked, w.Closed())
 	}
 
-	w = newWindowFrom(t, a, func() { openPassphrase(a, cli, passChange, "", nil) })
+	w = newWindowFrom(t, a, func() { openPassphrase(a, cli, passChange, nil) })
 	fields, buttons = passFields(w)
 	if len(fields) != 3 {
 		t.Fatalf("change window: %d fields", len(fields))
@@ -159,9 +230,8 @@ func TestUnlockAndChangePassphrase(t *testing.T) {
 	if !w.Closed() {
 		t.Fatal("the change window stayed")
 	}
-	v := mailcore.OpenVault(filepath.Join(dir, "secrets", "vault.json"))
-	v.Lock()
-	if err := cli.UnlockVault("a brand new passphrase"); err != nil {
+	mailcore.OpenVault(filepath.Join(dir, "secrets", "vault.json")).Lock()
+	if err := cli.UnlockSecrets("a brand new passphrase"); err != nil {
 		t.Fatalf("the new passphrase: %v", err)
 	}
 }

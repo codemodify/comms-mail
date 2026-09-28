@@ -70,9 +70,12 @@ new ones turn up.
 - **OAuth (Gmail / Microsoft 365)** — decided 2026-09-28: the owner's own
   client ID while comms-mail has one user (works today). A built-in
   registration only when others use it (Google verification + CASA).
-- **Keyring** — the owner is building their own; it plugs in where
-  `TODO(keyring)` is in `mailcore/vault.go` to unlock without a typed
-  passphrase.
+- **secretvault** — codemodify/secretvault is listed as a place for
+  passwords but has no API yet; `TODO(secretvault)` in
+  `mailcore/secrets.go` is where it plugs in.
+- **Keyring on macOS and Windows** — written (Keychain through the
+  security tool, Credential Manager through advapi32) and compiled, not
+  yet run on those systems.
 
 ## Security (decided 2026-09-28, docs/security/security-primer.md)
 - **Sender warnings** — `Authentication-Results` (SPF/DKIM/DMARC) failures,

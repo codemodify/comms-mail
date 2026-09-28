@@ -28,9 +28,8 @@ import (
 // it); until then the vault is locked and comms-mail connects to no
 // server, so it never tries a login with a missing password.
 //
-// TODO(keyring): the owner is building a keyring of their own. When it
-// exists, it plugs in as a source of the vault key (see keyringKey), so
-// unlocking needs no typed passphrase; the file format stays as it is.
+// It is one of the places secrets can be kept (secrets.go): the
+// "encrypted file".
 
 // ErrLocked is an operation that needs a secret while the vault is locked.
 var ErrLocked = errors.New("comms-mail is locked: enter your passphrase to connect")
@@ -47,10 +46,6 @@ func IsLocked(err error) bool {
 
 // MinPassphrase is the shortest passphrase accepted, in characters.
 const MinPassphrase = 8
-
-// keyringKey, when set, gives the vault key without a passphrase.
-// TODO(keyring): set by the owner's keyring integration; nil until then.
-var keyringKey func() ([]byte, bool)
 
 // vaultKDF is the Argon2id cost for a new vault (tests lower it). An
 // existing vault is always opened with the cost it was made with, which
@@ -166,30 +161,6 @@ func (v *Vault) Unlock(passphrase string) error {
 	}
 	v.key, v.kdf, v.data = key, f.KDF, data
 	return nil
-}
-
-// UnlockWithKeyring opens the vault with the keyring's key, when there is
-// one. TODO(keyring): nothing provides one yet.
-func (v *Vault) UnlockWithKeyring() bool {
-	if keyringKey == nil {
-		return false
-	}
-	key, ok := keyringKey()
-	if !ok {
-		return false
-	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	f, err := v.readFileLocked()
-	if err != nil {
-		return false
-	}
-	data, err := openVault(key, f)
-	if err != nil {
-		return false
-	}
-	v.key, v.kdf, v.data = key, f.KDF, data
-	return true
 }
 
 // Lock forgets the key and the secrets.

@@ -33,13 +33,11 @@ type TokenBlob struct {
 	ClientSecret string `json:"clientSecret,omitempty"`
 }
 
-// TokenStore keeps OAuth tokens. Once the vault (vault.go) exists they are
-// entries in it, encrypted under the owner's passphrase, and need it
-// unlocked. Before that — an install that has not yet set a passphrase —
-// they are AES-GCM files under DataDir()/secrets with the key in
-// master.key beside them, which protects nothing from a program that can
-// read the directory; setting the passphrase moves them into the vault
-// and deletes those files (LocalStore.CreateVault).
+// TokenStore keeps OAuth tokens in the secret store in use (secrets.go).
+// Before a store is chosen they are AES-GCM files under DataDir()/secrets
+// with the key in master.key beside them, as older builds kept them —
+// which protects nothing from a program that can read the directory;
+// choosing a store moves them there and deletes those files.
 type TokenStore struct {
 	dir string
 	mu  sync.Mutex
@@ -71,10 +69,6 @@ func NewTokenStore(dir string) *TokenStore {
 	return &TokenStore{dir: dir}
 }
 
-// vault is the vault beside the token files (DefaultVault for the
-// default store).
-func (s *TokenStore) vault() *Vault { return OpenVault(filepath.Join(s.dir, "vault.json")) }
-
 func (s *TokenStore) Put(key string, tok TokenBlob) error {
 	if s == nil || key == "" {
 		return fmt.Errorf("mail: token key required")
@@ -84,8 +78,8 @@ func (s *TokenStore) Put(key string, tok TokenBlob) error {
 	if err != nil {
 		return err
 	}
-	if v := s.vault(); v.Exists() {
-		return v.Update(map[string]string{tokenSecret(key): string(raw)})
+	if st := activeStore(); st != nil {
+		return st.Update(map[string]string{tokenSecret(key): string(raw)})
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,11 +111,11 @@ func (s *TokenStore) Get(key string) (TokenBlob, error) {
 	if s == nil || key == "" {
 		return TokenBlob{}, fmt.Errorf("mail: token key required")
 	}
-	if v := s.vault(); v.Exists() {
-		if !v.Unlocked() {
-			return TokenBlob{}, ErrLocked
+	if st := activeStore(); st != nil {
+		raw, ok, err := st.Get(tokenSecret(key))
+		if err != nil {
+			return TokenBlob{}, err
 		}
-		raw, ok := v.Get(tokenSecret(key))
 		if !ok {
 			return TokenBlob{}, fmt.Errorf("mail: no stored token for %s", key)
 		}
@@ -174,8 +168,8 @@ func (s *TokenStore) Delete(key string) error {
 	if s == nil || key == "" {
 		return nil
 	}
-	if v := s.vault(); v.Exists() {
-		return v.Update(nil, tokenSecret(key))
+	if st := activeStore(); st != nil {
+		return st.Update(nil, tokenSecret(key))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

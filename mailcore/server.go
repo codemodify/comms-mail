@@ -404,13 +404,13 @@ func (s *Server) dispatch(req Request) Response {
 				s.broadcast(EventChanged, eventParams{FolderID: p.FolderID, Reason: "folder"})
 			}
 		}
-	case MethodVaultStatus:
+	case MethodSecretsStatus:
 		if ls, ok := s.Store.(*LocalStore); ok {
-			result = ls.VaultStatus()
+			result = ls.SecretsStatus()
 		} else {
-			result = VaultStatus{}
+			result = SecretsStatus{}
 		}
-	case MethodVaultCreate, MethodVaultUnlock, MethodVaultChange, MethodVaultReset:
+	case MethodSecretsUse, MethodSecretsUnlock, MethodVaultChange, MethodVaultReset:
 		var p vaultParams
 		p, err = decodeParams[vaultParams](req.Params)
 		ls, ok := s.Store.(*LocalStore)
@@ -419,10 +419,10 @@ func (s *Server) dispatch(req Request) Response {
 		}
 		if err == nil {
 			switch req.Method {
-			case MethodVaultCreate:
-				err = ls.CreateVault(p.Passphrase)
-			case MethodVaultUnlock:
-				err = ls.UnlockVault(p.Passphrase)
+			case MethodSecretsUse:
+				err = ls.UseStore(p.Store, p.Passphrase)
+			case MethodSecretsUnlock:
+				err = ls.UnlockSecrets(p.Passphrase)
 			case MethodVaultChange:
 				err = ls.ChangePassphrase(p.Passphrase, p.Next)
 			case MethodVaultReset:
@@ -430,7 +430,7 @@ func (s *Server) dispatch(req Request) Response {
 			}
 		}
 		if err == nil {
-			result = ls.VaultStatus()
+			result = ls.SecretsStatus()
 		}
 	case MethodFoldersFocus:
 		var p folderIDParams

@@ -58,9 +58,12 @@ type LocalStore struct {
 	feat         *featureHost
 	pushCancel   func()
 	pushCtx      context.Context
-	// vault holds the passwords and tokens once a passphrase is set
-	// (vault.go): DataDir()/secrets/vault.json.
-	vault *Vault
+	// vault is the encrypted file (vault.go), DataDir()/secrets/vault.json;
+	// kind is the secret store in use (secrets.go), moveMu one move of
+	// the secrets at a time.
+	vault  *Vault
+	kind   atomic.Value
+	moveMu sync.Mutex
 
 	// sqlc is mail.db (sqlstore.go); nil only when not even a fresh one
 	// could be created, and the store then runs from memory alone.
@@ -128,11 +131,7 @@ func NewLocalStoreDir(cfg MailConfig, dir string) (*LocalStore, error) {
 		tags: DefaultTags(), nextID: 1, now: time.Now(), feat: newFeatureHost(),
 		vault: OpenVault(filepath.Join(dir, "secrets", "vault.json")),
 	}
-	// TODO(keyring): with the owner's keyring, the vault opens here with no
-	// passphrase asked; until then this does nothing.
-	if s.vault.Exists() && !s.vault.Unlocked() {
-		s.vault.UnlockWithKeyring()
-	}
+	s.initSecretKind()
 	s.loadLocked()
 	for _, a := range cfg.Accounts {
 		s.ensureAccount(a)
@@ -223,13 +222,13 @@ func (s *LocalStore) PutAccount(in AccountConfig) (Account, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	file, _ := LoadConfig()
-	// The saved passwords are in the vault when there is one (the file
-	// has none), else in the file.
+	// The saved passwords are in the file for the plain store (and before
+	// a choice), else in the store in use.
 	existing := file.Accounts
-	vault := s.vaultOf()
-	if vault.Exists() {
-		if !vault.Unlocked() {
-			return Account{}, ErrLocked
+	kind := s.secretKind()
+	if !keepsPlainPasswords(kind) {
+		if err := s.storeFor(kind).Ready(); err != nil {
+			return Account{}, err
 		}
 		existing = nil
 		for _, x := range s.cfg.Accounts {
@@ -240,9 +239,9 @@ func (s *LocalStore) PutAccount(in AccountConfig) (Account, error) {
 	if left := LeftBehind(a, existing); len(left) > 0 {
 		return Account{}, fmt.Errorf("the server changed, so its saved password was not sent there — enter the password for %s", strings.Join(left, " and "))
 	}
-	if vault.Exists() {
+	if !keepsPlainPasswords(kind) {
 		id := accountKeyID(a)
-		if err := vault.Update(map[string]string{
+		if err := s.storeFor(kind).Update(map[string]string{
 			passSecret(id, "imap"): a.IMAP.Pass,
 			passSecret(id, "pop"):  a.POP.Pass,
 			passSecret(id, "smtp"): a.SMTP.Pass,
@@ -314,8 +313,8 @@ func (s *LocalStore) DeleteAccount(id string) error {
 	if addr != "" {
 		_ = DefaultTokenStore().Delete(addr)
 	}
-	if v := s.vaultOf(); v.Exists() {
-		_ = v.Update(nil, passSecret(id, "imap"), passSecret(id, "pop"), passSecret(id, "smtp"))
+	if kind := s.secretKind(); !keepsPlainPasswords(kind) {
+		_ = s.storeFor(kind).Update(nil, passSecret(id, "imap"), passSecret(id, "pop"), passSecret(id, "smtp"))
 	}
 	if len(s.accounts) == 0 {
 		s.health = fmt.Errorf("mail: no accounts in %s", ConfigPath())

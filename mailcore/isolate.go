@@ -38,6 +38,10 @@ func IsolateTestEnv(dir string) error {
 	_ = os.Unsetenv(EnvPass)
 	_ = os.Unsetenv(EnvSMTPHost)
 	_ = os.Unsetenv(EnvXOAuth)
+	// The desktop session bus leads to the user's real keyring: tests get
+	// a bus address that leads nowhere (a test that needs a keyring starts
+	// a private bus with a fake one).
+	_ = os.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(run, "no-session-bus"))
 	vaultKDF = testVaultKDF
 	return nil
 }
@@ -76,6 +80,7 @@ func IsolateTestEnvTB(t envTB) {
 	t.Setenv(EnvPass, "")
 	t.Setenv(EnvSMTPHost, "")
 	t.Setenv(EnvXOAuth, "")
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(run, "no-session-bus"))
 	vaultKDF = testVaultKDF
 }
 

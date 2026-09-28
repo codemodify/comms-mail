@@ -81,10 +81,11 @@ const (
 	MethodFoldersMove     = "folders.move"
 	MethodFoldersCompact  = "folders.compact"
 	MethodFoldersFocus    = "folders.focus"
-	// The vault (vault.go): the passphrase that locks the secrets.
-	MethodVaultStatus     = "vault.status"
-	MethodVaultCreate     = "vault.create"
-	MethodVaultUnlock     = "vault.unlock"
+	// Where secrets are kept (secrets.go), and the encrypted file's
+	// passphrase (vault.go).
+	MethodSecretsStatus   = "secrets.status"
+	MethodSecretsUse      = "secrets.use"
+	MethodSecretsUnlock   = "secrets.unlock"
 	MethodVaultChange     = "vault.change"
 	MethodVaultReset      = "vault.reset"
 	MethodFoldersMarkRead = "folders.markRead"
@@ -345,6 +346,7 @@ type applyRulesParams struct {
 }
 
 type vaultParams struct {
+	Store      string `json:"store,omitempty"` // secrets.use: where to
 	Passphrase string `json:"passphrase,omitempty"`
 	Next       string `json:"next,omitempty"` // vault.change: the new one
 }

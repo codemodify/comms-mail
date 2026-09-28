@@ -625,7 +625,7 @@ td.state { width: 1%; white-space: nowrap; }
             <tr><th scope="row">STARTTLS stripping</th><td>If a server does not offer TLS the connection is refused, never continued in plain text. A password is never sent unencrypted (except to this machine itself).</td><td class="state"><span class="chip good">In place</span></td></tr>
             <tr><th scope="row">New accounts</th><td>Chooses implicit TLS from the port (993, 995, 465); STARTTLS for 143, 110, 587.</td><td class="state"><span class="chip good">In place</span></td></tr>
             <tr class="group"><th colspan="3" scope="rowgroup">Signing in</th></tr>
-            <tr><th scope="row">Passwords</th><td>Kept in the vault, <code>~/.data/comms-mail/secrets/vault.json</code>, encrypted with a key from your passphrase (Argon2id, AES-256-GCM). <code>mail.json</code> holds none. The daemon asks for the passphrase once per run and connects to nothing until it has it.</td><td class="state"><span class="chip good">In place</span></td></tr>
+            <tr><th scope="row">Passwords</th><td>Kept where you choose: the desktop keyring, an encrypted file (Argon2id, AES-256-GCM, your passphrase once per run), or <code>mail.json</code> as before; secretvault is listed for later. While the store is locked the daemon connects to nothing.</td><td class="state"><span class="chip good">In place</span></td></tr>
             <tr><th scope="row">OAuth sign-in</th><td>Google and Microsoft, with PKCE and a local redirect, device-code as a fallback. IMAP and SMTP use <code>XOAUTH2</code>. POP has no OAuth.</td><td class="state"><span class="chip good">In place</span></td></tr>
             <tr><th scope="row">OAuth tokens</th><td>In the vault beside the passwords. The old token files, <code>master.key</code> and its copy in the desktop keyring are gone.</td><td class="state"><span class="chip good">In place</span></td></tr>
             <tr><th scope="row">Client ID</th><td>You supply it (wizard or environment). None is built in.</td><td class="state"><span class="chip none">Your call</span></td></tr>
@@ -672,7 +672,7 @@ td.state { width: 1%; white-space: nowrap; }
         <ul>
           <li><b>Contacts:</b> both PGP and S/MIME. First recognise and check both kinds of signed and encrypted mail, then sending and decrypting for both.</li>
           <li><b>Engine:</b> built into comms-mail (pure Go), not GnuPG. PGP with Proton's <code>go-crypto</code>; S/MIME's message format (CMS) written in comms-mail itself, with no extra library.</li>
-          <li><b>Secrets:</b> a passphrase-locked vault now; the owner's own keyring will plug in later. Done.</li>
+          <li><b>Secrets:</b> a choice of four stores — the desktop keyring, secretvault (the owner's own, wired in once it has an API), an encrypted file, a plain file — offered at start with nothing picked, and switchable in Settings. Done.</li>
           <li><b>Unlock:</b> once per run of the daemon.</li>
           <li><b>Searching encrypted mail:</b> off by default, with a setting to turn it on.</li>
           <li><b>OAuth:</b> the owner's own client ID while comms-mail has one user.</li>

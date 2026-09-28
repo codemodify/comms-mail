@@ -424,41 +424,59 @@ func prefsPrivacy(a *app.Application, win *app.Window, cli *mailcore.Client, onC
 	return col.WithGap(8)
 }
 
-// passphraseSection is Privacy's say on the passphrase that locks the
-// saved passwords: set one, or change it. None for a store that keeps no
-// secrets (the demo).
+// passphraseSection is Privacy's say on where the saved passwords and
+// sign-ins are kept: the store in use, moving them to another, and the
+// encrypted file's passphrase. None for a store that keeps no secrets
+// (the demo).
 func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Component {
-	st, err := cli.VaultStatus()
+	st, err := cli.SecretsStatus()
 	if err != nil || !st.Supported {
 		return nil
 	}
 	note := wrapLabel("")
-	var btn *widgets.Button
-	show := func(st mailcore.VaultStatus) {
-		if st.Exists {
-			note.SetText("Your saved passwords and sign-ins are locked with your passphrase. comms-mail asks for it once each time it starts.")
-			btn.Text = "Change passphrase…"
-		} else {
-			note.SetText("Your mail passwords are saved in plain text, readable by any program running as you. Set a passphrase to lock them away.")
-			btn.Text = "Set a passphrase…"
+	var move, change *widgets.Button
+	show := func(st mailcore.SecretsStatus) {
+		text := "Your saved passwords and sign-ins are kept in " + mailcore.StoreLabel(st.Store) + "."
+		switch st.Store {
+		case "":
+			text = "Your mail passwords are saved as readable text in mail.json, where any program running as you can read them. Choose a safer place for them."
+		case mailcore.StoreEncrypted:
+			text += " comms-mail asks for its passphrase once each time it starts."
+		case mailcore.StoreKeyring:
+			text += " The desktop unlocks it when you log in."
+		case mailcore.StorePlain:
+			text += " Any program running as you can read them."
 		}
-		btn.Invalidate()
+		if st.Locked {
+			text += " It is locked now."
+		} else if st.Problem != "" {
+			text += " It cannot be read now: " + st.Problem
+		}
+		note.SetText(text)
+		move.Text = "Change where…"
+		if st.Store == "" {
+			move.Text = "Choose where…"
+		}
+		move.Invalidate()
+		change.SetVisible(st.Store == mailcore.StoreEncrypted)
 	}
-	btn = widgets.NewButton("", func() {
-		mode, intro := passCreate, plainIntro(nil)
-		if cur, err := cli.VaultStatus(); err == nil {
-			if cur.Exists {
-				mode = passChange
-			} else {
-				intro = plainIntro(cur.PlainAccounts)
-			}
+	refresh := func() {
+		if cur, err := cli.SecretsStatus(); err == nil {
+			show(cur)
 		}
-		openPassphrase(a, cli, mode, intro, func() {
-			if cur, err := cli.VaultStatus(); err == nil {
-				show(cur)
-			}
-		})
+	}
+	move = widgets.NewButton("", func() {
+		cur, err := cli.SecretsStatus()
+		if err != nil {
+			return
+		}
+		intro := switchIntro
+		if cur.Store == "" {
+			intro = plainIntro(cur.PlainAccounts)
+		}
+		openStoreChooser(a, cli, intro, cur, refresh)
 	})
+	change = widgets.NewButton("Change passphrase…", func() { openPassphrase(a, cli, passChange, refresh) })
 	show(st)
-	return widgets.NewColumn(widgets.NewTitle("Passphrase"), note, widgets.NewRow(btn).WithGap(8)).WithGap(8)
+	return widgets.NewColumn(widgets.NewTitle("Passwords"), note, widgets.NewRow(move, change).WithGap(8)).WithGap(8)
 }
