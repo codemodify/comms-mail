@@ -1,7 +1,6 @@
 package mailcore
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -110,35 +109,6 @@ func syncDir(dir string) {
 	}
 	_ = d.Sync()
 	_ = d.Close()
-}
-
-// writeJSONFileAtomic marshals v and writes it durably with mode 0600.
-func writeJSONFileAtomic(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	return WriteFileAtomic(path, b, 0o600)
-}
-
-// readJSONFileStrict reads and decodes path. A missing file is not an error
-// (v is left alone); a corrupt file is reported so the caller can quarantine
-// it instead of silently continuing with an empty store and overwriting it.
-func readJSONFileStrict(path string, v any) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if len(strings.TrimSpace(string(b))) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(b, v); err != nil {
-		return fmt.Errorf("mail: %s is corrupt: %w", path, err)
-	}
-	return nil
 }
 
 // quarantine renames a corrupt cache file out of the way so the next start

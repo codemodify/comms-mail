@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit/style"
 )
 
@@ -21,15 +22,10 @@ type ChromePrefs struct {
 	ShowFilter bool   `json:"showFilter,omitempty"`
 }
 
+// chromePrefsPath is mailui.json, beside mail.json in ConfigDir, so the
+// two agree on where configuration lives.
 func chromePrefsPath() string {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "uitoolkit", "mailui.json")
-	}
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		return filepath.Join(home, ".config", "uitoolkit", "mailui.json")
-	}
-	return filepath.Join(os.TempDir(), "uitoolkit-mailui.json")
+	return filepath.Join(mailcore.ConfigDir(), "mailui.json")
 }
 
 func loadChromePrefs() ChromePrefs {

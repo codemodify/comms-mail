@@ -156,6 +156,19 @@ type session struct {
 	sourceID   mailcore.MessageID
 	sourceOpen bool
 	retryBar   widget.Component
+
+	// undo is the move or delete waiting out its undo window; its messages
+	// are hidden from the list until it is committed or undone.
+	undo      *pendingRemoval
+	hidden    map[mailcore.MessageID]bool
+	undoBar   widget.Component
+	undoLabel *widgets.Label
+
+	// tabs is the strip in the title bar: Mail (mainPage), then a tab per
+	// opened message (tabs.go). pages holds what they show.
+	tabs     *widgets.BrowserTabs
+	pages    *widgets.Stack
+	mainPage widget.Component
 	// pendingRefresh records a daemon event that arrived while no UI loop
 	// was pumping (headless / tests). DrainDaemonEvents applies it.
 	pendingRefresh atomic.Bool
@@ -291,6 +304,14 @@ func (s *session) build() widget.Component {
 		}
 		s.messageMenu(s.table, p)
 	}
+	s.table.OnDrag = s.dragMessages
+	// Double click or Return opens the message in a tab of its own.
+	s.table.OnActivate = func(row int) {
+		if row >= 0 && row < len(s.rows) && s.primaryIndex() != row {
+			s.clickRow(row, false)
+		}
+		s.openInTab()
+	}
 	s.cards = widgets.NewCardList(0, s.cardAt, nil)
 	s.table.SetAccessibleName("Messages")
 	s.cards.SetAccessibleName("Messages")
@@ -313,6 +334,9 @@ func (s *session) build() widget.Component {
 	s.rebuildTree()
 	s.wireFolderTree(s.tree)
 	s.wireFolderTree(s.outboxTree)
+	s.tree.DropMimes = []string{mimeMessageIDs}
+	s.tree.DropActions = platform.DragMove
+	s.tree.OnDropNode = s.dropOnFolder
 
 	s.qf = widgets.NewTextField("", "Quick Filter (subject, people, body)", func(q string) {
 		s.filter.Query = q
@@ -354,7 +378,17 @@ func (s *session) build() widget.Component {
 	s.table.SetVisible(!s.cardView)
 	s.cards.SetVisible(s.cardView)
 	s.listStack = widgets.NewStack(s.table, s.cards)
-	thread := widgets.NewColumn(s.listStack).WithGap(0).WithPad(8)
+	s.undoLabel = widgets.NewLabel("")
+	s.undoBar = widgets.NewRow(s.undoLabel, widgets.NewSpacer(), widgets.NewButton("Undo", s.undoLast)).WithGap(8)
+	s.undoBar.SetVisible(s.undo != nil)
+	if s.win != nil {
+		// Closing the window must not lose a move still in its undo window.
+		s.win.SetOnCloseRequest(func() bool {
+			s.commitUndoNow()
+			return true
+		})
+	}
+	thread := widgets.NewColumn(s.listStack, s.undoBar).WithGap(4).WithPad(8)
 	thread.AddFlex(s.listStack, 1)
 	s.thread = thread
 	s.acctPanel = s.buildAccountCentral()
@@ -389,19 +423,26 @@ func (s *session) build() widget.Component {
 	// the caption of the frame uitoolkit draws (caption buttons at the
 	// desktop's sides, the free space moves the window), or the first row
 	// under the desktop's own frame.
-	head := widgets.NewHeaderBar([]widget.Component{s.menuBar(), s.mainBar}, nil, []widget.Component{s.qf, s.listBar})
+	//
+	// The message tabs sit in the middle of that row, the way the uitoolkit
+	// Files sample puts its folder tabs in its title bar (tabs.go).
+	main := widgets.NewColumn(split).WithGap(0)
+	main.AddFlex(split, 1)
+	if s.status != nil {
+		main = widgets.NewColumn(split, s.status).WithGap(0)
+		main.AddFlex(split, 1)
+	}
+	s.setupTabs(main)
+	head := widgets.NewHeaderBar([]widget.Component{s.menuBar(), s.mainBar}, s.tabs, []widget.Component{s.qf, s.listBar})
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
 	} else {
 		chrome = append(chrome, head)
 	}
-	chrome = append(chrome, split)
-	if s.status != nil {
-		chrome = append(chrome, s.status)
-	}
+	chrome = append(chrome, s.pages)
 	root := widgets.NewColumn(chrome...).WithGap(0)
-	root.AddFlex(split, 1)
+	root.AddFlex(s.pages, 1)
 	s.refreshAll()
 	return wrapShortcutsReady(root, s.handleKey, s.maybeAskAddAccount)
 }
@@ -441,9 +482,12 @@ func (s *session) menuBar() *widgets.MenuBar {
 			widgets.Sep(),
 			s.notifyMenuItems(),
 			widgets.Sep(),
-			widgets.ItemAccel("Preferences", "Ctrl+,", s.openPrefs),
+			widgets.ItemAccel("Settings", "Ctrl+,", s.openPrefs),
 			widgets.Sep(),
-			widgets.ItemAccel("&Quit", "Ctrl+Q", func() { s.app.Quit() }),
+			widgets.ItemAccel("&Quit", "Ctrl+Q", func() {
+				s.commitUndoNow()
+				s.app.Quit()
+			}),
 		),
 	)
 }
@@ -510,19 +554,23 @@ func (s *session) tagPopup(from widget.Component, p paintengine2d.Point) {
 
 func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
 	widgets.ShowContextMenu(from, p,
-		widgets.Item("Reply", s.reply),
-		widgets.Item("Forward", s.forward),
+		widgets.ItemAccel("Open in New Tab", "E", s.openInTab),
+		widgets.Sep(),
+		widgets.ItemAccel("Reply", "R", s.reply),
+		widgets.ItemAccel("Reply All", "Shift+R", s.replyAll),
+		widgets.ItemAccel("Forward", "F", s.forward),
 		widgets.Sep(),
 		widgets.Item("Mark as Read", func() { s.setRead(true) }),
 		widgets.Item("Mark as Unread", func() { s.setRead(false) }),
 		widgets.Item("Star", s.toggleStar),
 		widgets.Sep(),
-		widgets.Item("Tag · Important", func() { s.toggleTag("Important") }),
+		&widgets.MenuItem{Text: "Tag", Shortcut: "T", Submenu: s.tagMenuItems()},
 		widgets.Item("Mute Thread", func() { s.muteThread(true) }),
 		widgets.Item("Add sender to VIP", s.addVIP),
-		widgets.Item("Archive", s.archive),
+		widgets.ItemAccel("Archive", "A", s.archive),
+		&widgets.MenuItem{Text: "Move to", Submenu: s.moveMenu()},
 		widgets.Item("Junk", s.junk),
-		widgets.ItemIcon(style.IconCut, "Delete", s.deleteSel),
+		&widgets.MenuItem{Text: "Delete", Shortcut: "D", Icon: style.IconCut, OnClick: s.deleteSel},
 		widgets.Sep(),
 		widgets.ItemIcon(style.IconInfo, "View Source", s.viewSource),
 	)
@@ -605,6 +653,15 @@ func (s *session) loadVisible() ([]mailcore.Message, error) {
 		var keep []mailcore.Message
 		for _, m := range all {
 			if m.ThreadID == "" || !s.muted[m.ThreadID] {
+				keep = append(keep, m)
+			}
+		}
+		all = keep
+	}
+	if len(s.hidden) > 0 {
+		keep := all[:0]
+		for _, m := range all {
+			if !s.hidden[m.ID] {
 				keep = append(keep, m)
 			}
 		}
@@ -1074,11 +1131,21 @@ func (s *session) hasSel(id mailcore.MessageID) bool {
 	return false
 }
 
-// primary is the message the window is acting on: the last one selected.
-// It answers from what the window already has — the loaded preview, else
-// the list row — and never asks the daemon, so a keystroke or a menu never
-// waits on the network. What needs the body goes through withFull.
+// primary is the message the window is acting on: the open message tab's,
+// else the list's (listPrimary). It answers from what the window already
+// has and never asks the daemon, so a keystroke or a menu never waits on
+// the network. What needs the body goes through withFull.
 func (s *session) primary() (mailcore.Message, bool) {
+	if mt, ok := s.activeTab(); ok {
+		return mt.msg, true
+	}
+	return s.listPrimary()
+}
+
+// listPrimary is the list's primary message — the last one selected — from
+// the loaded preview, else the list row. The preview pane shows this one
+// whichever tab is in front.
+func (s *session) listPrimary() (mailcore.Message, bool) {
 	if len(s.selected) == 0 {
 		return mailcore.Message{}, false
 	}
@@ -1135,7 +1202,7 @@ func hasBody(m mailcore.Message) bool { return m.Body != "" || m.HTML != "" }
 // with "Loading message…" in its place, so a click on a new message never
 // freezes the window, however slow or broken the network.
 func (s *session) loadPreview() {
-	if m, ok := s.primary(); ok && !hasBody(m) && m.ID == s.loadingID {
+	if m, ok := s.listPrimary(); ok && !hasBody(m) && m.ID == s.loadingID {
 		s.showHeaders(m)
 		return
 	}
@@ -1150,7 +1217,7 @@ func (s *session) loadPreview() {
 	if s.retryBar != nil {
 		s.retryBar.SetVisible(false)
 	}
-	m, ok := s.primary()
+	m, ok := s.listPrimary()
 	if !ok {
 		if s.preview != nil {
 			s.preview.Placeholder = "Select a message (plain text)"
@@ -1241,7 +1308,7 @@ func (s *session) loadSource() {
 	if s.source == nil {
 		return
 	}
-	m, ok := s.primary()
+	m, ok := s.listPrimary()
 	if !ok || s.sourceID == m.ID {
 		return
 	}
@@ -1299,6 +1366,7 @@ func (s *session) setFlagsLater(ids []mailcore.MessageID, patch mailcore.FlagPat
 			s.shown.Tags = append([]string(nil), (*patch.Tags)...)
 		}
 	}
+	s.tabsFollow(want, patch)
 	s.invalidateList()
 	s.async(func() (any, error) {
 		for _, id := range ids {
@@ -1362,7 +1430,12 @@ func (s *session) mark(msg string) {
 	}
 }
 
+// ids is what an action applies to: the open message tab's message, else
+// the list's selection.
 func (s *session) ids() []mailcore.MessageID {
+	if mt, ok := s.activeTab(); ok {
+		return []mailcore.MessageID{mt.msg.ID}
+	}
 	if len(s.selected) > 0 {
 		return append([]mailcore.MessageID(nil), s.selected...)
 	}
@@ -1384,6 +1457,16 @@ func (s *session) reply() {
 		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, OnChange: s.refreshAll})
 		if err != nil {
 			widgets.Warn(s.win.Content(), "Reply", err.Error(), nil)
+		}
+	})
+}
+
+func (s *session) replyAll() {
+	s.withFull("Reply All", func(m mailcore.Message) {
+		cp := m.Clone()
+		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, ReplyAll: true, OnChange: s.refreshAll})
+		if err != nil {
+			widgets.Warn(s.win.Content(), "Reply All", err.Error(), nil)
 		}
 	})
 }
@@ -1559,12 +1642,9 @@ func (s *session) toggleTag(tag string) {
 		return
 	}
 	for _, id := range ids {
-		for _, m := range s.rows {
-			if m.ID == id {
-				next := mailcore.ToggleTag(m.Tags, tag)
-				s.setFlagsLater([]mailcore.MessageID{id}, mailcore.FlagPatch{Tags: &next})
-				break
-			}
+		if m, ok := s.messageByID(id); ok {
+			next := mailcore.ToggleTag(m.Tags, tag)
+			s.setFlagsLater([]mailcore.MessageID{id}, mailcore.FlagPatch{Tags: &next})
 		}
 	}
 	if s.shownOK {
@@ -1573,10 +1653,40 @@ func (s *session) toggleTag(tag string) {
 	s.mark("Tag " + tag)
 }
 
-// removeLater takes ids out of the list at once and runs the daemon call
-// that moves or deletes them off the UI goroutine. On failure the list
-// comes back from the daemon and the error is shown.
+// undoWindow is how long a move or delete can be taken back before it
+// reaches the daemon.
+var undoWindow = 6 * time.Second
+
+// pendingRemoval is a move or delete held back for its undo window.
+type pendingRemoval struct {
+	ids   []mailcore.MessageID
+	what  string // "Archive", "Delete", …: the title of an error
+	done  string // "Archived": what the bar and the status say
+	call  func() error
+	timer *time.Timer
+}
+
+// messageByID is id as the window has it: its open tab, else its row.
+func (s *session) messageByID(id mailcore.MessageID) (mailcore.Message, bool) {
+	if mt, ok := s.activeTab(); ok && mt.msg.ID == id {
+		return mt.msg, true
+	}
+	for _, m := range s.rows {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return mailcore.Message{}, false
+}
+
+// removeLater takes ids out of the list at once and offers Undo. The
+// daemon is told only when the undo window closes (or the next move, a
+// quit or closing the window cuts it short), so undoing never has to
+// chase a message the server has already renumbered. Without a live loop
+// (headless, tests) the call is made at once.
 func (s *session) removeLater(ids []mailcore.MessageID, what, done string, call func() error) {
+	s.commitUndo()
+	s.closeTabsFor(ids)
 	gone := make(map[mailcore.MessageID]bool, len(ids))
 	for _, id := range ids {
 		gone[id] = true
@@ -1603,17 +1713,198 @@ func (s *session) removeLater(ids []mailcore.MessageID, what, done string, call 
 		s.selected = []mailcore.MessageID{s.rows[next].ID}
 	}
 	s.showRows()
-	s.mark(what + "…")
+
+	p := &pendingRemoval{ids: ids, what: what, done: done, call: call}
+	if !appLooping(s.app) {
+		s.runRemoval(p)
+		return
+	}
+	if s.hidden == nil {
+		s.hidden = map[mailcore.MessageID]bool{}
+	}
+	for _, id := range ids {
+		s.hidden[id] = true
+	}
+	s.undo = p
+	label := done
+	if len(ids) > 1 {
+		label = fmt.Sprintf("%s · %d messages", done, len(ids))
+	}
+	if s.undoLabel != nil {
+		s.undoLabel.SetText(label)
+	}
+	if s.undoBar != nil {
+		s.undoBar.SetVisible(true)
+	}
+	p.timer = time.AfterFunc(undoWindow, func() {
+		s.app.Post(func() {
+			if s.undo == p {
+				s.commitUndo()
+			}
+		})
+	})
+}
+
+// commitUndo sends the pending move or delete to the daemon now.
+func (s *session) commitUndo() {
+	p := s.takeUndo()
+	if p == nil {
+		return
+	}
+	s.runRemoval(p)
+}
+
+// commitUndoNow sends the pending move or delete and waits for it: for a
+// quit or a closing window, which will not be around for the reply.
+func (s *session) commitUndoNow() {
+	p := s.takeUndo()
+	if p == nil {
+		return
+	}
+	if err := p.call(); err != nil {
+		s.mark(p.what + ": " + err.Error())
+	}
+}
+
+// undoLast puts the pending move or delete's messages back in the list;
+// the daemon never heard of it.
+func (s *session) undoLast() {
+	p := s.takeUndo()
+	if p == nil {
+		return
+	}
+	for _, id := range p.ids {
+		delete(s.hidden, id)
+	}
+	s.selected = append([]mailcore.MessageID(nil), p.ids...)
+	s.refreshList()
+	s.mark("Undone: " + p.done)
+}
+
+func (s *session) takeUndo() *pendingRemoval {
+	p := s.undo
+	if p == nil {
+		return nil
+	}
+	s.undo = nil
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+	if s.undoBar != nil {
+		s.undoBar.SetVisible(false)
+	}
+	return p
+}
+
+func (s *session) runRemoval(p *pendingRemoval) {
+	s.mark(p.what + "…")
 	s.async(func() (any, error) {
-		return nil, call()
+		return nil, p.call()
 	}, func(_ any, err error) {
+		for _, id := range p.ids {
+			delete(s.hidden, id)
+		}
 		if err != nil {
-			widgets.Warn(s.win.Content(), what, err.Error(), nil)
+			widgets.Warn(s.win.Content(), p.what, err.Error(), nil)
 		} else {
-			s.mark(done)
+			s.mark(p.done)
 		}
 		s.refreshAll()
 	})
+}
+
+// moveTo moves the selected messages to dest, with Undo.
+func (s *session) moveTo(ids []mailcore.MessageID, dest mailcore.Folder) {
+	if len(ids) == 0 {
+		return
+	}
+	s.removeLater(ids, "Move", "Moved to "+dest.Name, func() error { return s.cli.Move(ids, dest.ID) })
+}
+
+// moveMenu is the Move to submenu: every folder of the primary message's
+// account, nested as in the sidebar, the folder it is in greyed out.
+func (s *session) moveMenu() []*widgets.MenuItem {
+	acct := s.accountID()
+	if m, ok := s.primary(); ok && m.AccountID != "" {
+		acct = m.AccountID
+	}
+	folders, _ := s.cli.ListFolders(acct)
+	byParent := map[mailcore.FolderID][]mailcore.Folder{}
+	for _, f := range folders {
+		if f.Virtual {
+			continue
+		}
+		byParent[f.Parent] = append(byParent[f.Parent], f)
+	}
+	var items []*widgets.MenuItem
+	var walk func(parent mailcore.FolderID, depth int)
+	walk = func(parent mailcore.FolderID, depth int) {
+		for _, f := range orderFolderChildren(byParent[parent]) {
+			f := f
+			it := widgets.Item(strings.Repeat("    ", depth)+f.Name, func() { s.moveTo(s.ids(), f) })
+			it.Disabled = f.ID == s.folder
+			items = append(items, it)
+			walk(f.ID, depth+1)
+		}
+	}
+	walk("", 0)
+	if len(items) == 0 {
+		items = append(items, &widgets.MenuItem{Text: "(no folders)", Disabled: true})
+	}
+	return items
+}
+
+// mimeMessageIDs marks a drag of messages inside this window; the ids ride
+// in the drag's in-process payload.
+const mimeMessageIDs = "application/x-comms-mail-message-ids"
+
+// dragMessages is what dragging the selected rows carries: their ids, to
+// drop on a folder in the sidebar.
+func (s *session) dragMessages(rows []int) *widget.Drag {
+	var ids []mailcore.MessageID
+	var subjects []string
+	for _, r := range rows {
+		if r >= 0 && r < len(s.rows) {
+			ids = append(ids, s.rows[r].ID)
+			subjects = append(subjects, s.rows[r].Subject)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return &widget.Drag{
+		Types: []string{mimeMessageIDs, "text/plain"},
+		Data: func(mime string) ([]byte, bool) {
+			if mime == "text/plain" {
+				return []byte(strings.Join(subjects, "\n")), true
+			}
+			return nil, false
+		},
+		Payload:   ids,
+		Source:    s.table,
+		Local:     true,
+		Actions:   platform.DragMove,
+		Preferred: platform.DragMove,
+	}
+}
+
+// dropOnFolder moves messages dragged from the list onto the folder under
+// the drop.
+func (s *session) dropOnFolder(n *widgets.TreeNode, e widget.DropEvent) bool {
+	ids, ok := e.Payload.([]mailcore.MessageID)
+	if !ok || len(ids) == 0 || n == nil {
+		return false
+	}
+	fid, ok := n.Data.(mailcore.FolderID)
+	if !ok || fid == s.folder {
+		return false
+	}
+	f, ok, err := s.cli.GetFolder(fid)
+	if err != nil || !ok || f.Virtual {
+		return false
+	}
+	s.moveTo(ids, f)
+	return true
 }
 
 // showRows puts s.rows in the table and card list and the primary in the
@@ -2411,7 +2702,7 @@ func (s *session) showCenter() {
 
 func (s *session) buildAccountCentral() widget.Component {
 	s.acctTitle = widgets.NewTitle("Account Central")
-	s.acctBody = widgets.NewLabel("Use Preferences or Account Central to add or remove stores. Open Inbox or pick a folder in the tree.")
+	s.acctBody = widgets.NewLabel("Use Settings or Account Central to add or remove stores. Open Inbox or pick a folder in the tree.")
 	get := widgets.NewButton("Fetch", s.getMessages)
 	write := widgets.NewButton("Write", s.write)
 	prefs := widgets.NewButton("Account Settings", s.openPrefs)
@@ -2444,10 +2735,10 @@ func (s *session) refreshAccount() {
 
 func (s *session) openPrefs() {
 	if _, err := OpenPrefs(s.app, s.cli, s.afterAccountsChanged); err != nil {
-		widgets.Warn(s.win.Content(), "Preferences", err.Error(), nil)
+		widgets.Warn(s.win.Content(), "Settings", err.Error(), nil)
 		return
 	}
-	s.mark("Preferences")
+	s.mark("Settings")
 }
 
 func (s *session) removeCurrentAccount() {
@@ -2522,21 +2813,54 @@ func (s *session) handleKey(e widget.KeyEvent) bool {
 			s.openPrefs()
 			return true
 		}
+		if e.Mods.Ctrl() && e.Mods.Shift() && e.Key == platform.KeyR {
+			s.replyAll()
+			return true
+		}
+		if e.Mods.Ctrl() && !e.Mods.Shift() && e.Key == platform.KeyZ && s.undo != nil {
+			s.undoLast()
+			return true
+		}
+		// Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+W: the tabs in the title bar.
+		if s.tabs != nil && s.tabs.Shortcut(e) {
+			return true
+		}
 		return false
 	}
 	if isHashDelete(e) || e.Key == platform.KeyDelete {
 		s.deleteSel()
 		return true
 	}
+	_, onTab := s.activeTab()
 	switch e.Key {
 	case platform.KeyN:
-		s.moveSel(1)
+		if !onTab {
+			s.moveSel(1)
+		}
 		return true
 	case platform.KeyP:
-		s.moveSel(-1)
+		if !onTab {
+			s.moveSel(-1)
+		}
+		return true
+	case platform.KeyD:
+		s.deleteSel()
+		return true
+	case platform.KeyT:
+		s.showTagMenu()
+		return true
+	case platform.KeyE:
+		s.openInTab()
 		return true
 	case platform.KeyR:
-		s.reply()
+		if e.Mods.Shift() {
+			s.replyAll()
+		} else {
+			s.reply()
+		}
+		return true
+	case platform.KeyA:
+		s.archive()
 		return true
 	case platform.KeyF:
 		s.forward()

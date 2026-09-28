@@ -645,7 +645,7 @@ func BuildRFC822Strict(msg Message, ident Identity, files []AttachedFile) ([]byt
 		from = ident.DisplayFrom()
 	}
 	body := msg.Body
-	if ident.Signature != "" && !strings.Contains(body, ident.Signature) {
+	if ident.Signature != "" && !msg.SignatureInBody && !strings.Contains(body, ident.Signature) {
 		body = strings.TrimRight(body, "\n") + "\n\n-- \n" + ident.Signature + "\n"
 	}
 

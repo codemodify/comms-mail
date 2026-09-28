@@ -24,7 +24,7 @@ and tray live in [`mailui`](../mailui).
 | `Bcc` is no longer written into the message | Blind recipients still receive it; they are just no longer disclosed |
 | Moves re-key on `COPYUID` | Cache entries change id after a move; a server without UIDPLUS drops the entry until the next sync |
 | Deletion reconciliation without QRESYNC | Messages deleted elsewhere finally disappear from the cache |
-| Folder / message ids are sanitised | Cached `meta/` filenames changed, so the first sync after upgrading re-reads folder metadata |
+| Folder / message ids are sanitised | Cached folder metadata was re-keyed, so the first sync after upgrading re-reads it |
 
 ## How to start
 
@@ -136,17 +136,34 @@ instead of producing the silent cleartext session it used to. Omit both and
 the port decides; an unrecognised port defaults to `ssl` for IMAP/POP3 and
 `starttls` for SMTP.
 
-Config file (first existing wins):
+Config directory (`mail.json`, `mailui.json`):
 
-- `$UITK_MAIL_CONFIG`
-- `$XDG_CONFIG_HOME/uitoolkit/mail.json`
-- `~/.config/uitoolkit/mail.json`
+- `$UITK_MAIL_CONFIG` overrides the account file path directly
+- else `$XDG_CONFIG_HOME/comms-mail`
+- else `~/.config/comms-mail`
 
 Cache / offline store:
 
 - `$UITK_MAIL_DATA`
-- `$XDG_DATA_HOME/uitoolkit/mail`
-- `~/.local/share/uitoolkit/mail`
+- else `~/.data/comms-mail`
+
+The cache is deliberately not under the XDG `~/.local/share` default:
+config and data sit beside each other as `~/.config/comms-mail` and
+`~/.data/comms-mail`, so the whole cache can be deleted (a re-sync rebuilds
+it) without touching the account file.
+
+What lives in it:
+
+| Path | Holds |
+| --- | --- |
+| `mail.db` (+ `-wal`, `-shm`) | SQLite, mode `0600`. `messages`: one row per message — headers, flags, tags, thread, parts — plus its decoded text once downloaded. `folder_meta`: each folder's UIDVALIDITY / UIDNEXT / HIGHESTMODSEQ. `kv`: accounts, identities and signatures, folders, tags, filter rules, smart folders, VIPs, muted threads, categories, notification settings, the offline outbox. |
+| `raw/<account>/<message>.eml` | The message exactly as the server sent it, once downloaded (a click, or the background prefetch). Source view, attachments and re-parsing read it. |
+| `open/` | Attachment copies written for **Open** to hand to the desktop. |
+| `secrets/` | OAuth refresh tokens, encrypted. |
+
+Settings are not in the cache: `mail.json` (accounts and passwords) is in the
+config directory above, and the window's own settings (layout, density, card
+view) are in `mailui.json` beside it.
 
 Example `mail.json` (written mode `0600`; `password` is temporary plaintext):
 
@@ -228,7 +245,7 @@ The wizard has an explicit **IMAP** / **POP3** choice (default IMAP). It guesses
 
 **Test connection** dials the typed user/password and reports success or failure (which protocol worked, `host:port`, TLS mode: `ssl` / `starttls` / `plain`). After email + password are entered, a background auto-detect may also probe common `imap.` / `pop.` / `mail.` names on 993/143/995/110 (timeout + status line; it does not freeze the form).
 
-Type the incoming/SMTP password (masked field); **Save account** writes `protocol` plus `password` into `mail.json` (file mode `0600`). `passEnv` is optional fallback only. Account Central and Preferences → Accounts show **IMAP** or **POP3** after save.
+Type the incoming/SMTP password (masked field); **Save account** writes `protocol` plus `password` into `mail.json` (file mode `0600`). `passEnv` is optional fallback only. Account Central and Settings → Accounts show **IMAP** or **POP3** after save.
 
 ### Text-only message view
 
@@ -263,7 +280,7 @@ Device flow: **Device code…** on the same dialog (useful when loopback cannot 
 
 ### Token storage
 
-Refresh/access tokens are **never** written to `mail.json`. They live under `$XDG_DATA_HOME/uitoolkit/mail/secrets/` (or `$UITK_MAIL_DATA/secrets/`):
+Refresh/access tokens are **never** written to `mail.json`. They live under `~/.data/comms-mail/secrets/` (or `$UITK_MAIL_DATA/secrets/`):
 
 - `*.tok` — AES-256-GCM (random nonce prefix), mode `0600`
 - `master.key` — the 32-byte key as **hex**, mode `0600`
@@ -330,6 +347,17 @@ the error (it used to both queue a copy and error, so a user retry sent the
 message twice).
 
 Flush: File → Work Offline (toggle back on), Get Messages, or `outbox.flush`.
+Queued **flag** changes are also retried on their own every two minutes while
+online, so a mark-read that hit a network blip still reaches the server.
+
+A queued move or delete records the folder the message came from and that
+folder's `UIDVALIDITY`. Replay only does the server's half — `UID MOVE` from
+that folder, or `\Deleted` + `UID EXPUNGE` there for a delete from Trash —
+because the cache took the change when it was made. An op whose folder was
+renumbered since is dropped rather than sent to a UID that now names
+something else, and so is an op queued by an older comms-maild that did not
+record its source. Removing a tag clears its IMAP keyword; the Unread,
+Starred and Attachment pins are never written as keywords.
 
 Conflict-safe cache:
 
@@ -339,14 +367,18 @@ Conflict-safe cache:
 
 ## Cache integrity
 
-Every cache file (`messages.json`, `folders.json`, the per-folder `meta/`
-files, `mail.json`, token blobs, saved attachments) is written
-**tmp → fsync → rename**, with the parent directory fsynced, so a crash
-mid-write leaves the previous good file rather than a truncated one. On
-start, a file that fails to parse is moved aside as `*.corrupt`, the rest of
-the cache still loads, and `status.get` reports the recovery in `health` so
-you know to re-sync — the old code silently loaded an empty store and then
-overwrote the good file with it.
+`mail.db` is SQLite in WAL mode. A save writes only the messages whose
+fields changed (each row carries a fingerprint of them) and the collections
+whose encoding changed, all in one transaction, so a crash leaves the state
+before the save or after it — never half of one. Marking a message read
+writes one row; it used to rewrite every cache file, the message list
+included (30 MB on a real mailbox), with the store lock held.
+
+A `mail.db` that will not open is moved aside as `mail.db.corrupt` and a
+fresh one is created; `status.get` reports it in `health` so you know the
+next sync is refilling the cache from the server. Other files — `mail.json`,
+token blobs, `.eml` blobs, saved attachments — are written
+**tmp → fsync → rename**, with the parent directory fsynced.
 
 Account ids are reduced to `[a-z0-9_-]` and every derived path is checked
 against the data directory, so an `accounts.put` with an id like `../../..`
@@ -398,7 +430,7 @@ with the attachment's **base** name, so a `filename="../../…"` cannot escape. 
 
 ## VIP, notifications, categories
 
-- **VIP** senders (Message → Add sender to VIP). The VIP smart folder is **not** shown in the sidebar; Preferences still lists VIP contacts, and VIP-only notifications still work.
+- **VIP** senders (Message → Add sender to VIP). The VIP smart folder is **not** shown in the sidebar; Settings still lists VIP contacts, and VIP-only notifications still work.
 - **Notification rules** (**M → Notify**): new mail, optional VIP-only, optional `notify-send` on Linux. No display / no `notify-send` → stub (RPC event `mail.notify` still fires). `UITK_MAIL_NO_NOTIFY=1` disables the desktop helper.
 - **Categories** (Gmail-lite, local) still classify on the daemon; they are **not** a folder-tree section as of v0.10.4.
 
@@ -491,25 +523,30 @@ Quick Filter in the UI calls `messages.list` with the pin/query filter so the li
 
 Condition fields: `from`, `to`, `subject`, `body`, `attachment`, `unread`, `tag`.
 Actions: `move` (`folder`), `tag`, `markRead`, `markUnread`, `delete`, `stop`.
-AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tags group and Preferences → Tags share one Tags store (locked Unread / Starred / Attachment plus keywords). Preferences can add, edit, and remove user tags.
+AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tags group and Settings → Tags share one Tags store (locked Unread / Starred / Attachment plus keywords). Settings can add, edit, and remove user tags.
 
 ## UI features (v0.10.13)
 
 - **Empty by default** — no demo accounts unless `UITK_MAIL=memory`. First-run Yes/No is only “There are no accounts, want to add one?” Password / `0600` notes are on the Add Account form.
-- **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Preferences. `passEnv` remains an optional fallback.
-- **Remove account** — File menu, Account Central, and Preferences → Accounts. Confirm, then drop the account from `mail.json` and the local cache. The folder tree refreshes; if none remain, the first-run “add one?” prompt returns.
+- **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Settings. `passEnv` remains an optional fallback.
+- **Remove account** — File menu, Account Central, and Settings → Accounts. Confirm, then drop the account from `mail.json` and the local cache. The folder tree refreshes; if none remain, the first-run “add one?” prompt returns.
 - **Text-only Message tab** — prefer `text/plain`; HTML-only mail is tag-stripped. No HTML engine / no HTML tab. The Message/Source body is a read-only `TextView` (scroll + scrollbar; not editable). Compose/Write stays an editable `TextArea`.
 - **3-pane splitters** — dragging folder|list or list|preview keeps exclusive pane bounds; preview chrome cannot paint over the thread list.
 - **Overflow scrollbars** — thread list, folder tree, and long message bodies show a vertical track/thumb; wheel/trackpad still scroll; offset clamps at the last row. The thread table clips rows under the sticky header (flush at the top; no paint-through while scrolling).
 - **Thread columns** — ★, 📎, Topic, Who, When. No Size. Click a column header to sort.
-- **Card / Table** — **M → View** Card view. Remembered in `~/.config/uitoolkit/mailui.json`. Star after the message context menu paints immediately.
+- **Card / Table** — **M → View** Card view. Remembered in `~/.config/comms-mail/mailui.json`. Star after the message context menu paints immediately.
 - **Density** — **M → View** Compact / Default / Relaxed.
-- **Folder tree** — account folders and Tags at the top of the sidebar; Outbox is pinned to the **bottom** of the pane (separated from Tags). Unified Folders, Smart Folders, Categories, and VIP are not shown. Click an account root to open that Inbox. The Tags group is the same list as Preferences → Tags: locked Unread / Starred / Attachment pins (✓ + bold when on) plus every keyword (Important, Work, Personal, To Do, Later, and user-created).
-- **Chrome** — no path/subtitle strip, no bottom status bar, no unread-folder-count footer, no sidebar Account / Folders section headers, no identity or Tags ComboBox, and no active-filter banner (`Filter on · N shown` / `Clear filter`) above the thread list. The folder tree (including Tags) starts at the top of the sidebar. The menubar row is **M**, a left **Fetch / Write** toolbar, then a right-aligned **Filter** toolbar. That row is the window's title bar (`Window.SetTitleBar`): where uitoolkit draws the frame — by default on KDE Plasma, always on GNOME — it is the caption, with the caption buttons at the desktop's sides and its free space moving the window; with **Use system title bar and borders** (or `UITK_DECORATIONS=server`) it is the first row under the desktop's frame. See [decorations.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/decorations.md). Tag, Archive, Junk, Cards, Classic, and Delete are not on those bars. There is no strip above the Topic / Who / When header. The Quick Filter field stays hidden until that button or Ctrl+F (`ShowFilter` defaults off; a saved `mailui.json` `showFilter: true` is honored) and opens on the same row; Escape hides it again and keeps the query. Filter pins are only on the Tags tree. Reply and Forward are keyboard / context menu only. The menu bar is a single **M** menu: **View** submenu (layout / list / density / Threaded / Hide muted threads), **Notify** submenu (new mail / VIP-only / desktop), Preferences, Quit. Preferences is Accounts + Tags (the same Tags model as the sidebar). Menu and toolbar hover do not refresh the folder tree or the message list.
+- **Folder tree** — account folders and Tags at the top of the sidebar; Outbox is pinned to the **bottom** of the pane (separated from Tags). Unified Folders, Smart Folders, Categories, and VIP are not shown. Click an account root to open that Inbox. The Tags group is the same list as Settings → Tags: locked Unread / Starred / Attachment pins (✓ + bold when on) plus every keyword (Important, Work, Personal, To Do, Later, and user-created).
+- **Chrome** — no path/subtitle strip, no bottom status bar, no unread-folder-count footer, no sidebar Account / Folders section headers, no identity or Tags ComboBox, and no active-filter banner (`Filter on · N shown` / `Clear filter`) above the thread list. The folder tree (including Tags) starts at the top of the sidebar. The menubar row is **M**, a left **Fetch / Write** toolbar, then a right-aligned **Filter** toolbar. That row is the window's title bar (`Window.SetTitleBar`): where uitoolkit draws the frame — by default on KDE Plasma, always on GNOME — it is the caption, with the caption buttons at the desktop's sides and its free space moving the window; with **Use system title bar and borders** (or `UITK_DECORATIONS=server`) it is the first row under the desktop's frame. See [decorations.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/decorations.md). Tag, Archive, Junk, Cards, Classic, and Delete are not on those bars. There is no strip above the Topic / Who / When header. The Quick Filter field stays hidden until that button or Ctrl+F (`ShowFilter` defaults off; a saved `mailui.json` `showFilter: true` is honored) and opens on the same row; Escape hides it again and keeps the query. Filter pins are only on the Tags tree. Reply and Forward are keyboard / context menu only. The menu bar is a single **M** menu: **View** submenu (layout / list / density / Threaded / Hide muted threads), **Notify** submenu (new mail / VIP-only / desktop), Settings, Quit. Settings is Accounts + Signatures + Tags (the same Tags model as the sidebar). Menu and toolbar hover do not refresh the folder tree or the message list.
 - **Threaded** view and **Mute Thread**.
+- **Message tabs** — **E**, a double click or Return on a row opens the message in a tab of its own, in the title bar between Fetch / Write and the quick filter, the way the uitoolkit Files sample opens folders. The first tab, **Mail**, is the three panes and cannot be closed. Ctrl+Tab / Ctrl+Shift+Tab switch tabs and Ctrl+W closes one; a tab's right-click menu has Close Tab and Close Other Tabs. The message keys act on the tab's message while it is in front, and archiving, junking, deleting or moving it closes its tab. Open tabs survive a layout or density change.
+- **Reply / Reply All** — Reply goes to the sender (or `Reply-To`) only. Reply All adds everyone else on To and keeps the original Cc, leaving out every address you send from.
+- **Move to** — the message menu's Move to lists the account's folders as the sidebar nests them. Dragging selected rows onto a folder in the sidebar moves them too.
+- **Undo** — Archive, Junk, Delete and Move take the rows out at once and show a bar with **Undo** (also Ctrl+Z) for six seconds; the daemon hears of the change only when that window closes, a second move cuts it short, or the window closes or Mail quits.
+- **Signatures** — Settings → Signatures sets one per From address. Write puts it under the message and above any quote, where it can be edited or deleted, and swaps it when you change From; a message sent from Write is never given a second copy.
 - **Attachments** — per-row Open / Save As; toolbar Save All (one folder pick, then write all files); single click selects, double click or row Open opens.
-- **Snappy open** — unread click patches the row; preview uses a cached `messages.get` body.
-- **Colored tags** — Preferences → Tags is the same list as the sidebar Tags group, with Add / Edit / Remove (Remove disabled for Unread, Starred, and Attachment). New mail is tagged Unread; parts with a filename get Attachment.
+- **Snappy open** — a click shows the headers from the list row at once and loads the body in the background ("Loading message…", Retry on failure); recent bodies are prefetched after each sync, so most clicks need no round trip.
+- **Colored tags** — Settings → Tags is the same list as the sidebar Tags group, with Add / Edit / Remove (Remove disabled for Unread, Starred, and Attachment). New mail is tagged Unread; parts with a filename get Attachment.
 
 ## Keyboard (Thunderbird-like)
 
@@ -518,13 +555,20 @@ Documented in [keyboard.md](https://github.com/codemodify/uitoolkit/blob/dev/doc
 | Key | Action |
 | --- | --- |
 | **n** / **p** | Next / previous message |
-| **#** | Delete (also Del) |
+| **d** / **#** / **Del** | Delete |
+| **t** | Tag menu (toggle any of your tags) |
+| **e** / double click / Return | Open in a new tab |
+| **Ctrl+Tab** / **Ctrl+Shift+Tab** | Next / previous tab |
+| **Ctrl+W** | Close the tab |
 | **r** | Reply |
+| **Shift+R** / **Ctrl+Shift+R** | Reply All |
 | **f** | Forward |
+| **a** | Archive |
+| **Ctrl+Z** | Undo the last archive / junk / delete / move |
 | **c** | Compose |
 | **m** | Mark as read |
 | **F5** | Fetch / sync |
-| **Ctrl+,** | Preferences |
+| **Ctrl+,** | Settings |
 
 ## How to try (dogfood)
 

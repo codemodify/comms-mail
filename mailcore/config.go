@@ -23,7 +23,7 @@ const (
 	ProtoPOP3 = "pop3"
 )
 
-// MailConfig is ~/.config/uitoolkit/mail.json (mode 0600).
+// MailConfig is ~/.config/comms-mail/mail.json (mode 0600).
 // IMAP/POP3/SMTP passwords may be stored in plaintext on each ServerConfig
 // for now (temporary; a secret store comes later).
 type MailConfig struct {
@@ -113,34 +113,42 @@ func (s ServerConfig) Password() string {
 	return os.Getenv(name)
 }
 
-// ConfigPath is the account file.
+// ConfigDir holds the things a person edits or backs up: the account file
+// (mail.json) and the window's own preferences (mailui.json). It is
+// XDG_CONFIG_HOME/comms-mail when that is set, else ~/.config/comms-mail.
+func ConfigDir() string {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "comms-mail")
+	}
+	if home, _ := os.UserHomeDir(); home != "" {
+		return filepath.Join(home, ".config", "comms-mail")
+	}
+	return filepath.Join(os.TempDir(), "comms-mail-config")
+}
+
+// ConfigPath is the account file, ConfigDir/mail.json. UITK_MAIL_CONFIG
+// overrides it with an exact path (test isolation, a second profile).
 func ConfigPath() string {
 	if p := os.Getenv(EnvConfig); p != "" {
 		return p
 	}
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "uitoolkit", "mail.json")
-	}
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		return filepath.Join(home, ".config", "uitoolkit", "mail.json")
-	}
-	return filepath.Join(os.TempDir(), "uitoolkit-mail.json")
+	return filepath.Join(ConfigDir(), "mail.json")
 }
 
-// DataDir is the on-disk cache root.
+// DataDir is the on-disk cache root: the SQLite database, the raw .eml
+// blobs, OAuth tokens and opened-attachment copies — everything a re-sync
+// can rebuild. UITK_MAIL_DATA overrides it; otherwise ~/.data/comms-mail, a
+// sibling of ConfigDir. This is deliberately not the XDG ~/.local/share
+// default: the project keeps config and data as .config and .data beside
+// each other under home.
 func DataDir() string {
 	if p := os.Getenv(EnvData); p != "" {
 		return p
 	}
-	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
-		return filepath.Join(dir, "uitoolkit", "mail")
+	if home, _ := os.UserHomeDir(); home != "" {
+		return filepath.Join(home, ".data", "comms-mail")
 	}
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		return filepath.Join(home, ".local", "share", "uitoolkit", "mail")
-	}
-	return filepath.Join(os.TempDir(), "uitoolkit-mail")
+	return filepath.Join(os.TempDir(), "comms-mail-data")
 }
 
 // SaveConfig writes mail.json with mode 0600 (owner-only). Inline

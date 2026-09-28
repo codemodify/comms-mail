@@ -1201,7 +1201,7 @@ func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
 						continue
 					}
 					label, _, _ := widgets.ParseMnemonic(it.Text)
-					if label == "Preferences" && it.OnClick != nil {
+					if label == "Settings" && it.OnClick != nil {
 						prefs = true
 					}
 				}
@@ -1241,7 +1241,7 @@ func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
 		t.Fatal("Tags missing from the tree")
 	}
 	if !prefs {
-		t.Fatal("M → Preferences missing")
+		t.Fatal("M → Settings missing")
 	}
 	w.Close()
 }
@@ -1968,7 +1968,7 @@ func TestMailMenuBarIsOnlyM(t *testing.T) {
 		switch label {
 		case "Quit":
 			quit = it.Shortcut == "Ctrl+Q" && it.OnClick != nil
-		case "Preferences":
+		case "Settings":
 			prefs = it.OnClick != nil
 		case "Notify":
 			notify = it.HasSubmenu()
@@ -2029,8 +2029,8 @@ func TestMailMenuBarIsOnlyM(t *testing.T) {
 			pos[l] = i
 		}
 	}
-	if pos["View"] > pos["Notify"] || pos["Notify"] > pos["Preferences"] || pos["Preferences"] > pos["Quit"] {
-		t.Fatalf("order %v want View, Notify, Preferences, Quit", labels)
+	if pos["View"] > pos["Notify"] || pos["Notify"] > pos["Settings"] || pos["Settings"] > pos["Quit"] {
+		t.Fatalf("order %v want View, Notify, Settings, Quit", labels)
 	}
 	w.Close()
 }
@@ -2056,7 +2056,7 @@ func containsLabel(labels []string, want string) bool {
 	return false
 }
 
-func TestMailPreferencesTabs(t *testing.T) {
+func TestMailSettingsTabs(t *testing.T) {
 	sock, stop, err := mailcore.StartDemo(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -2081,15 +2081,15 @@ func TestMailPreferencesTabs(t *testing.T) {
 		}
 	})
 	if bar == nil {
-		t.Fatal("Preferences tabs")
+		t.Fatal("Settings tabs")
 	}
 	got := append([]string(nil), bar.Titles...)
-	if len(got) != 2 || got[0] != "Accounts" || got[1] != "Tags" {
-		t.Fatalf("Preferences tabs %v want Accounts, Tags", got)
+	if len(got) != 3 || got[0] != "Accounts" || got[1] != "Signatures" || got[2] != "Tags" {
+		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags", got)
 	}
 	for _, name := range []string{"Appearance", "Notify", "VIP", "Identities", "Filters"} {
 		if containsLabel(got, name) {
-			t.Fatalf("removed Preferences tab still present: %q %v", name, got)
+			t.Fatalf("removed Settings tab still present: %q %v", name, got)
 		}
 	}
 	var add, edit, remove *widgets.Button

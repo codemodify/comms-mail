@@ -134,6 +134,7 @@ func (s *session) showMain() {
 	s.win.Raise()
 }
 func (s *session) quitFromTray() {
+	s.commitUndoNow()
 	if s.refresher != nil {
 		s.refresher.stop()
 	}

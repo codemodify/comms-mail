@@ -78,6 +78,14 @@ type OutboxOp struct {
 	Tries       int            `json:"tries,omitempty"`
 	UID         uint32         `json:"uid,omitempty"`
 	UIDVal      uint32         `json:"uidValidity,omitempty"`
+	// Src is the folder a queued move or delete takes the message from.
+	// The cache has already moved it, so replay needs to be told where UID
+	// lives on the server; an op without Src cannot be replayed safely.
+	Src FolderID `json:"src,omitempty"`
+	// Add and Rem are the IMAP flags and keywords a queued flag change sets
+	// and clears, worked out when it was made.
+	Add []string `json:"add,omitempty"`
+	Rem []string `json:"rem,omitempty"`
 }
 
 // featureHost is the shared Tier A/B state (MemoryStore + LocalStore).

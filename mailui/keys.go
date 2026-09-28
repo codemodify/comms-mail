@@ -99,7 +99,7 @@ Menus
   Ctrl+R    Reply
   Ctrl+L    Forward
   Ctrl+F    Quick Filter
-  Ctrl+,    Preferences
+  Ctrl+,    Settings
   Ctrl+U    Message Source (raw RFC822)
   F7 / F8   previous / next
   Esc       tooltip → popup → overlay`

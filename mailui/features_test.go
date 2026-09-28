@@ -572,26 +572,26 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 		for _, m := range mb.Menus() {
 			for _, it := range m.Items {
 				label, _, _ := widgets.ParseMnemonic(it.Text)
-				if label == "Preferences" {
+				if label == "Settings" {
 					prefs = it
 				}
 			}
 		}
 	})
 	if prefs == nil || prefs.OnClick == nil {
-		t.Fatal("M → Preferences missing")
+		t.Fatal("M → Settings missing")
 	}
 	prefs.OnClick()
 	a.PumpOnce()
 	var pw *app.Window
 	for _, win := range a.Windows() {
-		if win != w && win.Title() == "Preferences" {
+		if win != w && win.Title() == "Settings" {
 			pw = win
 			break
 		}
 	}
 	if pw == nil {
-		t.Fatal("Preferences window")
+		t.Fatal("Settings window")
 	}
 	var remove *widgets.Button
 	widget.Walk(pw.Content(), func(c widget.Component) {
@@ -600,7 +600,7 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 		}
 	})
 	if remove == nil {
-		t.Fatal("Preferences missing Remove account")
+		t.Fatal("Settings missing Remove account")
 	}
 	remove.OnClick()
 	a.PumpOnce()
@@ -656,7 +656,7 @@ func TestChromePrefsRoundTrip(t *testing.T) {
 	if !p.CardView || p.density() != style.DensityCompact || !p.ShowFilter {
 		t.Fatalf("%+v", p)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "uitoolkit", "mailui.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "comms-mail", "mailui.json")); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -1,6 +1,7 @@
 package mailcore
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -42,6 +43,10 @@ type LocalStore struct {
 	now        time.Time
 	feat       *featureHost
 	pushCancel func()
+
+	// sqlc is mail.db (sqlstore.go); nil only when not even a fresh one
+	// could be created, and the store then runs from memory alone.
+	sqlc *sqlCache
 
 	// prefetching is set while a body prefetch pass runs (prefetch.go).
 	prefetching atomic.Bool
@@ -308,9 +313,7 @@ func (s *LocalStore) dropAccountLocked(id string) {
 		_ = os.RemoveAll(p)
 	}
 	for _, fid := range drop {
-		if p, err := s.folderMetaPath(fid); err == nil {
-			_ = os.Remove(p)
-		}
+		s.dropFolderMetaLocked(fid)
 	}
 }
 
@@ -627,9 +630,23 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 		}
 	}
 	if patch.Tags != nil {
+		next := map[string]bool{}
+		for _, t := range *patch.Tags {
+			next[t] = true
+		}
+		// A tag taken off is a keyword to clear on the server; without this
+		// the next sync brought it back. Unread, Starred and Attachment are
+		// derived here from flags and parts, not stored as keywords.
+		for _, t := range m.Tags {
+			if !next[t] && !IsSystemTag(t) {
+				rem = append(rem, imapSafeKeyword(t))
+			}
+		}
 		m.Tags = append([]string(nil), (*patch.Tags)...)
 		for _, t := range m.Tags {
-			add = append(add, imapSafeKeyword(t))
+			if !IsSystemTag(t) {
+				add = append(add, imapSafeKeyword(t))
+			}
 		}
 	}
 	syncSystemTagsFromFlags(m)
@@ -637,7 +654,7 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 	offline := s.feat != nil && !s.feat.Online()
 	if offline {
 		s.feat.mu.Lock()
-		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: m.AccountID, UID: m.UID})
+		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: m.AccountID, UID: m.UID, Add: add, Rem: rem})
 		s.feat.mu.Unlock()
 	}
 	folder, hasFolder := s.folderLocked(snapshot.Folder)
@@ -651,7 +668,7 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 		// The cache already has the change. Queue it for the server rather
 		// than let a network blip lose it; the background tick retries.
 		s.feat.mu.Lock()
-		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: snapshot.AccountID, UID: snapshot.UID, Error: err.Error()})
+		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: snapshot.AccountID, UID: snapshot.UID, Add: add, Rem: rem, Error: err.Error()})
 		s.feat.mu.Unlock()
 		s.mu.Lock()
 		s.saveLocked()
@@ -709,9 +726,11 @@ func (s *LocalStore) Move(ids []MessageID, dest FolderID) error {
 		m := s.Messages[i].Clone()
 		src, _ := s.folderLocked(m.Folder)
 		if offline {
-			s.feat.mu.Lock()
-			s.feat.enqueueLocked(OutboxOp{Kind: "move", MessageID: id, Dest: dest, AccountID: m.AccountID, UID: m.UID})
-			s.feat.mu.Unlock()
+			if m.UID != 0 {
+				s.feat.mu.Lock()
+				s.feat.enqueueLocked(s.serverMoveOpLocked(m, dest))
+				s.feat.mu.Unlock()
+			}
 			s.Messages[i].Folder = dest
 			continue
 		}
@@ -754,7 +773,9 @@ func (s *LocalStore) Move(ids []MessageID, dest FolderID) error {
 		if moveErr != nil {
 			if s.feat != nil {
 				s.feat.mu.Lock()
-				s.feat.enqueueLocked(OutboxOp{Kind: "move", MessageID: j.id, Dest: dest, AccountID: j.msg.AccountID, UID: j.msg.UID, Error: moveErr.Error()})
+				op := s.serverMoveOpLocked(j.msg, dest)
+				op.Error = moveErr.Error()
+				s.feat.enqueueLocked(op)
 				s.feat.mu.Unlock()
 			}
 			s.Messages[i].Folder = dest
@@ -825,12 +846,18 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 			return fmt.Errorf("mail: no folder for %s", id)
 		}
 		m := s.Messages[i].Clone()
-		if offline {
+		trash, hasTrash := s.specialLocked(cur.AccountID, FolderTrash)
+		if offline && m.UID != 0 {
+			// What the server must do later: a move to Trash, or — for a
+			// message already in Trash — a purge from where it is.
+			op := s.serverMoveOpLocked(m, trash.ID)
+			if cur.Kind == FolderTrash || !hasTrash {
+				op.Kind, op.Dest = "delete", ""
+			}
 			s.feat.mu.Lock()
-			s.feat.enqueueLocked(OutboxOp{Kind: "delete", MessageID: id, AccountID: m.AccountID, UID: m.UID})
+			s.feat.enqueueLocked(op)
 			s.feat.mu.Unlock()
 		}
-		trash, hasTrash := s.specialLocked(cur.AccountID, FolderTrash)
 		if cur.Kind == FolderTrash || !hasTrash {
 			if !offline {
 				purges = append(purges, purge{msg: m, src: cur})
@@ -851,12 +878,15 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 	s.mu.Unlock()
 
 	for _, p := range purges {
-		s.expungeOne(p.msg, p.src)
+		if err := s.expungeOne(p.msg, p.src); err != nil {
+			s.queueFailed(p.msg, "delete", "", err)
+		}
 	}
 	for _, mv := range moves {
 		var newUID uint32
 		cli, err := s.client(mv.msg.AccountID)
 		if err != nil {
+			s.queueFailed(mv.msg, "move", mv.trash.ID, err)
 			continue
 		}
 		err = cli.inBox(func() error {
@@ -868,6 +898,7 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 			return err
 		})
 		if err != nil {
+			s.queueFailed(mv.msg, "move", mv.trash.ID, err)
 			continue
 		}
 		s.mu.Lock()
@@ -885,15 +916,15 @@ func (s *LocalStore) Delete(ids []MessageID) error {
 // expungeOne permanently removes one message from the server. UID EXPUNGE is
 // used when UIDPLUS is advertised so other \Deleted messages in the mailbox
 // (possibly flagged by another client) survive.
-func (s *LocalStore) expungeOne(m Message, f Folder) {
+func (s *LocalStore) expungeOne(m Message, f Folder) error {
 	if m.UID == 0 {
-		return
+		return nil
 	}
 	cli, err := s.client(m.AccountID)
 	if err != nil {
-		return
+		return err
 	}
-	_ = cli.inBox(func() error {
+	return cli.inBox(func() error {
 		if err := selectFor(cli, f, false); err != nil {
 			return err
 		}
@@ -1657,7 +1688,9 @@ func (s *LocalStore) deleteOne(id MessageID) error {
 	}
 	s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
 	s.mu.Unlock()
-	s.expungeOne(m, f)
+	if err := s.expungeOne(m, f); err != nil {
+		s.queueFailed(m, "delete", "", err)
+	}
 	return nil
 }
 func (s *LocalStore) moveOne(id MessageID, dest FolderID) error {
@@ -2002,37 +2035,22 @@ func (s *LocalStore) loadLocked() {
 	if s.feat == nil {
 		s.feat = newFeatureHost()
 	}
-	type slot struct {
-		name string
-		dest any
-	}
-	slots := []slot{
-		{"accounts.json", &s.accounts},
-		{"identities.json", &s.identities},
-		{"folders.json", &s.Folders},
-		{"messages.json", &s.Messages},
-		{"tags.json", &s.tags},
-		{"rules.json", &s.rules},
-		{"smart.json", &s.feat.smart},
-		{"vip.json", &s.feat.vips},
-		{"muted.json", &s.feat.muted},
-		{"categories.json", &s.feat.cats},
-		{"notify.json", &s.feat.notify},
-		{"outbox.json", &s.feat.outbox},
-	}
-	var bad []string
-	for _, sl := range slots {
-		path := filepath.Join(s.dir, sl.name)
-		if err := readJSONFileStrict(path, sl.dest); err != nil {
-			quarantine(path)
-			bad = append(bad, sl.name)
+	c, err := openSQLCache(s.dir)
+	if err != nil {
+		// A database that will not open is set aside and a fresh one takes
+		// its place: the server has the mail, and the next sync refills it.
+		for _, ext := range []string{"", "-wal", "-shm"} {
+			quarantine(filepath.Join(s.dir, dbFileName+ext))
+		}
+		s.health = fmt.Errorf("mail: the cache database could not be opened (%v); moved it to %s.corrupt, re-sync to refill", err, dbFileName)
+		if c, err = openSQLCache(s.dir); err != nil {
+			s.health = fmt.Errorf("mail: cache database: %w; running without a cache", err)
+			return
 		}
 	}
-	if len(bad) > 0 {
-		// Rebuild what we can: messages.json is reconstructible from the
-		// raw/*.eml blobs the next sync re-reads.
-		s.health = fmt.Errorf("mail: recovered from corrupt cache file(s) %s (moved to *.corrupt); re-sync to refill",
-			strings.Join(bad, ", "))
+	s.sqlc = c
+	if err := s.loadSQL(); err != nil {
+		s.health = fmt.Errorf("mail: reading the cache database: %w; re-sync to refill", err)
 	}
 	s.tags = mergeTagStore(s.tags)
 	assignThreadIDs(s.Messages)
@@ -2046,22 +2064,14 @@ func (s *LocalStore) loadLocked() {
 	}
 }
 
-// saveLocked persists the cache with tmp+fsync+rename so a crash mid-write
-// leaves the previous good file in place.
+// saveLocked persists what changed in the cache to mail.db, in one
+// transaction (sqlstore.go).
 func (s *LocalStore) saveLocked() {
-	_ = writeJSONFileAtomic(filepath.Join(s.dir, "accounts.json"), s.accounts)
-	_ = writeJSONFileAtomic(filepath.Join(s.dir, "identities.json"), s.identities)
-	_ = writeJSONFileAtomic(filepath.Join(s.dir, "folders.json"), s.Folders)
-	_ = writeJSONFileAtomic(filepath.Join(s.dir, "messages.json"), s.Messages)
-	_ = writeJSONFileAtomic(filepath.Join(s.dir, "tags.json"), s.tags)
-	_ = writeJSONFileAtomic(filepath.Join(s.dir, "rules.json"), s.rules)
-	if s.feat != nil {
-		_ = writeJSONFileAtomic(filepath.Join(s.dir, "smart.json"), s.feat.smart)
-		_ = writeJSONFileAtomic(filepath.Join(s.dir, "vip.json"), s.feat.vips)
-		_ = writeJSONFileAtomic(filepath.Join(s.dir, "muted.json"), s.feat.muted)
-		_ = writeJSONFileAtomic(filepath.Join(s.dir, "categories.json"), s.feat.cats)
-		_ = writeJSONFileAtomic(filepath.Join(s.dir, "notify.json"), s.feat.notify)
-		_ = writeJSONFileAtomic(filepath.Join(s.dir, "outbox.json"), s.feat.outbox)
+	if s.sqlc == nil {
+		return
+	}
+	if err := s.saveSQL(); err != nil {
+		s.health = fmt.Errorf("mail: saving the cache: %w", err)
 	}
 }
 
@@ -2106,29 +2116,40 @@ func (s *LocalStore) removeRawLocked(m Message) {
 		_ = os.Remove(p)
 	}
 }
-func (s *LocalStore) folderMetaPath(id FolderID) (string, error) {
-	return underRoot(s.dir, "meta", safeID(string(id))+".json")
-}
 
+// loadFolderMeta is how far folder id has synced. The caller holds s.mu.
 func (s *LocalStore) loadFolderMeta(id FolderID) folderMeta {
 	var m folderMeta
-	p, err := s.folderMetaPath(id)
-	if err != nil {
+	if s.sqlc == nil {
 		return m
 	}
-	if err := readJSONFileStrict(p, &m); err != nil {
-		quarantine(p)
+	var raw []byte
+	if err := s.sqlc.db.QueryRow("SELECT data FROM folder_meta WHERE folder = ?", string(id)).Scan(&raw); err != nil {
+		return m
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
 		return folderMeta{}
 	}
 	return m
 }
+
+// saveFolderMeta records how far folder id has synced. The caller holds s.mu.
 func (s *LocalStore) saveFolderMeta(id FolderID, m folderMeta) {
-	p, err := s.folderMetaPath(id)
+	if s.sqlc == nil {
+		return
+	}
+	raw, err := json.Marshal(m)
 	if err != nil {
 		return
 	}
-	_ = os.MkdirAll(filepath.Dir(p), 0o700)
-	_ = writeJSONFileAtomic(p, m)
+	_, _ = s.sqlc.db.Exec("INSERT INTO folder_meta(folder, data) VALUES(?, ?) ON CONFLICT(folder) DO UPDATE SET data = excluded.data", string(id), raw)
+}
+
+// dropFolderMetaLocked forgets how far folder id had synced.
+func (s *LocalStore) dropFolderMetaLocked(id FolderID) {
+	if s.sqlc != nil {
+		_, _ = s.sqlc.db.Exec("DELETE FROM folder_meta WHERE folder = ?", string(id))
+	}
 }
 func idSeq(id MessageID) int {
 	s := string(id)
@@ -2384,11 +2405,14 @@ func (s *LocalStore) flushOne(op OutboxOp) error {
 				rem = append(rem, `\Flagged`)
 			}
 		}
+		if len(op.Add) > 0 || len(op.Rem) > 0 {
+			add, rem = op.Add, op.Rem
+		}
 		return s.pushFlags(m, f, add, rem)
 	case "move":
-		return s.Move([]MessageID{op.MessageID}, op.Dest)
+		return s.replayMove(op)
 	case "delete":
-		return s.Delete([]MessageID{op.MessageID})
+		return s.replayPurge(op)
 	case "send":
 		if op.Message == nil {
 			return nil

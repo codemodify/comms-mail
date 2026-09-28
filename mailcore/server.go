@@ -781,7 +781,7 @@ func (s *Server) send(p ComposeParams) (appendResult, error) {
 	if msg.From == "" && ident.Address != "" {
 		msg.From = ident.DisplayFrom()
 	}
-	if ident.Signature != "" && !strings.Contains(msg.Body, ident.Signature) {
+	if ident.Signature != "" && !msg.SignatureInBody && !strings.Contains(msg.Body, ident.Signature) {
 		msg.Body = strings.TrimRight(msg.Body, "\n") + "\n\n-- \n" + ident.Signature + "\n"
 	}
 	msg.IdentityID = ident.ID

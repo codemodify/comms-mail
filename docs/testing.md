@@ -6,7 +6,7 @@
 real mail.** The test suite must never touch a live IMAP or POP3 account.
 
 1. Never point a test at a daemon started from the user's
-   `~/.config/uitoolkit/mail.json`, production credentials, or any real
+   `~/.config/comms-mail/mail.json`, production credentials, or any real
    account.
 2. UI tests use an in-memory `mailcore.StartDemo` / `MemoryStore`
    fixture, or an isolated temp config that cannot be a real mailbox.

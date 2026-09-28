@@ -805,7 +805,7 @@ func TestReplyThreadHeaders(t *testing.T) {
 
 func TestAccountIDCannotEscapeDataDir(t *testing.T) {
 	base := t.TempDir()
-	data := filepath.Join(base, "share", "uitoolkit", "mail")
+	data := filepath.Join(base, "share", "comms-mail")
 	victim := filepath.Join(base, "share", "victim.txt")
 	if err := os.MkdirAll(filepath.Dir(victim), 0o700); err != nil {
 		t.Fatal(err)
@@ -878,21 +878,19 @@ func TestSafeID(t *testing.T) {
 
 func TestWriteFileAtomicLeavesNoPartialFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "messages.json")
-	if err := WriteFileAtomic(path, []byte(`["good"]`), 0o600); err != nil {
+	path := filepath.Join(dir, "part.eml")
+	if err := WriteFileAtomic(path, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// A failed write (unserialisable payload) must leave the previous
-	// contents intact rather than a truncated file.
-	if err := writeJSONFileAtomic(path, func() {}); err == nil {
-		t.Fatal("expected a marshal error")
+	if err := WriteFileAtomic(path, []byte("second"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(b) != `["good"]` {
-		t.Fatalf("previous contents were damaged: %q", b)
+	if string(b) != "second" {
+		t.Fatalf("contents %q", b)
 	}
 	st, err := os.Stat(path)
 	if err != nil {
@@ -907,38 +905,6 @@ func TestWriteFileAtomicLeavesNoPartialFile(t *testing.T) {
 		if strings.Contains(e.Name(), ".tmp") {
 			t.Fatalf("leftover temp file %s", e.Name())
 		}
-	}
-}
-
-func TestCorruptCacheIsQuarantinedNotOverwritten(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(EnvConfig, filepath.Join(dir, "mail.json"))
-	// Simulate a crash mid-write: messages.json is truncated JSON.
-	if err := os.WriteFile(filepath.Join(dir, "messages.json"), []byte(`[{"id":"a-1","sub`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "tags.json"), []byte(`[{"name":"Work"}]`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	st, err := NewLocalStoreDir(MailConfig{}, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "messages.json.corrupt")); err != nil {
-		t.Fatalf("corrupt file was not quarantined: %v", err)
-	}
-	if st.Health() == nil {
-		t.Fatal("Health should report the recovery so the user re-syncs")
-	}
-	// The healthy files still loaded.
-	found := false
-	for _, tag := range st.ListTags() {
-		if tag.Name == "Work" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("a corrupt messages.json must not discard the other cache files")
 	}
 }
 

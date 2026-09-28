@@ -16,7 +16,9 @@ import (
 
 // ComposeOptions configure a Write / Reply / Forward / Draft window.
 type ComposeOptions struct {
-	ReplyTo  *mailcore.Message
+	ReplyTo *mailcore.Message
+	// ReplyAll widens a reply from the sender to everyone on the message.
+	ReplyAll bool
 	Forward  *mailcore.Message
 	Draft    *mailcore.Message
 	OnChange func() // refresh the 3-pane after send / save
@@ -44,13 +46,7 @@ func OpenCompose(a *app.Application, cli *mailcore.Client, opts ComposeOptions) 
 
 // ComposeApp is the Write window: From / To / Cc / Bcc / Subject / body.
 func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts ComposeOptions) widget.Component {
-	idents, err := cli.Identities("")
-	if err != nil || len(idents) == 0 {
-		accts, _ := cli.Accounts()
-		for _, a := range accts {
-			idents = append(idents, mailcore.Identity{ID: a.ID, AccountID: a.ID, Name: a.Name, Address: a.Address})
-		}
-	}
+	idents := sendIdentities(cli)
 	fromItems := make([]string, 0, len(idents))
 	for _, id := range idents {
 		fromItems = append(fromItems, id.DisplayFrom())
@@ -73,19 +69,28 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		inReplyTo, references = d.InReplyTo, d.References
 	} else if opts.ReplyTo != nil {
 		m := opts.ReplyTo
-		to0 = replyToAddr(*m)
-		if strings.TrimSpace(m.Cc) != "" {
-			cc0 = m.Cc
+		if opts.ReplyAll {
+			to0, cc0 = mailcore.ReplyAllRecipients(*m, selfAddrs(idents))
+		} else {
+			to0 = replyToAddr(*m)
 		}
 		subj0 = "Re: " + stripRe(m.Subject)
 		body0 = quoteBody(*m)
-		fromIdx = indexFrom(fromItems, m.To)
+		fromIdx = indexFrom(fromItems, m.To+", "+m.Cc)
 		inReplyTo, references = mailcore.ReplyThreadHeaders(*m)
 	} else if opts.Forward != nil {
 		m := opts.Forward
 		subj0 = "Fwd: " + strings.TrimSpace(m.Subject)
 		body0 = forwardBody(*m)
 		fromIdx = indexFrom(fromItems, m.To)
+	}
+	// The signature goes in where it can be seen and edited: under what is
+	// written, above the quote. A draft already has whatever it was saved
+	// with.
+	curSig := ""
+	if opts.Draft == nil && fromIdx >= 0 && fromIdx < len(idents) {
+		curSig = signatureBlock(idents[fromIdx].Signature)
+		body0 = curSig + body0
 	}
 
 	status := widgets.NewStatusBar("Write a message.", "Offline demo", "v"+uitoolkit.Version)
@@ -103,6 +108,23 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	body := widgets.NewTextArea(body0, "Compose in Titillium Web. Source-style quotes stay readable.", nil)
 	body.MinRows = 10
 	body.Wrap = true
+	// Choosing another From swaps that identity's signature for the old
+	// one, when the old one is still there as it was put in.
+	from.OnChange = func(i int) {
+		if i < 0 || i >= len(idents) {
+			return
+		}
+		next := signatureBlock(idents[i].Signature)
+		switch {
+		case curSig != "" && strings.Contains(body.Text, curSig):
+			body.SetText(strings.Replace(body.Text, curSig, next, 1))
+		case curSig == "" && next != "" && opts.Draft == nil:
+			body.SetText(next + body.Text)
+		default:
+			return
+		}
+		curSig = next
+	}
 
 	var attachPaths []string
 	accountID := func() string {
@@ -143,6 +165,8 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			InReplyTo:  inReplyTo,
 			References: references,
 			Read:       true,
+			// The body carries the signature, or the writer took it out.
+			SignatureInBody: true,
 		}
 	}
 
@@ -309,6 +333,42 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 }
 
 // replyToAddr honours Reply-To when the sender set one.
+// sendIdentities is every From the writer can pick: the identities the
+// daemon has, and for an account with none of its own, the account itself.
+func sendIdentities(cli *mailcore.Client) []mailcore.Identity {
+	idents, _ := cli.Identities("")
+	has := map[string]bool{}
+	for _, id := range idents {
+		has[id.AccountID] = true
+	}
+	accts, _ := cli.Accounts()
+	for _, a := range accts {
+		if !has[a.ID] {
+			idents = append(idents, mailcore.Identity{ID: a.ID, AccountID: a.ID, Name: a.Name, Address: a.Address, Default: true})
+		}
+	}
+	return idents
+}
+
+// signatureBlock is sig as it goes into a body: after a blank line, under
+// the "-- " delimiter mail clients use to recognise and trim signatures.
+func signatureBlock(sig string) string {
+	sig = strings.TrimRight(sig, "\n")
+	if strings.TrimSpace(sig) == "" {
+		return ""
+	}
+	return "\n\n-- \n" + sig + "\n"
+}
+
+// selfAddrs is every address the writer sends as, for Reply All to leave out.
+func selfAddrs(idents []mailcore.Identity) []string {
+	out := make([]string, 0, len(idents))
+	for _, id := range idents {
+		out = append(out, id.Address)
+	}
+	return out
+}
+
 func replyToAddr(m mailcore.Message) string {
 	if r := strings.TrimSpace(m.ReplyTo); r != "" {
 		return mailcore.FirstAddr(r)

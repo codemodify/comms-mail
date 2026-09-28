@@ -40,7 +40,7 @@ $ go list -deps ./cmd/comms-maild | grep -c uitoolkit
 
 ## Build and run
 
-Go 1.22 or newer. No cgo is required on Linux.
+Go 1.25 or newer. No cgo is required: the cache is SQLite through the pure-Go `modernc.org/sqlite`.
 
 ```bash
 git clone https://github.com/codemodify/comms-mail
@@ -68,7 +68,7 @@ Then **File → Add Account**: type an address and comms-mail fills in the
 well-known servers for the big providers, or set the hosts yourself. For
 Gmail and Outlook, **Sign in with Google / Microsoft** does OAuth in your
 browser and stores an encrypted refresh token instead of a password.
-Accounts live in `~/.config/uitoolkit/mail.json`, mode `0600`.
+Accounts live in `~/.config/comms-mail/mail.json`, mode `0600`; the cache is `~/.data/comms-mail`.
 
 To install the binaries:
 

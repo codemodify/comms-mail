@@ -12,10 +12,10 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// OpenPrefs opens Accounts / Tags.
+// OpenPrefs opens Settings: Accounts / Signatures / Tags.
 func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: "Preferences", Width: 640, Height: 480, MinWidth: 440, MinHeight: 320,
+		Title: "Settings", Width: 640, Height: 480, MinWidth: 440, MinHeight: 320,
 	})
 	if err != nil {
 		return nil, err
@@ -36,14 +36,16 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 
 	accountsTab := prefsAccounts(a, win, cli, st, onChange)
 	tagsTab := prefsTags(a, win, cli, onChange)
+	sigTab := prefsSignatures(win, cli)
 
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Accounts", Content: widgets.NewPad(10, accountsTab)},
+		widgets.Tab{Title: "Signatures", Content: widgets.NewPad(10, sigTab)},
 		widgets.Tab{Title: "Tags", Content: widgets.NewPad(10, tagsTab)},
 	)
 	closeBtn := widgets.NewButton("Close", func() { win.Close() })
 	tools := widgets.NewRow(widgets.NewSpacer(), closeBtn).WithGap(8)
-	chrome := widgets.NewTitleBar("Preferences", "accounts · tags · v"+uitoolkit.Version)
+	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · v"+uitoolkit.Version)
 	root := widgets.NewColumn(chrome, tabs, tools, status).WithGap(0)
 	root.AddFlex(tabs, 1)
 	return root
@@ -298,4 +300,50 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 	).WithGap(0)
 	win.SetContent(root)
 	return win, nil
+}
+
+// prefsSignatures edits the signature of each From the writer can pick.
+// Write puts it under the message, above any quote.
+func prefsSignatures(win *app.Window, cli *mailcore.Client) widget.Component {
+	idents := sendIdentities(cli)
+	names := make([]string, len(idents))
+	for i, id := range idents {
+		names[i] = id.DisplayFrom()
+	}
+	if len(names) == 0 {
+		return widgets.NewLabel("Add an account first; each address you send from gets its own signature.")
+	}
+	sig := widgets.NewTextArea(idents[0].Signature, "Signature (plain text)", nil)
+	sig.MinRows = 6
+	status := widgets.NewLabel("")
+	pick := widgets.NewComboBox(names, 0, func(i int) {
+		if i >= 0 && i < len(idents) {
+			sig.SetText(idents[i].Signature)
+			status.SetText("")
+		}
+	})
+	save := widgets.NewButton("Save signature", func() {
+		i := pick.Selected
+		if i < 0 || i >= len(idents) {
+			return
+		}
+		next := idents[i]
+		next.Signature = strings.TrimRight(sig.Text, "\n")
+		saved, err := cli.PutIdentity(next)
+		if err != nil {
+			widgets.Warn(win.Content(), "Signature", err.Error(), nil)
+			return
+		}
+		idents[i] = saved
+		status.SetText("Saved. New messages from " + saved.DisplayFrom() + " start with it.")
+	})
+	save.Primary = true
+	col := widgets.NewColumn(
+		widgets.NewTitle("Signatures"),
+		widgets.NewLabel("From"), pick,
+		sig,
+		widgets.NewRow(save, status).WithGap(8),
+	).WithGap(8)
+	col.AddFlex(sig, 1)
+	return col
 }

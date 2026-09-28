@@ -208,6 +208,9 @@ type Message struct {
 	ThreadID     string `json:"threadId,omitempty"`
 	Category     string `json:"category,omitempty"`
 	Attachments  []string
+	// SignatureInBody says the writer already put (or deliberately took
+	// out) the identity's signature, so sending must not append it again.
+	SignatureInBody bool `json:"signatureInBody,omitempty"`
 }
 
 func messageHasBody(m Message) bool {
