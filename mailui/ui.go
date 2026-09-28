@@ -132,6 +132,8 @@ type session struct {
 	status                                     *widgets.StatusBar
 	qf                                         *widgets.TextField
 	qfBtn                                      *widgets.ToolItem
+	allBtn                                     *widgets.ToolItem
+	searchAll                                  bool
 	acctPanel                                  widget.Component
 	acctTitle                                  *widgets.Label
 	acctBody                                   *widgets.Label
@@ -523,7 +525,25 @@ func (s *session) toolBar() *widgets.ToolBar {
 	s.qfBtn.Tip = "Quick Filter"
 	s.qfBtn.Toggle = true
 	s.qfBtn.Down = s.opts.ShowFilter
-	return widgets.NewToolBar(s.qfBtn)
+	s.allBtn = widgets.ToolToggle("All folders", s.searchAll, s.toggleSearchAll)
+	s.allBtn.Tip = "Search every folder, not just this one"
+	return widgets.NewToolBar(s.qfBtn, s.allBtn)
+}
+
+// toggleSearchAll switches the message list between the current folder and a
+// search across every folder. It shows the filter field if it was hidden.
+func (s *session) toggleSearchAll() {
+	s.searchAll = !s.searchAll
+	if s.allBtn != nil {
+		s.allBtn.Down = s.searchAll
+	}
+	if s.searchAll && !s.opts.ShowFilter {
+		s.showFilter(true)
+	}
+	s.refreshList()
+	if s.searchAll {
+		s.mark("Searching all folders")
+	}
 }
 
 func (s *session) notifyPrefs() mailcore.NotifyPrefs {
@@ -657,7 +677,17 @@ func (s *session) loadVisible() ([]mailcore.Message, error) {
 		kind = f.Kind
 	}
 	s.kind = kind
-	all, err := s.cli.ListMessages(s.folder, s.filter)
+	searching := s.searchAll && strings.TrimSpace(s.filter.Query) != ""
+	var all []mailcore.Message
+	var err error
+	if searching {
+		// Every folder, over the daemon's index (all synced headers, and
+		// the bodies already downloaded).
+		all, err = s.cli.Search(mailcore.SearchQuery{Filter: s.filter})
+		kind = mailcore.FolderInbox // date-sorted, flat
+	} else {
+		all, err = s.cli.ListMessages(s.folder, s.filter)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +715,7 @@ func (s *session) loadVisible() ([]mailcore.Message, error) {
 		}
 		all = keep
 	}
-	if s.threaded {
+	if s.threaded && !searching {
 		return mailcore.GroupThreaded(all, kind, s.sortCol, s.sortAsc), nil
 	}
 	mailcore.SortMessages(all, s.sortCol, s.sortAsc, kind)
@@ -2781,6 +2811,12 @@ func (s *session) selectFolder(id mailcore.FolderID) {
 	}
 	s.central = false
 	s.folder = id
+	if s.searchAll {
+		s.searchAll = false
+		if s.allBtn != nil {
+			s.allBtn.Down = false
+		}
+	}
 	if f, ok, _ := s.cli.GetFolder(id); ok && f.AccountID != "" && !syntheticAccount(f.AccountID) {
 		s.account = f.AccountID
 	}
