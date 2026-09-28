@@ -30,6 +30,9 @@ import (
 // left is bounded (attachDragWait) and answered with a refusal rather
 // than a path to a file that is not there.
 
+// dragPattern names the folder dragged attachments are written to.
+const dragPattern = "uitk-mail-drag-"
+
 // attachScratch is where dragged attachments are written, made once per
 // process.
 var attachScratch struct {
@@ -39,7 +42,8 @@ var attachScratch struct {
 
 func attachScratchDir() string {
 	attachScratch.Do(func() {
-		if dir, err := os.MkdirTemp("", "uitk-mail-drag-"); err == nil {
+		mailcore.RemoveOld(filepath.Join(os.TempDir(), dragPattern+"*"), mailcore.DraggedKeep)
+		if dir, err := os.MkdirTemp("", dragPattern); err == nil {
 			attachScratch.dir = dir
 		}
 	})

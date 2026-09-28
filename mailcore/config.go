@@ -3,6 +3,7 @@ package mailcore
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -287,28 +288,65 @@ func envVarName(s string) string {
 	return s
 }
 
-// KeepExistingSecrets copies the passwords and tokens of the stored
-// config into next, so a save that omits them does not erase them.
+// KeepExistingSecrets copies the passwords of the stored config into a,
+// so a save that omits them does not erase them — but a password only
+// stays with the server and user it was saved for. A save that points a
+// server elsewhere must bring that server's password (LeftBehind says
+// which), so no request can send a saved password to a host of its
+// choosing.
 func KeepExistingSecrets(a AccountConfig, existing []AccountConfig) AccountConfig {
 	for _, old := range existing {
 		if old.ID != a.ID {
 			continue
 		}
-		if a.IMAP.Pass == "" {
-			a.IMAP.Pass = old.IMAP.Pass
+		keep := func(next *ServerConfig, prev ServerConfig) {
+			if next.Pass == "" && sameLogin(*next, prev) {
+				next.Pass = prev.Pass
+			}
 		}
-		if a.POP.Pass == "" {
-			a.POP.Pass = old.POP.Pass
-		}
-		if a.SMTP.Pass == "" {
-			a.SMTP.Pass = old.SMTP.Pass
-		}
+		keep(&a.IMAP, old.IMAP)
+		keep(&a.POP, old.POP)
+		keep(&a.SMTP, old.SMTP)
 		if a.Protocol == "" {
 			a.Protocol = old.Protocol
 		}
 		break
 	}
 	return a
+}
+
+// LeftBehind names the servers of a whose saved password was not carried
+// over because the server or user changed: they need the password again.
+func LeftBehind(a AccountConfig, existing []AccountConfig) []string {
+	var out []string
+	for _, old := range existing {
+		if old.ID != a.ID {
+			continue
+		}
+		for _, pair := range [][2]ServerConfig{{a.IMAP, old.IMAP}, {a.POP, old.POP}, {a.SMTP, old.SMTP}} {
+			next, prev := pair[0], pair[1]
+			if next.Pass == "" && prev.Pass != "" && next.Host != "" && !sameLogin(next, prev) {
+				out = append(out, serverHostOnly(next.Host))
+			}
+		}
+	}
+	return out
+}
+
+// sameLogin reports whether two server settings are the same login: the
+// same host (whatever the port) and user.
+func sameLogin(a, b ServerConfig) bool {
+	return strings.EqualFold(serverHostOnly(a.Host), serverHostOnly(b.Host)) &&
+		strings.EqualFold(strings.TrimSpace(a.User), strings.TrimSpace(b.User))
+}
+
+// serverHostOnly is "host" of "host:port" (and of "[v6]:port").
+func serverHostOnly(hp string) string {
+	hp = strings.TrimSpace(hp)
+	if h, _, err := net.SplitHostPort(hp); err == nil {
+		return h
+	}
+	return strings.Trim(hp, "[]")
 }
 
 func upsertAccountConfig(list []AccountConfig, a AccountConfig) []AccountConfig {

@@ -723,7 +723,7 @@ func BuildRFC822Strict(msg Message, ident Identity, files []AttachedFile) ([]byt
 	fields = append(fields, field{"Date", date.Format(time.RFC1123Z)})
 	mid := strings.TrimSpace(msg.RFCMessageID)
 	if mid == "" {
-		mid = fmt.Sprintf("<%d.%s@uitoolkit>", date.UnixNano(), safeID(ident.Address))
+		mid = newMessageID(firstNonEmpty(ident.Address, from))
 	}
 	if err := add("Message-ID", mid, encodeMsgIDList); err != nil {
 		return nil, err

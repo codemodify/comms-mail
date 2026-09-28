@@ -180,7 +180,7 @@ What lives in it:
 | --- | --- |
 | `mail.db` (+ `-wal`, `-shm`) | SQLite, mode `0600`. `messages`: one row per message — headers, flags, tags, thread, parts — plus its decoded text once downloaded. `message_text`: the search index — each downloaded message's text in trigrams (FTS5, no copy of the text). `folder_meta`: each folder's UIDVALIDITY / UIDNEXT / HIGHESTMODSEQ. `kv`: accounts, identities and signatures, folders, tags, filter rules, smart folders, VIPs, muted threads, categories, notification settings, the offline outbox. |
 | `raw/<account>/<message>.eml` | The message exactly as the server sent it, once downloaded (a click, or the background prefetch). Source view, attachments and re-parsing read it. |
-| `open/` | Attachment copies written for **Open** to hand to the desktop. |
+| `open/` | Attachment copies written for **Open** to hand to the desktop; removed after a day (the next time one is opened, and at start). |
 | `secrets/` | OAuth refresh tokens, encrypted. |
 
 Settings are not in the cache: `mail.json` (accounts and passwords) is in the
@@ -221,6 +221,10 @@ go run ./cmd/comms-mail
 ```
 
 Optional env fallback when `password` is omitted: `"passEnv": "UITK_MAIL_PASS"` and `export UITK_MAIL_PASS='…'`.
+
+Saving an account without its password (`accounts.put`, Settings) keeps the saved one only for the same server and user — the port may change. Pointing a server at another host, or another user, needs that server's password again; the save is refused until it is given, so no request can send a saved password to a host of its choosing.
+
+Mail written here gets a Message-ID like other clients' — `<32 random hex digits@sender's domain>` — which names neither the software nor the sender, and does not say when it was written.
 
 Single-account env (no file) still works:
 
@@ -303,6 +307,9 @@ your browser as a page — headers, then the HTML with its inline images, or
 the text — to print or save as PDF from there. The page cannot load
 anything: a Content-Security-Policy blocks every request and script, and
 remote image sources are taken out, so printing is not a read receipt.
+The page is a temporary file, removed after an hour (the next time you
+print, and when the window starts); attachments dragged out to another
+window go after a day the same way.
 **Save As…** writes the message exactly as stored, as a `.eml`
 (`messages.getRaw`).
 

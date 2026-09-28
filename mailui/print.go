@@ -23,6 +23,9 @@ import (
 
 // printCSP allows nothing but the page itself, its inline styles and its
 // embedded (data:) images.
+// printPattern names the pages handed to the browser to print.
+const printPattern = "comms-mail-print-*.html"
+
 const printCSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'none'; form-action 'none'; base-uri 'none'"
 
 var remoteSrcRe = regexp.MustCompile(`(?i)\s(src|srcset|background)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)`)
@@ -90,13 +93,16 @@ func printableHTML(body string, images []mailcore.InlineImage) string {
 // printMessage opens the primary message as a page to print.
 func (s *session) printMessage() {
 	s.withFull("Print", func(m mailcore.Message) {
+		// The page the browser prints is removed once old, the next time
+		// one is made (the browser reads it when it gets round to it).
 		id := m.ID
 		s.async(func() (any, error) {
 			var imgs []mailcore.InlineImage
 			if strings.Contains(strings.ToLower(m.HTML), "cid:") {
 				imgs, _ = s.cli.InlineImages(id)
 			}
-			f, err := os.CreateTemp("", "comms-mail-print-*.html")
+			mailcore.RemoveOld(filepath.Join(os.TempDir(), printPattern), mailcore.PrintedKeep)
+			f, err := os.CreateTemp("", printPattern)
 			if err != nil {
 				return nil, err
 			}

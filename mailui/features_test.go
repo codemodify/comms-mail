@@ -371,7 +371,7 @@ func TestServerConfigPasswordPrefersInline(t *testing.T) {
 	}
 	a := mailcore.KeepExistingSecrets(
 		mailcore.AccountConfig{ID: "home", IMAP: mailcore.ServerConfig{Host: "imap.example.com:993"}},
-		[]mailcore.AccountConfig{{ID: "home", IMAP: mailcore.ServerConfig{Pass: "kept"}, SMTP: mailcore.ServerConfig{Pass: "kept-smtp"}}},
+		[]mailcore.AccountConfig{{ID: "home", IMAP: mailcore.ServerConfig{Host: "imap.example.com:993", Pass: "kept"}, SMTP: mailcore.ServerConfig{Pass: "kept-smtp"}}},
 	)
 	if a.IMAP.Pass != "kept" || a.SMTP.Pass != "kept-smtp" {
 		t.Fatalf("keep %+v", a)

@@ -207,6 +207,12 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		sortCol: 4, sortAsc: false, online: true,
 		attachSel: -1, attachClickI: -1,
 	}
+	// Pages printed and attachments dragged out by an earlier run, once
+	// old (mailcore.RemoveOld).
+	go func() {
+		mailcore.RemoveOld(filepath.Join(os.TempDir(), printPattern), mailcore.PrintedKeep)
+		mailcore.RemoveOld(filepath.Join(os.TempDir(), dragPattern+"*"), mailcore.DraggedKeep)
+	}()
 	p := loadChromePrefs()
 	s.chromePrefs = p
 	s.cardView = opts.CardView || p.CardView

@@ -1,6 +1,8 @@
 package mailcore
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,6 +213,9 @@ func (s *LocalStore) PutAccount(in AccountConfig) (Account, error) {
 	defer s.mu.Unlock()
 	file, _ := LoadConfig()
 	a = KeepExistingSecrets(a, file.Accounts)
+	if left := LeftBehind(a, file.Accounts); len(left) > 0 {
+		return Account{}, fmt.Errorf("the server changed, so its saved password was not sent there — enter the password for %s", strings.Join(left, " and "))
+	}
 	file.Accounts = upsertAccountConfig(file.Accounts, a)
 	if err := SaveConfig(file); err != nil {
 		return Account{}, err
@@ -1252,7 +1257,7 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	if strings.TrimSpace(msg.RFCMessageID) == "" {
 		// Kept on the cached copy too, so a sync can tell the server's copy
 		// of this message is this one.
-		msg.RFCMessageID = newMessageID(msg.Date, ident.Address)
+		msg.RFCMessageID = newMessageID(ident.Address)
 	}
 	raw, buildErr := BuildRFC822Strict(msg, ident, nil)
 	if buildErr != nil {
@@ -1372,15 +1377,33 @@ func (s *LocalStore) resolveLocked(id MessageID) MessageID {
 }
 
 // newMessageID makes a Message-ID for a message written here.
-func newMessageID(date time.Time, addr string) string {
-	if date.IsZero() {
-		date = time.Now()
+// newMessageID is a Message-ID for mail written here, made the way other
+// clients make theirs: random, at the sender's domain. It names neither
+// the software nor the sender's address, and does not say when it was
+// written.
+func newMessageID(addr string) string {
+	host := "localhost"
+	a := ExtractAddr(addr)
+	if at := strings.LastIndexByte(a, '@'); at >= 0 && messageIDHost(a[at+1:]) {
+		host = strings.ToLower(a[at+1:])
 	}
-	host := "comms-mail.local"
-	if at := strings.LastIndexByte(ExtractAddr(addr), '@'); at >= 0 {
-		host = ExtractAddr(addr)[at+1:]
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return "<" + hex.EncodeToString(b) + "@" + host + ">"
+}
+
+// messageIDHost reports whether h can stand as a Message-ID's domain as
+// it is: ASCII letters, digits, dots and hyphens.
+func messageIDHost(h string) bool {
+	if h == "" || len(h) > 253 {
+		return false
 	}
-	return fmt.Sprintf("<%d.%s@%s>", date.UnixNano(), randID(8), host)
+	for _, c := range h {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // Update replaces a message's content — a draft saved again. The cached
@@ -2754,6 +2777,7 @@ func (s *LocalStore) OpenPart(id MessageID, partID string) (PartData, error) {
 	if err != nil {
 		return p, err
 	}
+	RemoveOld(filepath.Join(filepath.Dir(path), "*"), OpenedKeep)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return p, err
 	}
@@ -3050,6 +3074,7 @@ func (s *LocalStore) loadLocked() {
 	// keep its size on disk until SQLite happens to reset it.
 	_, _ = c.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	s.tags = mergeTagStore(s.tags)
+	RemoveOld(filepath.Join(s.dir, "open", "*"), OpenedKeep)
 	assignThreadIDs(s.Messages)
 	s.feat.setContacts(buildContacts(s.Messages))
 	for _, m := range s.Messages {
