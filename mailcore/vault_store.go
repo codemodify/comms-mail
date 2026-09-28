@@ -24,6 +24,8 @@ type VaultStatus struct {
 	// PlainSecrets: there is no vault yet and secrets sit unprotected —
 	// passwords in mail.json, or token files with their key beside them.
 	PlainSecrets bool `json:"plainSecrets"`
+	// PlainAccounts are the addresses whose passwords are in mail.json.
+	PlainAccounts []string `json:"plainAccounts,omitempty"`
 }
 
 // accountKeyID is the id an account's secrets are filed under.
@@ -86,6 +88,7 @@ func (s *LocalStore) VaultStatus() VaultStatus {
 		for _, a := range s.cfg.Accounts {
 			if a.IMAP.Pass != "" || a.POP.Pass != "" || a.SMTP.Pass != "" {
 				st.PlainSecrets = true
+				st.PlainAccounts = append(st.PlainAccounts, firstNonEmpty(a.Address, a.Name, a.ID))
 			}
 		}
 		s.mu.Unlock()
@@ -104,7 +107,7 @@ func (s *LocalStore) VaultStatus() VaultStatus {
 func (s *LocalStore) CreateVault(passphrase string) error {
 	v := s.vaultOf()
 	if v.Exists() {
-		return errors.New("a passphrase is already set; change it in Settings → Privacy")
+		return errors.New("a passphrase is already set; change it in Settings › Privacy")
 	}
 	s.mu.Lock()
 	entries := plainSecrets(s.cfg.Accounts)

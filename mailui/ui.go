@@ -1798,7 +1798,7 @@ func (s *session) recategorize(cat string) {
 		s.mark(err.Error())
 		return
 	}
-	s.mark("Sender → " + cat)
+	s.mark("Sender › " + cat)
 	s.refreshAll()
 }
 

@@ -160,9 +160,9 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 			}},
 			{"Message source", 480, 320, func() { _, _ = OpenMessageSource(a, inbox[0], "From: a\r\n\r\nbody") }},
 			{"Rule editor", 520, 420, func() { openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil) }},
-			{"Passphrase (set)", 400, 340, func() { openPassphrase(a, cli, passCreate, reasonAccount, nil) }},
-			{"Passphrase (unlock)", 400, 240, func() { openPassphrase(a, cli, passUnlock, "", nil) }},
-			{"Passphrase (change)", 400, 310, func() { openPassphrase(a, cli, passChange, "", nil) }},
+			{"Passphrase (set)", 440, 300, func() { openPassphrase(a, cli, passCreate, plainIntro([]string{"ada@example.com"}), nil) }},
+			{"Passphrase (unlock)", 440, 300, func() { openPassphrase(a, cli, passUnlock, "", nil) }},
+			{"Passphrase (change)", 440, 300, func() { openPassphrase(a, cli, passChange, "", nil) }},
 		}
 		for _, win := range wins {
 			w := newWindowFrom(t, a, win.open)

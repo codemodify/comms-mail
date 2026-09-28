@@ -56,7 +56,7 @@ func MessageSourceApp(win *app.Window, msg mailcore.Message, rfc822 string) widg
 	bodyPad := widgets.NewPad(8, body)
 	root := widgets.NewColumn(
 		menubar,
-		widgets.NewTitleBar(titleFromSource(msg), "View → Message Source"),
+		widgets.NewTitleBar(titleFromSource(msg), "View › Message Source"),
 		bodyPad,
 		status,
 	).WithGap(0)

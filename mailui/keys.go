@@ -102,4 +102,4 @@ Menus
   Ctrl+,    Settings
   Ctrl+U    Message Source (raw RFC822)
   F7 / F8   previous / next
-  Esc       tooltip → popup → overlay`
+  Esc       closes a tooltip, popup or overlay`

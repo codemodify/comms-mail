@@ -252,7 +252,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 	syncRemove()
 	col := widgets.NewColumn(
 		widgets.NewTitle("Tags"),
-		widgets.NewLabel("The sidebar Tags group is this list: locked Unread / Starred / Attachment plus keywords you add. Message → Tag toggles keywords."),
+		widgets.NewLabel("The sidebar Tags group is this list: locked Unread / Starred / Attachment plus keywords you add. Message › Tag toggles keywords."),
 		table,
 		widgets.NewRow(add, edit, remove).WithGap(8),
 	).WithGap(8)
@@ -445,11 +445,15 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		btn.Invalidate()
 	}
 	btn = widgets.NewButton("", func() {
-		mode, reason := passCreate, reasonPlain
-		if cur, err := cli.VaultStatus(); err == nil && cur.Exists {
-			mode = passChange
+		mode, intro := passCreate, plainIntro(nil)
+		if cur, err := cli.VaultStatus(); err == nil {
+			if cur.Exists {
+				mode = passChange
+			} else {
+				intro = plainIntro(cur.PlainAccounts)
+			}
 		}
-		openPassphrase(a, cli, mode, reason, func() {
+		openPassphrase(a, cli, mode, intro, func() {
 			if cur, err := cli.VaultStatus(); err == nil {
 				show(cur)
 			}

@@ -18,7 +18,7 @@ func TestRuleSummary(t *testing.T) {
 		{Field: "from", Op: "is", Value: "boss@example.com"}, {Field: "subject", Op: "begins", Value: "Weekly"},
 	}, Actions: []mailcore.RuleAction{{Type: "move", Path: "Lists/News"}, {Type: "markRead"}, {Type: "stop"}}}
 	got := ruleSummary(r, func(id mailcore.FolderID) string { return string(id) })
-	want := "When From is “boss@example.com” or Subject begins with “Weekly” (home Inbox) → move to Lists/News, mark read, stop"
+	want := "When From is “boss@example.com” or Subject begins with “Weekly” (home Inbox): move to Lists/News, mark read, stop"
 	if got != want {
 		t.Fatalf("summary\n %q\nwant\n %q", got, want)
 	}

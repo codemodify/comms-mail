@@ -212,7 +212,7 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		}
 		// The password is kept in the vault: a passphrase is set (or the
 		// daemon unlocked) first.
-		withVault(a, cli, reasonAccount, func() {
+		withVault(a, cli, accountIntro, func() {
 			acct, err := cli.PutAccount(cfg)
 			if err != nil {
 				widgets.Warn(win.Content(), "Add account", err.Error(), nil)
@@ -237,7 +237,7 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		}
 		// The sign-in's tokens are kept in the vault: a passphrase is set
 		// (or the daemon unlocked) first.
-		withVault(a, cli, reasonAccount, func() { startSignIn(provider, flow, email) })
+		withVault(a, cli, accountIntro, func() { startSignIn(provider, flow, email) })
 	}
 	startSignIn = func(provider, flow, email string) {
 		st, err := cli.StartOAuth(provider, email, strings.TrimSpace(name.Text),

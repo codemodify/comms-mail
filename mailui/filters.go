@@ -86,7 +86,7 @@ func ruleSummary(r mailcore.FilterRule, folderName func(mailcore.FolderID) strin
 			acts = append(acts, strings.ToLower(labelOf(ruleActions, a.Type)))
 		}
 	}
-	return "When " + strings.Join(tests, join) + where + " → " + strings.Join(acts, ", ")
+	return "When " + strings.Join(tests, join) + where + ": " + strings.Join(acts, ", ")
 }
 
 func orDefault(s, def string) string {

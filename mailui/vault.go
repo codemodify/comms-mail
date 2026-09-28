@@ -1,6 +1,8 @@
 package mailui
 
 import (
+	"strings"
+
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
@@ -21,27 +23,53 @@ const (
 	passChange                 // replace the passphrase
 )
 
-// Why a passphrase is being set, which the window says first.
-const (
-	reasonPlain   = "Your mail passwords are saved in plain text, readable by any program running as you. Choose a passphrase to lock them away."
-	reasonAccount = "Before comms-mail saves this account's password, choose a passphrase to lock your passwords away."
-)
+// What the window says when a passphrase is set: why it is asked now,
+// what Protect does, and what Not now leaves.
 
-// openPassphrase opens the window for mode. reason (passCreate) says why;
-// done runs on the UI goroutine once it worked.
-func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, reason string, done func()) *app.Window {
+// forgetText is what a forgotten passphrase costs.
+const forgetText = "If you forget the passphrase, the saved passwords cannot be recovered: you would type each account's password again."
+
+// plainIntro is the text for passwords found in plain text: an install
+// from before the vault. accounts are whose they are.
+func plainIntro(accounts []string) string {
+	whose := "your accounts"
+	if len(accounts) > 0 {
+		whose = strings.Join(accounts, ", ")
+	}
+	return "comms-mail can now keep your saved passwords encrypted, locked with a passphrase you choose.\n\n" +
+		"At the moment the passwords for " + whose + " are stored as readable text in " + mailcore.ConfigPath() +
+		", where any program running as you can read them.\n\n" +
+		"Protect will:\n" +
+		"•  move them into an encrypted file, locked with this passphrase, and take them out of mail.json;\n" +
+		"•  ask for the passphrase once each time comms-mail starts, before it connects to your mail.\n\n" +
+		forgetText + "\n\n" +
+		"Not now leaves everything as it is; you can do this later in Settings › Privacy."
+}
+
+// accountIntro is the text before the first password is saved.
+const accountIntro = "comms-mail keeps account passwords encrypted, locked with a passphrase you choose, and asks for it once each time it starts. " +
+	"Choose it now: this account's password is then saved under it.\n\n" + forgetText
+
+// openPassphrase opens the window for mode. intro (passCreate) says why
+// a passphrase is asked for and what setting it does (plainIntro,
+// accountIntro); done runs on the UI goroutine once it worked.
+func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, intro string, done func()) *app.Window {
 	title := map[passMode]string{passCreate: "Protect your passwords", passUnlock: "Unlock comms-mail", passChange: "Change passphrase"}[mode]
-	// The heights hold the text wrapped at the narrowest width.
-	height := map[passMode]int{passCreate: 360, passUnlock: 260, passChange: 330}[mode]
+	height := map[passMode]int{passCreate: 640, passUnlock: 330, passChange: 380}[mode]
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: title, Width: 480, Height: height, MinWidth: 400, MinHeight: height - 20,
+		Title: title, Width: 560, Height: height, MinWidth: 440, MinHeight: 300,
 	})
 	if err != nil {
 		return nil
 	}
-	current := widgets.NewPasswordField("Current passphrase", nil)
-	first := widgets.NewPasswordField("Passphrase", nil)
-	again := widgets.NewPasswordField("The same passphrase again", nil)
+	current := widgets.NewPasswordField("", nil)
+	first := widgets.NewPasswordField("", nil)
+	again := widgets.NewPasswordField("", nil)
+	// Each field has its name above it: a placeholder goes the moment
+	// the field has focus, and two blank fields read the same.
+	labelled := func(label string, f *widgets.TextField) []widget.Component {
+		return []widget.Component{widgets.NewLabel(label), f}
+	}
 
 	var text string
 	var fields []widget.Component
@@ -49,21 +77,18 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, rea
 	okText := ""
 	switch mode {
 	case passCreate:
-		text = reason + " comms-mail asks for it once each time it starts.\n\n" +
-			"If you forget it, the saved passwords cannot be recovered: each account then needs its password again."
-		first.Placeholder = "Passphrase (at least 8 characters)"
-		fields = []widget.Component{first, again}
+		text = intro
+		fields = append(labelled("Passphrase (at least 8 characters)", first), labelled("Type it again", again)...)
 		focus, okText = first, "Protect"
 	case passUnlock:
-		text = "Your mail passwords are locked. Enter your passphrase to connect to your mail; until then comms-mail shows only what it has already downloaded."
-		first.Placeholder = "Passphrase"
-		fields = []widget.Component{first}
+		text = "comms-mail keeps your mail passwords encrypted, locked with your passphrase. Enter it to connect to your mail.\n\n" +
+			"Until you do, comms-mail shows only mail it has already downloaded, and messages you send wait in the Outbox."
+		fields = labelled("Passphrase", first)
 		focus, okText = first, "Unlock"
 	case passChange:
-		text = "The saved passwords and sign-ins are locked again with the new passphrase."
-		first.Placeholder = "New passphrase (at least 8 characters)"
-		again.Placeholder = "The new passphrase again"
-		fields = []widget.Component{current, first, again}
+		text = "Your saved passwords and sign-ins are locked again with the new passphrase; the old one stops working."
+		fields = append(append(labelled("Current passphrase", current),
+			labelled("New passphrase (at least 8 characters)", first)...), labelled("Type the new one again", again)...)
 		focus, okText = current, "Change"
 	}
 
@@ -123,11 +148,18 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, rea
 	}
 	buttons.AddButton(okBtn, widgets.RoleAccept)
 
-	col := widgets.NewColumn(wrapLabel(text)).WithGap(8)
+	// The explanation scrolls when the window is small; the fields and
+	// buttons stay in view.
+	// A label centres its lines in the height it is given; the spacer
+	// under it keeps the text at the top.
+	textCol := widgets.NewColumn(wrapLabel(text))
+	textCol.AddFlex(widgets.NewSpacer(), 1)
+	explain := widgets.NewScrollView(textCol)
+	col := widgets.NewColumn(explain).WithGap(6)
+	col.AddFlex(explain, 1)
 	for _, f := range fields {
 		col.Add(f)
 	}
-	col.Add(widgets.NewSpacer())
 	col.Add(buttons)
 	win.SetContent(widgets.NewPad(14, col))
 	win.SetInitialFocus(focus)
@@ -139,7 +171,7 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, rea
 func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window) {
 	widgets.Confirm(win.Content(), "Forget the saved passwords?",
 		"Without the passphrase the saved passwords cannot be read. Starting over deletes them and every sign-in; "+
-			"your accounts and mail stay, and each account needs its password again (Settings → Accounts).",
+			"your accounts and mail stay, and each account needs its password again (Settings › Accounts).",
 		func(yes bool) {
 			if !yes {
 				return
@@ -150,7 +182,7 @@ func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window)
 					return
 				}
 				widgets.Info(win.Content(), "Passwords forgotten",
-					"Enter each account's password again in Settings → Accounts; you will choose a new passphrase then.",
+					"Enter each account's password again in Settings › Accounts; you will choose a new passphrase then.",
 					func() { win.Close() })
 			})
 		})
@@ -191,7 +223,7 @@ func (s *session) checkVault() {
 		case st.Exists && !st.Unlocked:
 			s.promptUnlock()
 		case !st.Exists && st.PlainSecrets:
-			openPassphrase(s.app, s.cli, passCreate, reasonPlain, func() { s.mark("Passwords locked with your passphrase") })
+			openPassphrase(s.app, s.cli, passCreate, plainIntro(st.PlainAccounts), func() { s.mark("Passwords locked with your passphrase") })
 		}
 	})
 }
