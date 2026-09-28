@@ -24,7 +24,7 @@ func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.
 	return win, nil
 }
 
-// OpenFilters is the former Tools → Message Filters entry (same window, Tags tab).
+// OpenFilters opens Settings (whose Filters tab lists the rules).
 func OpenFilters(a *app.Application, cli *mailcore.Client) (*app.Window, error) {
 	return OpenPrefs(a, cli, nil)
 }
@@ -38,16 +38,18 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 	tagsTab := prefsTags(a, win, cli, onChange)
 	sigTab := prefsSignatures(win, cli)
 	privacyTab := prefsPrivacy(win, cli, onChange)
+	filtersTab := prefsFilters(a, win, cli)
 
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Accounts", Content: widgets.NewPad(10, accountsTab)},
 		widgets.Tab{Title: "Signatures", Content: widgets.NewPad(10, sigTab)},
 		widgets.Tab{Title: "Tags", Content: widgets.NewPad(10, tagsTab)},
+		widgets.Tab{Title: "Filters", Content: widgets.NewPad(10, filtersTab)},
 		widgets.Tab{Title: "Privacy", Content: widgets.NewPad(10, privacyTab)},
 	)
 	closeBtn := widgets.NewButton("Close", func() { win.Close() })
 	tools := widgets.NewRow(widgets.NewSpacer(), closeBtn).WithGap(8)
-	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · privacy · v"+uitoolkit.Version)
+	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · filters · privacy · v"+uitoolkit.Version)
 	root := widgets.NewColumn(chrome, tabs, tools, status).WithGap(0)
 	root.AddFlex(tabs, 1)
 	return root

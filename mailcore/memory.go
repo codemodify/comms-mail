@@ -950,7 +950,11 @@ func (s *MemoryStore) moveOne(id MessageID, dest FolderID) error {
 }
 
 func (s *MemoryStore) indexOf(id MessageID) (int, bool) { return s.indexLocked(id) }
-func (s *MemoryStore) messageAt(i int) *Message         { return &s.messages[i] }
+
+func (s *MemoryStore) folderByPath(account, path string) (FolderID, bool) {
+	return folderByPath(s.folders, account, path)
+}
+func (s *MemoryStore) messageAt(i int) *Message { return &s.messages[i] }
 
 func (s *MemoryStore) GetPart(id MessageID, partID string) (PartData, error) {
 	m, ok := s.GetMessage(id)
@@ -1042,7 +1046,10 @@ func (s *MemoryStore) MuteThread(id string, muted bool) error {
 }
 func (s *MemoryStore) MutedThreads() []string         { return s.extras().MutedThreads() }
 func (s *MemoryStore) InviteAnswer(key string) string { return s.extras().InviteAnswer(key) }
-func (s *MemoryStore) RemoteImageSenders() []string   { return s.extras().RemoteImageSenders() }
+
+// ImportContacts adds contacts to the address book.
+func (s *MemoryStore) ImportContacts(cs []Contact) int { return s.extras().ImportContacts(cs) }
+func (s *MemoryStore) RemoteImageSenders() []string    { return s.extras().RemoteImageSenders() }
 func (s *MemoryStore) AllowRemoteImages(address string, allow bool) error {
 	return s.extras().AllowRemoteImages(address, allow)
 }

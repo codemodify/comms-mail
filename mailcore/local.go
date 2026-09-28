@@ -2457,7 +2457,12 @@ func (s *LocalStore) moveOne(id MessageID, dest FolderID) error {
 }
 
 func (s *LocalStore) indexOf(id MessageID) (int, bool) { return s.indexLocked(id) }
-func (s *LocalStore) messageAt(i int) *Message         { return &s.Messages[i] }
+
+// folderByPath is ruleHost's: the caller holds s.mu.
+func (s *LocalStore) folderByPath(account, path string) (FolderID, bool) {
+	return folderByPath(s.Folders, account, path)
+}
+func (s *LocalStore) messageAt(i int) *Message { return &s.Messages[i] }
 
 // GetPart returns one decoded MIME section. The cached .eml is re-walked so
 // attachments come back as their actual bytes; previously a non-text part
@@ -3088,7 +3093,16 @@ func (s *LocalStore) MuteThread(id string, muted bool) error {
 }
 func (s *LocalStore) MutedThreads() []string         { return s.extras().MutedThreads() }
 func (s *LocalStore) InviteAnswer(key string) string { return s.extras().InviteAnswer(key) }
-func (s *LocalStore) RemoteImageSenders() []string   { return s.extras().RemoteImageSenders() }
+
+// ImportContacts adds contacts to the address book, kept across restarts.
+func (s *LocalStore) ImportContacts(cs []Contact) int {
+	n := s.extras().ImportContacts(cs)
+	s.mu.Lock()
+	s.saveLocked()
+	s.mu.Unlock()
+	return n
+}
+func (s *LocalStore) RemoteImageSenders() []string { return s.extras().RemoteImageSenders() }
 func (s *LocalStore) AllowRemoteImages(address string, allow bool) error {
 	err := s.extras().AllowRemoteImages(address, allow)
 	s.mu.Lock()

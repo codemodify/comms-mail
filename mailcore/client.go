@@ -340,6 +340,21 @@ func (c *Client) ImportScanPath(path string) (ImportSource, error) {
 	return out, err
 }
 
+// ImportFilters adds other clients' filters as rules.
+func (c *Client) ImportFilters(sets []FilterSet) (FilterImport, error) {
+	var r FilterImport
+	err := c.call(MethodImportFilters, importFiltersParams{Sets: sets}, &r)
+	return r, err
+}
+
+// ImportContacts adds contacts to the address book; it returns how many
+// were new.
+func (c *Client) ImportContacts(cs []Contact) (int, error) {
+	var r countResult
+	err := c.call(MethodImportContacts, importContactsParams{Contacts: cs}, &r)
+	return r.Count, err
+}
+
 // ImportMail reads the chosen on-disk stores into the local account.
 func (c *Client) ImportMail(stores []LocalMailStore) (ImportResult, error) {
 	var r ImportResult

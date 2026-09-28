@@ -602,7 +602,9 @@ func importMuttSources() []ImportSource {
 			c := &muttConfig{vars: map[string]string{}}
 			parseMuttrc(rc, c, 3)
 			read[rc] = len(out)
-			out = append(out, muttSource(fl.name, c))
+			src := muttSource(fl.name, c)
+			src.Contacts = readMuttAliases(rc)
+			out = append(out, src)
 			break
 		}
 	}

@@ -2084,10 +2084,12 @@ func TestMailSettingsTabs(t *testing.T) {
 		t.Fatal("Settings tabs")
 	}
 	got := append([]string(nil), bar.Titles...)
-	if len(got) != 4 || got[0] != "Accounts" || got[1] != "Signatures" || got[2] != "Tags" || got[3] != "Privacy" {
-		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Privacy", got)
+	// Filters came back when importing other clients' filters needed a
+	// place to see and manage them.
+	if strings.Join(got, ",") != "Accounts,Signatures,Tags,Filters,Privacy" {
+		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Filters, Privacy", got)
 	}
-	for _, name := range []string{"Appearance", "Notify", "VIP", "Identities", "Filters"} {
+	for _, name := range []string{"Appearance", "Notify", "VIP", "Identities"} {
 		if containsLabel(got, name) {
 			t.Fatalf("removed Settings tab still present: %q %v", name, got)
 		}

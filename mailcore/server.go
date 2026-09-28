@@ -618,6 +618,26 @@ func (s *Server) dispatch(req Request) Response {
 				result = imgs
 			}
 		}
+	case MethodImportContacts:
+		var p importContactsParams
+		p, err = decodeParams[importContactsParams](req.Params)
+		if err == nil {
+			if ci, ok := s.Store.(interface{ ImportContacts([]Contact) int }); ok {
+				result = countResult{Count: ci.ImportContacts(p.Contacts)}
+			} else {
+				err = fmt.Errorf("mail: this store keeps no address book")
+			}
+		}
+	case MethodImportFilters:
+		var p importFiltersParams
+		p, err = decodeParams[importFiltersParams](req.Params)
+		if err == nil {
+			if ls, ok := s.Store.(*LocalStore); ok {
+				result = ls.ImportFilters(p.Sets)
+			} else {
+				err = fmt.Errorf("mail: this store takes no filters")
+			}
+		}
 	case MethodImagesFetch:
 		var p imagesFetchParams
 		p, err = decodeParams[imagesFetchParams](req.Params)

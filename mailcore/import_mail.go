@@ -33,12 +33,18 @@ type ImportSource struct {
 	Source   string            `json:"source"`
 	Accounts []ImportedAccount `json:"accounts,omitempty"`
 	Mail     []LocalMailStore  `json:"mail,omitempty"`
+	// Contacts are the people in the client's address book.
+	Contacts []Contact `json:"contacts,omitempty"`
+	// Filters are its message filters, per incoming server.
+	Filters []FilterSet `json:"filters,omitempty"`
 	// Note says what the scan could not do for this client — a layout it
 	// only reads best-effort, accounts it has no way to read.
 	Note string `json:"note,omitempty"`
 }
 
-func (s ImportSource) empty() bool { return len(s.Accounts) == 0 && len(s.Mail) == 0 }
+func (s ImportSource) empty() bool {
+	return len(s.Accounts) == 0 && len(s.Mail) == 0 && len(s.Contacts) == 0 && len(s.Filters) == 0
+}
 
 // ScanImportSources looks for every mail client it knows for this user and
 // returns what each one has. A client with nothing to offer is left out.
@@ -51,12 +57,13 @@ func ScanImportSources() []ImportSource {
 		}
 	}
 	tb, _ := ImportThunderbird()
-	add(ImportSource{Source: "Thunderbird", Accounts: tb, Mail: thunderbirdLocalMail()})
+	add(ImportSource{Source: "Thunderbird", Accounts: tb, Mail: thunderbirdLocalMail(), Contacts: readThunderbirdAddressBooks(),
+		Filters: readThunderbirdFilters()})
 	km, _ := ImportKMail()
-	add(ImportSource{Source: "KMail", Accounts: km, Mail: kmailLocalMail(),
+	add(ImportSource{Source: "KMail", Accounts: km, Mail: kmailLocalMail(), Contacts: readVCardDirs(),
 		Note: "KMail's settings are read best-effort; check each account before you rely on it."})
-	add(ImportSource{Source: "Evolution", Accounts: importEvolution(), Mail: evolutionLocalMail()})
-	add(ImportSource{Source: "Claws Mail", Accounts: importClaws(), Mail: clawsLocalMail()})
+	add(ImportSource{Source: "Evolution", Accounts: importEvolution(), Mail: evolutionLocalMail(), Contacts: readEvolutionAddressBooks()})
+	add(ImportSource{Source: "Claws Mail", Accounts: importClaws(), Mail: clawsLocalMail(), Contacts: readClawsAddressBook()})
 	add(ImportSource{Source: "Geary", Accounts: importGeary(),
 		Note: "Geary keeps only a cache of IMAP mail, which re-syncs from the server — there is no local mail to import."})
 	for _, m := range importMuttSources() {

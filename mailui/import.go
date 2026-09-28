@@ -39,6 +39,8 @@ type importSection struct {
 	cfg       *widgets.Checkbox
 	acctBoxes []*widgets.Checkbox
 	mail      *widgets.Checkbox
+	contacts  *widgets.Checkbox
+	filters   *widgets.Checkbox
 }
 
 // importOutcome is what the Import button did.
@@ -48,6 +50,9 @@ type importOutcome struct {
 	didMail  bool
 	mail     mailcore.ImportResult
 	mailErr  error
+	people   int // contacts new to the address book
+	peopleOK bool
+	filters  *mailcore.FilterImport
 }
 
 // openImportWindow lists what each client offers — its account settings and
@@ -74,7 +79,7 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 				sec.accounts = append(sec.accounts, acc)
 			}
 		}
-		if len(sec.accounts) == 0 && len(src.Mail) == 0 && src.Note == "" {
+		if len(sec.accounts) == 0 && len(src.Mail) == 0 && len(src.Contacts) == 0 && len(src.Filters) == 0 && src.Note == "" {
 			return
 		}
 		none.SetVisible(false)
@@ -103,6 +108,14 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 			sec.mail = widgets.NewCheckbox(fmt.Sprintf("Emails — %d folder(s) kept on disk", len(src.Mail)), true, nil)
 			list.Add(sec.mail)
 			list.Add(indent(widgets.NewLabel(storeList(src.Mail, 8))))
+		}
+		if len(src.Contacts) > 0 {
+			sec.contacts = widgets.NewCheckbox(fmt.Sprintf("Contacts — %d people from its address book", len(src.Contacts)), true, nil)
+			list.Add(sec.contacts)
+		}
+		if n := filterCount(src.Filters); n > 0 {
+			sec.filters = widgets.NewCheckbox(fmt.Sprintf("Filters — %d, as rules (Settings → Filters)", n), true, nil)
+			list.Add(sec.filters)
 		}
 		sections = append(sections, sec)
 		list.RequestLayout()
@@ -148,6 +161,8 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 	imp = widgets.NewButton("Import", func() {
 		var accounts []mailcore.AccountConfig
 		var stores []mailcore.LocalMailStore
+		var people []mailcore.Contact
+		var filters []mailcore.FilterSet
 		seen := map[string]bool{}
 		for _, sec := range sections {
 			for i, b := range sec.acctBoxes {
@@ -161,8 +176,14 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 			if sec.mail != nil && sec.mail.Checked {
 				stores = append(stores, sec.src.Mail...)
 			}
+			if sec.contacts != nil && sec.contacts.Checked {
+				people = append(people, sec.src.Contacts...)
+			}
+			if sec.filters != nil && sec.filters.Checked {
+				filters = append(filters, sec.src.Filters...)
+			}
 		}
-		if len(accounts) == 0 && len(stores) == 0 {
+		if len(accounts) == 0 && len(stores) == 0 && len(people) == 0 && len(filters) == 0 {
 			widgets.Warn(win.Content(), "Import", "Nothing is ticked.", nil)
 			return
 		}
@@ -180,6 +201,23 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 			if len(stores) > 0 {
 				r.didMail = true
 				r.mail, r.mailErr = cli.ImportMail(stores)
+			}
+			if len(people) > 0 {
+				n, err := cli.ImportContacts(people)
+				if err != nil {
+					r.errs = append(r.errs, "Contacts: "+err.Error())
+				} else {
+					r.people, r.peopleOK = n, true
+				}
+			}
+			// After the accounts: each filter finds its account by server.
+			if len(filters) > 0 {
+				res, err := cli.ImportFilters(filters)
+				if err != nil {
+					r.errs = append(r.errs, "Filters: "+err.Error())
+				} else {
+					r.filters = &res
+				}
 			}
 			return r, nil
 		}, func(v any, _ error) {
@@ -216,6 +254,15 @@ func importSummary(r importOutcome) string {
 			fmt.Fprintf(&b, "Emails: %s\n", r.mailErr)
 		} else {
 			fmt.Fprintf(&b, "Imported %d message(s) into %d folder(s) under “%s”.\n", r.mail.Messages, r.mail.Folders, mailcore.LocalAccountName)
+		}
+	}
+	if r.peopleOK {
+		fmt.Fprintf(&b, "Added %d contact(s) to the address book (the rest it already had).\n", r.people)
+	}
+	if f := r.filters; f != nil {
+		fmt.Fprintf(&b, "Added %d filter(s) as rules (Settings → Filters).\n", f.Added)
+		for _, s := range f.Skipped {
+			fmt.Fprintf(&b, "Not imported: %s.\n", s)
 		}
 	}
 	for _, e := range r.errs {
@@ -261,4 +308,12 @@ func wrapLabel(text string) *widgets.Label {
 	l := widgets.NewLabel(text)
 	l.Wrap = true
 	return l
+}
+
+func filterCount(sets []mailcore.FilterSet) int {
+	n := 0
+	for _, s := range sets {
+		n += len(s.Filters)
+	}
+	return n
 }

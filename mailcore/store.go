@@ -139,26 +139,34 @@ type PartData struct {
 
 // FilterRule is one Sorting Office / Outlook-style rule.
 type FilterRule struct {
-	ID         string          `json:"id"`
-	Name       string          `json:"name"`
-	Enabled    bool            `json:"enabled"`
-	Stop       bool            `json:"stop"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	Stop    bool   `json:"stop"`
+	// Any matches when one condition does, instead of all of them.
+	Any        bool            `json:"any,omitempty"`
 	Conditions []RuleCondition `json:"conditions,omitempty"`
 	Actions    []RuleAction    `json:"actions,omitempty"`
 }
 
 // RuleCondition is a match clause (AND together).
 type RuleCondition struct {
-	Field string `json:"field"` // from, to, subject, body, attachment, unread, tag
-	Op    string `json:"op"`    // contains, is, equals (default contains)
+	Field string `json:"field"` // from, to, subject, body, attachment, unread, tag, account, inbox
+	Op    string `json:"op"`    // contains, notcontains, is, isnot, begins, ends (default contains)
 	Value string `json:"value,omitempty"`
 }
 
 // RuleAction runs when all conditions match.
 type RuleAction struct {
-	Type   string   `json:"type"` // move, tag, markRead, markUnread, delete, stop
+	Type   string   `json:"type"` // move, tag, markRead, markUnread, star, delete, stop
 	Folder FolderID `json:"folder,omitempty"`
 	Tag    string   `json:"tag,omitempty"`
+	// Account and Path name a move's folder by where it is on the server
+	// ("Archives/2023"), for a folder that did not exist here when the rule
+	// was made (a filter imported with its account); the rule finds it when
+	// it runs.
+	Account string `json:"account,omitempty"`
+	Path    string `json:"path,omitempty"`
 }
 
 // SyncResult is what sync.run / Fetch reports.

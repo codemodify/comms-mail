@@ -27,7 +27,28 @@ func (r FilterRule) match(m Message) bool {
 		return false
 	}
 	for _, c := range r.Conditions {
-		if !c.match(m) {
+		ok := c.match(m)
+		if r.Any && ok && !scopeCondition(c) {
+			return r.scopeMatches(m) // one is enough; scope still applies
+		}
+		if !r.Any && !ok {
+			return false
+		}
+	}
+	return !r.Any
+}
+
+// scopeCondition reports conditions that say where a rule applies (an
+// account, the Inbox) rather than what it looks for: they hold even when
+// the rule matches on any one of the others.
+func scopeCondition(c RuleCondition) bool {
+	f := strings.ToLower(strings.TrimSpace(c.Field))
+	return f == "account" || f == "inbox"
+}
+
+func (r FilterRule) scopeMatches(m Message) bool {
+	for _, c := range r.Conditions {
+		if scopeCondition(c) && !c.match(m) {
 			return false
 		}
 	}
@@ -56,6 +77,11 @@ func (c RuleCondition) match(m Message) bool {
 		return !m.Read
 	case "tag":
 		return HasTag(m.Tags, val)
+	case "account":
+		return strings.EqualFold(m.AccountID, val)
+	case "inbox":
+		// An account's Inbox is "<account>/inbox" (IMAP and POP alike).
+		return strings.HasSuffix(strings.ToLower(string(m.Folder)), "/inbox")
 	default:
 		return false
 	}
@@ -65,6 +91,14 @@ func matchText(s, op, val string) bool {
 	switch op {
 	case "is", "equals", "eq":
 		return strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(val))
+	case "isnot":
+		return !strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(val))
+	case "notcontains":
+		return !containsFold(s, val)
+	case "begins":
+		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(s)), strings.ToLower(val))
+	case "ends":
+		return strings.HasSuffix(strings.ToLower(strings.TrimSpace(s)), strings.ToLower(val))
 	default:
 		return containsFold(s, val)
 	}
@@ -88,12 +122,22 @@ func applyRuleActions(s ruleHost, msg *Message, actions []RuleAction) (stop bool
 				return false, err
 			}
 			return true, nil
+		case "star", "flag":
+			msg.Starred = true
 		case "move":
-			if a.Folder != "" {
-				if err := s.moveOne(msg.ID, a.Folder); err != nil {
+			dest := a.Folder
+			if dest == "" && a.Path != "" {
+				f, ok := s.folderByPath(a.Account, a.Path)
+				if !ok {
+					continue // not synced yet; the next time it is found
+				}
+				dest = f
+			}
+			if dest != "" && dest != msg.Folder {
+				if err := s.moveOne(msg.ID, dest); err != nil {
 					return false, err
 				}
-				msg.Folder = a.Folder
+				msg.Folder = dest
 			}
 		}
 	}
@@ -103,13 +147,25 @@ func applyRuleActions(s ruleHost, msg *Message, actions []RuleAction) (stop bool
 type ruleHost interface {
 	deleteOne(id MessageID) error
 	moveOne(id MessageID, dest FolderID) error
+	// folderByPath finds an account's folder by its server path,
+	// "/"-separated whatever the server's own delimiter.
+	folderByPath(account, path string) (FolderID, bool)
 	indexOf(id MessageID) (int, bool)
 	messageAt(i int) *Message
 }
 
+// nextRuleID is an id no rule has. It used to be the count plus one, which
+// after a delete named an existing rule — and PutRule then replaced it.
 func nextRuleID(existing []FilterRule) string {
-	n := len(existing) + 1
-	return fmt.Sprintf("rule-%02d", n)
+	taken := map[string]bool{}
+	for _, r := range existing {
+		taken[r.ID] = true
+	}
+	for n := len(existing) + 1; ; n++ {
+		if id := fmt.Sprintf("rule-%02d", n); !taken[id] {
+			return id
+		}
+	}
 }
 
 func demoRules() []FilterRule {
@@ -125,4 +181,34 @@ func demoRules() []FilterRule {
 			Actions:    []RuleAction{{Type: "move", Folder: FolderAdaJunk}, {Type: "stop"}},
 		},
 	}
+}
+
+// folderByPath finds account's folder whose server path (its own delimiter
+// read as "/", any case) — or, for a folder that has none, its name — is
+// path. A local account's imported folders are matched by the end of their
+// name ("Thunderbird · Local Folders/Lists" for "Lists").
+func folderByPath(folders []Folder, account, path string) (FolderID, bool) {
+	want := strings.Trim(path, "/")
+	if want == "" {
+		return "", false
+	}
+	for _, f := range folders {
+		if f.AccountID != account || f.Virtual {
+			continue
+		}
+		p := f.Remote
+		if p == "" {
+			p = f.Name
+		}
+		if f.Delim != "" && f.Delim != "/" {
+			p = strings.ReplaceAll(p, f.Delim, "/")
+		}
+		if strings.EqualFold(p, want) {
+			return f.ID, true
+		}
+		if account == LocalAccountID && strings.HasSuffix(strings.ToLower(f.Name), "/"+strings.ToLower(want)) {
+			return f.ID, true
+		}
+	}
+	return "", false
 }

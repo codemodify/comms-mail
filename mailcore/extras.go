@@ -106,6 +106,8 @@ type featureHost struct {
 	online       bool
 	index        *searchIndex
 	contacts     []Contact // address book, rebuilt when the message set changes
+	saved        []Contact // contacts imported from other clients' address books
+	book         []Contact // contacts + saved, as suggestions use them (nil: rebuild)
 	nextOp       int
 }
 
@@ -113,6 +115,7 @@ type featureHost struct {
 func (f *featureHost) setContacts(c []Contact) {
 	f.mu.Lock()
 	f.contacts = c
+	f.book = nil
 	f.mu.Unlock()
 }
 
@@ -120,7 +123,7 @@ func (f *featureHost) setContacts(c []Contact) {
 func (f *featureHost) suggest(query string, limit int) []Contact {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return suggestContacts(f.contacts, query, limit)
+	return suggestContacts(f.bookLocked(), query, limit)
 }
 
 func newFeatureHost() *featureHost {

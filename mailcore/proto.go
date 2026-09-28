@@ -84,6 +84,8 @@ const (
 	MethodImportScan      = "import.scan"
 	MethodImportScanPath  = "import.scanPath"
 	MethodImportMail      = "import.mail"
+	MethodImportContacts  = "import.contacts"
+	MethodImportFilters   = "import.filters"
 	MethodMessagesFlags   = "messages.setFlags"
 	MethodMessagesMove    = "messages.move"
 	MethodMessagesDelete  = "messages.delete"
@@ -333,6 +335,18 @@ type applyRulesParams struct {
 type searchServerParams struct {
 	FolderID FolderID `json:"folderId,omitempty"`
 	Query    string   `json:"query"`
+}
+
+type importContactsParams struct {
+	Contacts []Contact `json:"contacts"`
+}
+
+type importFiltersParams struct {
+	Sets []FilterSet `json:"sets"`
+}
+
+type countResult struct {
+	Count int `json:"count"`
 }
 
 type imagesFetchParams struct {
