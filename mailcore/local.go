@@ -1184,10 +1184,14 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 	// Deletion reconciliation. QRESYNC servers tell us what vanished; the
 	// rest need an explicit UID-set diff, or messages deleted from another
 	// client stay in the cache forever (and later UID commands address a
-	// message that no longer exists).
+	// message that no longer exists). VANISHED only covers what changed
+	// since the saved modseq, so a deletion missed once — a sync that died
+	// after saving the watermark, a cache from before QRESYNC — is never
+	// reported again. When the cache and the server disagree on how many
+	// messages the folder holds, diff anyway.
 	var serverUIDs []uint32
 	haveUIDSet := false
-	if !cli.has("QRESYNC") {
+	if !cli.has("QRESYNC") || s.cachedAfterSync(f.ID, from, vanished, len(list)) != st.Exists {
 		if uids, err := cli.uidList(); err == nil {
 			serverUIDs = uids
 			haveUIDSet = true
@@ -1289,6 +1293,25 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 		UIDValidity: st.UIDValidity, UIDNext: maxUID, HighestMod: st.HighestMod, Remote: remote,
 	})
 	return added, nil
+}
+
+// cachedAfterSync is how many messages the folder will hold once a sync
+// applies vanished and adds the listed messages from UID from onwards: the
+// number to hold against the server's EXISTS.
+func (s *LocalStore) cachedAfterSync(folder FolderID, from uint32, vanished []uint32, listed int) int {
+	gone := make(map[uint32]bool, len(vanished))
+	for _, u := range vanished {
+		gone[u] = true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := listed
+	for _, m := range s.Messages {
+		if m.Folder == folder && m.UID != 0 && m.UID < from && !gone[m.UID] {
+			n++
+		}
+	}
+	return n
 }
 
 // dropUIDLocked removes one cached message by folder+UID unless a local

@@ -603,6 +603,84 @@ func TestSyncReconcilesDeletionsWithoutQRESYNC(t *testing.T) {
 	}
 }
 
+func TestSyncReconcilesDeletionsQRESYNCMissed(t *testing.T) {
+	// The server speaks QRESYNC, but a deletion happened before the saved
+	// modseq, so no VANISHED ever reports it. EXISTS disagreeing with the
+	// cache is what must send the sync to a full UID diff.
+	var live = []uint32{1, 2, 3}
+	setLive := func(u []uint32) { live = u }
+
+	srv := newScriptIMAP(t, "IMAP4rev1 ENABLE CONDSTORE QRESYNC", func(s *imapSession, tag, cmd, line string) bool {
+		up := strings.ToUpper(line)
+		switch {
+		case cmd == "ENABLE":
+			s.send("* ENABLED QRESYNC CONDSTORE")
+			s.send("%s OK enabled", tag)
+			return true
+		case cmd == "LIST":
+			s.send(`* LIST (\HasNoChildren) "/" "INBOX"`)
+			s.send("%s OK list", tag)
+			return true
+		case cmd == "LSUB":
+			s.send("%s OK lsub", tag)
+			return true
+		case cmd == "SELECT" || cmd == "EXAMINE":
+			s.send("* %d EXISTS", len(live))
+			s.send("* OK [UIDVALIDITY 1]")
+			s.send("* OK [UIDNEXT 99]")
+			s.send("* OK [HIGHESTMODSEQ 7]")
+			s.send("%s OK [READ-ONLY] selected", tag)
+			return true
+		case strings.Contains(up, "UID FETCH") && strings.Contains(up, "(UID)"):
+			for i, u := range live {
+				s.send("* %d FETCH (UID %d)", i+1, u)
+			}
+			s.send("%s OK fetch", tag)
+			return true
+		case strings.Contains(up, "UID FETCH"):
+			for i, u := range live {
+				s.send(`* %d FETCH (UID %d FLAGS (\Seen) RFC822.SIZE 10 ENVELOPE ("Mon, 1 Jan 2024 00:00:00 +0000" "m%d" (("B" NIL "b" "ex.com")) NIL NIL (("A" NIL "a" "ex.com")) NIL NIL NIL "<m%d@ex>"))`, i+1, u, u, u)
+			}
+			s.send("%s OK fetch", tag)
+			return true
+		}
+		return false
+	})
+
+	dir := t.TempDir()
+	t.Setenv(EnvConfig, filepath.Join(dir, "mail.json"))
+	st, err := NewLocalStoreDir(MailConfig{Accounts: []AccountConfig{{
+		ID: "home", Address: "ada@example.com",
+		IMAP: ServerConfig{Host: srv.addr(), User: "ada", Pass: "p", TLSMode: string(TLSPlain)},
+	}}}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Sync("home"); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	if n := len(st.ListMessages("home/inbox")); n != 3 {
+		t.Fatalf("first sync cached %d messages, want 3", n)
+	}
+	if srv.sawPrefix("UID FETCH 1:* (UID)") {
+		t.Fatal("a cache that agrees with EXISTS should not cost a full UID diff")
+	}
+
+	setLive([]uint32{1, 3}) // UID 2 deleted, and no VANISHED says so
+	if _, err := st.Sync("home"); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	got := st.ListMessages("home/inbox")
+	if len(got) != 2 {
+		t.Fatalf("after reconciliation %d messages remain, want 2", len(got))
+	}
+	for _, m := range got {
+		if m.UID == 2 {
+			t.Fatal("UID 2 was deleted on the server but survived in the cache")
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Header construction
 // ---------------------------------------------------------------------------
