@@ -137,3 +137,16 @@ func TestRemoteImageSendersPersist(t *testing.T) {
 		t.Fatalf("after removing %v", got)
 	}
 }
+
+// messages.getRaw hands back the message byte for byte (Save As .eml).
+func TestRawIsByteExact(t *testing.T) {
+	cli := demoInviteClient(t)
+	raw, err := cli.Raw(DemoInviteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := NewDemoStore().GetRaw(DemoInviteID)
+	if !bytes.Equal(raw, want) {
+		t.Fatalf("raw differs: %d bytes vs %d", len(raw), len(want))
+	}
+}

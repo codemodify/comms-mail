@@ -25,7 +25,9 @@ new ones turn up.
 - **Chip/pill recipient fields** — removable recipient pills (uitoolkit
   gap #5); today they are comma-separated text.
 - **Spell check.**
-- **Drag files into the body to attach.**
+- **Drag files into the body to attach** — files dropped anywhere else on
+  the Write window are attached; on the body the text area takes the
+  paths as text first (uitoolkit-gaps.md #13).
 - **HTML compose** — the editor is plain text only; replying to HTML loses
   its formatting.
 
@@ -82,7 +84,6 @@ new ones turn up.
 ## Accounts / setup / trust
 - **OAuth (Gmail / Microsoft 365)** — needs the client-id decision (own
   registration vs a project app) before it is usable.
-- **Print / Save as PDF / Save as .eml.**
 
 ## From the roadmap (features, not polish)
 Thunderbird / KMail import · calendar invites · PGP · S/MIME.

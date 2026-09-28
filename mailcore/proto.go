@@ -72,6 +72,7 @@ const (
 	MethodMessagesList    = "messages.list"
 	MethodMessagesGet     = "messages.get"
 	MethodMessagesSource  = "messages.getSource"
+	MethodMessagesRaw     = "messages.getRaw"
 	MethodMessagesSearch  = "messages.search"
 	MethodSearchServer    = "messages.searchServer"
 	MethodContactsSuggest = "contacts.suggest"

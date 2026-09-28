@@ -186,7 +186,7 @@ func callTimeout(method string) time.Duration {
 	case MethodSyncRun, MethodMessagesFetch, MethodOutboxFlush, MethodStatusSet:
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
-		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages:
+		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
@@ -601,6 +601,13 @@ func (c *Client) SearchServer(folder FolderID, query string) ([]Message, error) 
 	var out []Message
 	err := c.call(MethodSearchServer, searchServerParams{FolderID: folder, Query: query}, &out)
 	return out, err
+}
+
+// Raw returns message id exactly as stored (the bytes of its .eml).
+func (c *Client) Raw(id MessageID) ([]byte, error) {
+	var raw []byte
+	err := c.call(MethodMessagesRaw, messageIDParams{ID: id}, &raw)
+	return raw, err
 }
 
 // InlineImages returns message id's image parts by Content-ID, for the

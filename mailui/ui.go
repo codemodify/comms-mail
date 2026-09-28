@@ -185,6 +185,7 @@ type session struct {
 	// undo is the move or delete waiting out its undo window; its messages
 	// are hidden from the list until it is committed or undone.
 	undo      *pendingRemoval
+	tagUndo   *tagUndo // the last tag change, while it can be taken back
 	hidden    map[mailcore.MessageID]bool
 	undoBar   widget.Component
 	undoLabel *widgets.Label
@@ -637,6 +638,8 @@ func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
 		widgets.Item("Junk", s.junk),
 		&widgets.MenuItem{Text: "Delete", Shortcut: "D", Icon: style.IconCut, OnClick: s.deleteSel},
 		widgets.Sep(),
+		widgets.ItemAccel("Print…", "Ctrl+P", s.printMessage),
+		widgets.Item("Save As…", s.saveMessageAs),
 		widgets.ItemIcon(style.IconInfo, "View Source", s.viewSource),
 	)
 }
@@ -1810,16 +1813,77 @@ func (s *session) toggleTag(tag string) {
 		s.mark("No selection")
 		return
 	}
+	s.commitUndo() // a move or delete waiting on the bar goes through
+	before := map[mailcore.MessageID][]string{}
+	added := false
 	for _, id := range ids {
 		if m, ok := s.messageByID(id); ok {
+			before[id] = append([]string(nil), m.Tags...)
 			next := mailcore.ToggleTag(m.Tags, tag)
+			added = added || mailcore.HasTag(next, tag)
 			s.setFlagsLater([]mailcore.MessageID{id}, mailcore.FlagPatch{Tags: &next})
 		}
 	}
 	if s.shownOK {
 		s.showHeaders(s.shown)
 	}
-	s.mark("Tag " + tag)
+	label := "Tagged " + tag
+	if !added {
+		label = "Took off " + tag
+	}
+	if len(before) > 1 {
+		label = fmt.Sprintf("%s · %d messages", label, len(before))
+	}
+	s.offerTagUndo(before, label)
+	s.mark(label)
+}
+
+// tagUndo is a tag change that can be taken back: each message's tags
+// from before it.
+type tagUndo struct {
+	before map[mailcore.MessageID][]string
+	label  string
+	timer  *time.Timer
+}
+
+// offerTagUndo puts a tag change on the undo bar for the undo window.
+func (s *session) offerTagUndo(before map[mailcore.MessageID][]string, label string) {
+	s.dropTagUndo()
+	if len(before) == 0 {
+		return
+	}
+	u := &tagUndo{before: before, label: label}
+	s.tagUndo = u
+	if s.undoLabel != nil {
+		s.undoLabel.SetText(label)
+	}
+	if s.undoBar != nil {
+		s.undoBar.SetVisible(true)
+	}
+	if appLooping(s.app) {
+		u.timer = time.AfterFunc(undoWindow, func() {
+			s.app.Post(func() {
+				if s.tagUndo == u {
+					s.dropTagUndo()
+				}
+			})
+		})
+	}
+}
+
+// dropTagUndo takes a tag change off the undo bar (it stays done).
+func (s *session) dropTagUndo() {
+	u := s.tagUndo
+	if u == nil {
+		return
+	}
+	s.tagUndo = nil
+	if u.timer != nil {
+		u.timer.Stop()
+	}
+	if s.undoBar != nil && s.undo == nil {
+		s.undoBar.SetVisible(false)
+	}
 }
 
 // undoWindow is how long a move or delete can be taken back before it
@@ -1855,6 +1919,7 @@ func (s *session) messageByID(id mailcore.MessageID) (mailcore.Message, bool) {
 // (headless, tests) the call is made at once.
 func (s *session) removeLater(ids []mailcore.MessageID, what, done string, call func() error) {
 	s.commitUndo()
+	s.dropTagUndo() // the bar now offers this instead
 	s.closeTabsFor(ids)
 	gone := make(map[mailcore.MessageID]bool, len(ids))
 	for _, id := range ids {
@@ -1938,6 +2003,22 @@ func (s *session) commitUndoNow() {
 // undoLast puts the pending move or delete's messages back in the list;
 // the daemon never heard of it.
 func (s *session) undoLast() {
+	if u := s.tagUndo; u != nil && s.undo == nil {
+		// The last change was a tag: put every message's tags back.
+		s.dropTagUndo()
+		for id, tags := range u.before {
+			tags := tags
+			s.setFlagsLater([]mailcore.MessageID{id}, mailcore.FlagPatch{Tags: &tags})
+		}
+		if s.shownOK {
+			if tags, ok := u.before[s.shown.ID]; ok {
+				s.shown.Tags = tags
+				s.showHeaders(s.shown)
+			}
+		}
+		s.mark("Undone: " + u.label)
+		return
+	}
 	p := s.takeUndo()
 	if p == nil {
 		return
@@ -3106,6 +3187,10 @@ func (s *session) afterAccountsChanged() {
 func (s *session) handleKey(e widget.KeyEvent) bool {
 	if e.Mods.Ctrl() && e.Key == platform.KeyU {
 		s.viewSource()
+		return true
+	}
+	if e.Mods.Ctrl() && e.Key == platform.KeyP {
+		s.printMessage()
 		return true
 	}
 	if e.Mods.Ctrl() && e.Key == platform.KeyF {

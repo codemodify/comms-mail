@@ -36,3 +36,7 @@ func openCachedFile(path string) bool {
 	go func() { _ = cmd.Wait() }() // no zombie in a long-running daemon
 	return true
 }
+
+// OpenWithDesktop opens path with the desktop's handler for it (a browser
+// for .html), reporting whether it could.
+func OpenWithDesktop(path string) bool { return openCachedFile(path) }

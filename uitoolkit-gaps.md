@@ -100,3 +100,23 @@ cut off. Seen in comms-mail's invite card (title beside two buttons).
 height-for-width pass), or have Row re-measure wrapping children after it
 distributes the space.
 
+### 12. FileDialog Save has no suggested file name
+`FileDialogOptions` has `Path` but no `Name`: to suggest "Invoice.eml" in
+a Save dialog, comms-mail passes the whole file path as `Path`. The native
+(portal) dialog splits it into folder and name correctly, but the themed
+dialog then tries to list the file as a folder and shows an empty list.
+**Fix:** a `Name` (suggested file name) option, and for `FileSave` list
+`filepath.Dir(Path)` when `Path` is not a directory.
+
+### 13. A text field takes a file drop meant for its container
+`Window.dropTarget` gives a drop to the component under the pointer if it
+takes *any* offered type, before asking its ancestors. File managers offer
+`text/uri-list` and `text/plain` (the paths as text) together, so dropping
+files on a `TextArea` inside a `DropZone` that wants files types the paths
+into the text instead of handing the files to the zone. comms-mail's Write
+window attaches files dropped anywhere else, but not on the body — where
+people drop them.
+**Fix:** when the offer carries `text/uri-list` (files), prefer the nearest
+ancestor that takes it over a descendant that only takes `text/plain`; or
+let `TextArea` decline file drops (an option, or by default).
+

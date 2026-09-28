@@ -291,3 +291,33 @@ func TestUndoHoldsTheMoveBack(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// A tag change can be taken back from the undo bar: every message gets the
+// tags it had.
+func TestUndoTagChange(t *testing.T) {
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	a, b := s.rows[0], s.rows[1]
+	s.selected = []mailcore.MessageID{a.ID, b.ID}
+	s.toggleTag("Later")
+	s.waitIdle()
+	for _, id := range []mailcore.MessageID{a.ID, b.ID} {
+		if m, _, _ := s.cli.GetMessage(id); !mailcore.HasTag(m.Tags, "Later") {
+			t.Fatalf("%s not tagged: %q", id, m.Tags)
+		}
+	}
+	if s.tagUndo == nil || !s.undoBar.Visible() || !strings.Contains(s.undoLabel.Text, "Tagged Later · 2 messages") {
+		t.Fatalf("undo bar %v %q", s.undoBar.Visible(), s.undoLabel.Text)
+	}
+	s.undoLast()
+	s.waitIdle()
+	for _, m := range []mailcore.Message{a, b} {
+		got, _, _ := s.cli.GetMessage(m.ID)
+		if mailcore.HasTag(got.Tags, "Later") != mailcore.HasTag(m.Tags, "Later") {
+			t.Fatalf("%s after undo: %q, before: %q", m.ID, got.Tags, m.Tags)
+		}
+	}
+	if s.tagUndo != nil || s.undoBar.Visible() {
+		t.Fatal("the undo bar stayed up")
+	}
+}

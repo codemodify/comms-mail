@@ -298,6 +298,14 @@ A link is followed on a click, after a confirmation showing the real target
 so link text cannot disguise where it goes; a `mailto:` opens a
 pre-addressed Write window instead.
 
+**Print…** (Ctrl+P, or the message's context menu) opens the message in
+your browser as a page — headers, then the HTML with its inline images, or
+the text — to print or save as PDF from there. The page cannot load
+anything: a Content-Security-Policy blocks every request and script, and
+remote image sources are taken out, so printing is not a read receipt.
+**Save As…** writes the message exactly as stored, as a `.eml`
+(`messages.getRaw`).
+
 **Ctrl+U** (also the message context menu) opens a read-only JetBrains Mono
 window of the stored RFC822 (`messages.getSource`). The Source tab in the
 preview pane uses the same daemon bytes — not a reconstructed header dump.
