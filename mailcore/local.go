@@ -746,9 +746,7 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 	snapshot := m.Clone()
 	offline := s.feat != nil && !s.feat.Online()
 	if offline {
-		s.feat.mu.Lock()
-		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: m.AccountID, UID: m.UID, Add: add, Rem: rem})
-		s.feat.mu.Unlock()
+		s.queueFlagsLocked(snapshot, patch, add, rem, "")
 	}
 	folder, hasFolder := s.folderLocked(snapshot.Folder)
 	s.saveLocked()
@@ -760,14 +758,48 @@ func (s *LocalStore) SetFlags(id MessageID, patch FlagPatch) error {
 	if err := s.pushFlags(snapshot, folder, add, rem); err != nil && s.feat != nil {
 		// The cache already has the change. Queue it for the server rather
 		// than let a network blip lose it; the background tick retries.
-		s.feat.mu.Lock()
-		s.feat.enqueueLocked(OutboxOp{Kind: "flag", MessageID: id, Patch: patch, AccountID: snapshot.AccountID, UID: snapshot.UID, Add: add, Rem: rem, Error: err.Error()})
-		s.feat.mu.Unlock()
 		s.mu.Lock()
+		s.queueFlagsLocked(snapshot, patch, add, rem, err.Error())
 		s.saveLocked()
 		s.mu.Unlock()
 	}
 	return nil
+}
+
+// queueFlagsLocked queues a flag change for the server, addressed to where
+// the server has the message: its folder and UID now or, when a move or
+// delete made offline has not reached the server yet, where it was before
+// that — and ahead of it in the queue, so the move carries the flags along.
+// Addressing the cache's current folder instead sent the old UID to the new
+// folder (flagging whatever message had that UID there), and after the
+// move re-keyed the message the change found nothing and was dropped.
+// The caller holds s.mu.
+func (s *LocalStore) queueFlagsLocked(m Message, patch FlagPatch, add, rem []string, cause string) {
+	if s.feat == nil {
+		return
+	}
+	op := OutboxOp{
+		Kind: "flag", MessageID: m.ID, Patch: patch, AccountID: m.AccountID,
+		UID: m.UID, Src: m.Folder, Add: add, Rem: rem, Error: cause,
+	}
+	if m.UID != 0 {
+		op.UIDVal = s.loadFolderMeta(m.Folder).UIDValidity
+	}
+	s.feat.mu.Lock()
+	defer s.feat.mu.Unlock()
+	for i, q := range s.feat.outbox {
+		if q.MessageID != m.ID || (q.Kind != "move" && q.Kind != "delete") {
+			continue
+		}
+		op.Src, op.UID, op.UIDVal = q.Src, q.UID, q.UIDVal
+		op = s.feat.enqueueLocked(op)
+		// enqueueLocked appended it; move it in front of the pending move.
+		last := len(s.feat.outbox) - 1
+		copy(s.feat.outbox[i+1:], s.feat.outbox[i:last])
+		s.feat.outbox[i] = op
+		return
+	}
+	s.feat.enqueueLocked(op)
 }
 func imapSafeKeyword(s string) string {
 	s = strings.ReplaceAll(s, " ", "_")
@@ -2487,6 +2519,10 @@ func (s *LocalStore) flushOutbox(only func(OutboxOp) bool) (int, error) {
 func (s *LocalStore) flushOne(op OutboxOp) error {
 	switch op.Kind {
 	case "flag":
+		if op.Src != "" && op.UID != 0 {
+			return s.replayFlags(op)
+		}
+		// Queued before flag ops recorded where the message was.
 		s.mu.Lock()
 		i, ok := s.indexLocked(op.MessageID)
 		if !ok {

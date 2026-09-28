@@ -74,8 +74,10 @@ new ones turn up.
   Sorting Office rules.
 
 ## Offline / sync
-- **Offline tag changes are dropped** — only read/starred are queued and
-  replayed; keyword (tag) changes made offline are lost.
+- **Tags set in other clients don't sync down** — a message's keywords are
+  read when it is first fetched; later keyword changes made elsewhere are
+  not merged (read/starred are). Merging needs care: a server without
+  custom keywords (no `\*` in PERMANENTFLAGS) would wipe local tags.
 - **Offline mark-folder-read reverts** — done offline it is not queued, so
   the next flag sync sets the messages unread again.
 - **IDLE watches only Inbox + Sent** — other folders poll every 2 minutes;

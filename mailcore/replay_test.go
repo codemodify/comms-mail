@@ -221,3 +221,52 @@ func TestSignatureInBodyIsNotAppendedAgain(t *testing.T) {
 		t.Fatalf("a message without the flag lost its signature:\n%s", raw)
 	}
 }
+
+// A tag added offline reaches the server; tagged and then moved offline,
+// the tag is set in the folder the message was in, before the move carries
+// it along — not on whatever message has that UID in the destination.
+func TestOfflineTagThenMoveReplaysInTheSourceFolder(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	st.SetOnline(false)
+	work := []string{"Work"}
+	if err := st.SetFlags("home/inbox:7", FlagPatch{Tags: &work}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Move([]MessageID{"home/inbox:7"}, "home/archive"); err != nil {
+		t.Fatal(err)
+	}
+	st.SetOnline(true)
+	if _, err := st.FlushOutbox(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (Work)`, `INBOX: UID MOVE 7 "Archive"`)
+}
+
+// Moved and then tagged offline, the tag is not lost: it goes to the
+// message in its old folder ahead of the move. It used to be addressed to
+// the message's pre-move id, which the move replay re-keyed, and dropped.
+func TestOfflineMoveThenTagIsNotLost(t *testing.T) {
+	rs := newReplayServer(t)
+	st := newReplayStore(t, rs)
+	st.SetOnline(false)
+	if err := st.Move([]MessageID{"home/inbox:7"}, "home/archive"); err != nil {
+		t.Fatal(err)
+	}
+	work := []string{"Work"}
+	if err := st.SetFlags("home/inbox:7", FlagPatch{Tags: &work, Read: BoolPtr(true)}); err != nil {
+		t.Fatal(err)
+	}
+	st.SetOnline(true)
+	if _, err := st.FlushOutbox(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	wantLog(t, rs.takeLog(), `INBOX: UID STORE 7 +FLAGS.SILENT (\Seen Work)`, `INBOX: UID MOVE 7 "Archive"`)
+	if n := len(st.ListOutbox()); n != 0 {
+		t.Fatalf("%d ops left after replay", n)
+	}
+	m, ok := st.CachedMessage("home/archive:70")
+	if !ok || !HasTag(m.Tags, "Work") {
+		t.Fatalf("cache after replay: %+v %v", m.Tags, ok)
+	}
+}

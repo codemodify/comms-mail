@@ -144,3 +144,46 @@ func (s *LocalStore) replayPurge(op OutboxOp) error {
 	}
 	return err
 }
+
+// replayFlags sets and clears a queued flag change's flags and keywords on
+// the message where it was when the change was made.
+func (s *LocalStore) replayFlags(op OutboxOp) error {
+	src, _, ok := s.replayFolders(OutboxOp{Src: op.Src, UID: op.UID})
+	if !ok {
+		return nil
+	}
+	add, rem := op.Add, op.Rem
+	if len(add) == 0 && len(rem) == 0 {
+		if op.Patch.Read != nil {
+			if *op.Patch.Read {
+				add = append(add, `\Seen`)
+			} else {
+				rem = append(rem, `\Seen`)
+			}
+		}
+		if op.Patch.Starred != nil {
+			if *op.Patch.Starred {
+				add = append(add, `\Flagged`)
+			} else {
+				rem = append(rem, `\Flagged`)
+			}
+		}
+	}
+	if len(add) == 0 && len(rem) == 0 {
+		return nil
+	}
+	cli, err := s.client(op.AccountID)
+	if err != nil {
+		return err
+	}
+	err = cli.inBox(func() error {
+		if err := selectForReplay(cli, src, op); err != nil {
+			return err
+		}
+		return cli.uidStore(op.UID, add, rem)
+	})
+	if errors.Is(err, errStaleUIDs) {
+		return nil
+	}
+	return err
+}
