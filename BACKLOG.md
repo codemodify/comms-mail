@@ -41,10 +41,12 @@ new ones turn up.
 - **Compact folders** — `EXPUNGE` deleted messages (the menu stub was
   removed).
 
-- **Import local mail / contacts / filters** (see below) — config import (accounts, identities, signatures) is done; these remain.
-- **Import local mail** — Thunderbird Local Folders (mbox) and KMail local
-  maildir into the store, with dedup by Message-ID. IMAP accounts just
-  re-sync; this is for mail that lives only on disk.
+- **Import contacts / filters** (see below) — account settings and local
+  mail import are done; these remain.
+- **Import: raw source for imported mail** — imported messages have no .eml
+  blob, so the Source tab is empty for them.
+- **Import: more clients** — Evolution, Claws Mail, Geary, mutt; a generic
+  "import an mbox / maildir / .eml folder"; Flatpak/Snap Thunderbird paths.
 - **Import contacts** — Thunderbird address book (abook.sqlite / .mab) and
   KMail/KAddressBook vCards, to seed the address book beyond what the cached
   messages give.
