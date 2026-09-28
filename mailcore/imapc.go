@@ -604,6 +604,20 @@ func (c *imapClient) uidFetchMeta(fromUID uint32) ([]imapMeta, error) {
 	return parseUIDFetchMeta(lines), nil
 }
 
+// uidFetchMetaSet is uidFetchMeta for a UID set ("3,7:9").
+func (c *imapClient) uidFetchMetaSet(set string) ([]imapMeta, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.selected == "" {
+		return nil, fmt.Errorf("imap: no mailbox selected")
+	}
+	lines, err := c.cmdLocked("UID FETCH %s (UID FLAGS RFC822.SIZE ENVELOPE BODYSTRUCTURE)", set)
+	if err != nil {
+		return nil, err
+	}
+	return parseUIDFetchMeta(lines), nil
+}
+
 func (c *imapClient) uidFetchFlags(fromUID uint32, changedSince uint64) ([]imapMeta, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1532,6 +1546,15 @@ func folderKindFromIMAP(name string, attrs []string) FolderKind {
 func imapFlagSeen(flags []string) bool {
 	for _, f := range flags {
 		if strings.EqualFold(f, `\Seen`) {
+			return true
+		}
+	}
+	return false
+}
+
+func imapFlagDeleted(flags []string) bool {
+	for _, f := range flags {
+		if strings.EqualFold(f, `\Deleted`) {
 			return true
 		}
 	}

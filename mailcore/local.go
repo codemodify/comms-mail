@@ -2034,6 +2034,25 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 			return err
 		}
 		flags, flagErr = cli.uidFetchFlags(1, meta.HighestMod)
+		// A message the flags name that the cache lacks — undeleted in
+		// another client, or missed — is fetched now, older than it is.
+		if flagErr == nil {
+			var missing []uint32
+			s.mu.Lock()
+			for _, im := range flags {
+				if im.UID != 0 && im.UID < from && !imapFlagDeleted(im.Flags) && !s.feat.pendingUID(f.ID, im.UID) {
+					if _, ok := s.indexLocked(MessageID(fmt.Sprintf("%s:%d", f.ID, im.UID))); !ok {
+						missing = append(missing, im.UID)
+					}
+				}
+			}
+			s.mu.Unlock()
+			if len(missing) > 0 && len(missing) <= 500 {
+				if more, err := cli.uidFetchMetaSet(uidSetString(sortedUIDs(missing))); err == nil {
+					list = append(list, more...)
+				}
+			}
+		}
 
 		// Deletion reconciliation. QRESYNC servers tell us what vanished; the
 		// rest need an explicit UID-set diff, or messages deleted from another
@@ -2070,6 +2089,9 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 		id := MessageID(fmt.Sprintf("%s:%d", f.ID, im.UID))
 		if _, ok := s.indexLocked(id); ok {
 			continue
+		}
+		if imapFlagDeleted(im.Flags) {
+			continue // marked deleted by another client: gone, as it shows there
 		}
 		if j, ok := s.localCopyLocked(f.ID, im.RFCMessageID); ok {
 			// A message written here (a draft, a sent copy) that the server
@@ -2139,6 +2161,19 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 		for _, im := range flags {
 			id := MessageID(fmt.Sprintf("%s:%d", f.ID, im.UID))
 			if s.feat != nil && (s.feat.pendingFor(id) || s.feat.pendingRead(f.ID, im.UID)) {
+				continue
+			}
+			if imapFlagDeleted(im.Flags) {
+				// Marked deleted elsewhere: it leaves the lists now, and
+				// comes back if it is undeleted before it is expunged.
+				if i, ok := s.indexLocked(id); ok {
+					m := s.Messages[i]
+					s.removeRawLocked(m)
+					if s.feat != nil && s.feat.index != nil {
+						s.feat.index.remove(m.ID)
+					}
+					s.Messages = append(s.Messages[:i], s.Messages[i+1:]...)
+				}
 				continue
 			}
 			if i, ok := s.indexLocked(id); ok {
@@ -3362,4 +3397,10 @@ func (s *LocalStore) flushOne(op OutboxOp) error {
 	default:
 		return nil
 	}
+}
+
+func sortedUIDs(u []uint32) []uint32 {
+	out := append([]uint32(nil), u...)
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }

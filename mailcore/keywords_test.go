@@ -85,3 +85,31 @@ func TestTagsFromAnotherClientSyncDown(t *testing.T) {
 		t.Fatalf("after untagging elsewhere %q", m.Tags)
 	}
 }
+
+// Mail another client marked deleted leaves the lists here; undeleted
+// before it is expunged, it comes back.
+func TestDeletedElsewhereHidesAndUndeleteReturns(t *testing.T) {
+	fs := newFolderServer(t, "/", map[string][]uint32{"INBOX": {1, 2}})
+	st := newFolderStore(t, fs)
+	if n := len(st.ListMessages("home/inbox")); n != 2 {
+		t.Fatalf("start %d", n)
+	}
+	fs.mu.Lock()
+	fs.flags = map[uint32]string{2: `\Seen \Deleted`}
+	fs.mu.Unlock()
+	if _, err := st.Sync("home"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.CachedMessage("home/inbox:2"); ok {
+		t.Fatal("a message marked deleted is still listed")
+	}
+	fs.mu.Lock()
+	fs.flags[2] = `\Seen`
+	fs.mu.Unlock()
+	if _, err := st.Sync("home"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := st.CachedMessage("home/inbox:2"); !ok {
+		t.Fatal("an undeleted message did not come back")
+	}
+}

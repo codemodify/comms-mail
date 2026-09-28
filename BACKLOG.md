@@ -34,15 +34,12 @@ new ones turn up.
 ## Folders / search
 - **Drag a folder onto another** to move it — Move Folder To does it from
   the menu; the tree has no drag for its own nodes (uitoolkit).
-- **Messages marked deleted by other clients** are listed until Compact
-  Folder removes them; they could be hidden, or shown struck through.
 - **Gmail search syntax** — On server uses IMAP TEXT; Gmail's `X-GM-RAW`
   would allow its own operators (`has:attachment`, `older_than:`).
 
 - **Import: Apple Mail on macOS 10.11+** — accounts live in
   `~/Library/Accounts/Accounts4.sqlite` (NSKeyedArchiver blobs), not read;
-  the import says to add them by hand. Evolution's `_2E`-escaped Maildir++
-  folder names are shown escaped.
+  the import says to add them by hand.
 - **Forwarded state** — answered is tracked ($Forwarded / maildir P /
   emlx bit 8 are not), and neither shows in the message list yet (the UI
   font has no ↩ glyph; the reading pane says "You replied").

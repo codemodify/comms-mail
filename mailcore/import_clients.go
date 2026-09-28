@@ -172,9 +172,18 @@ func evolutionLocalMail() []LocalMailStore {
 	var out []LocalMailStore
 	for _, d := range existingDirs(filepath.Join(xdgDataHome(), "evolution", "mail", "local"),
 		flatpakDir("org.gnome.Evolution", "data/evolution/mail/local")) {
-		out = append(out, scanAnyTree("Evolution", d, "", "Inbox", 8)...)
+		for _, st := range scanAnyTree("Evolution", d, "", "Inbox", 8) {
+			st.Name = evolutionUnescape(st.Name)
+			out = append(out, st)
+		}
 	}
 	return out
+}
+
+// evolutionUnescape undoes Evolution's escaping of folder names in its
+// Maildir++ store: "." is written _2E and "_" is _5F.
+func evolutionUnescape(name string) string {
+	return strings.NewReplacer("_2E", ".", "_2e", ".", "_5F", "_", "_5f", "_").Replace(name)
 }
 
 // ---- Claws Mail -------------------------------------------------------------

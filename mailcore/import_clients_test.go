@@ -376,3 +376,9 @@ func TestImportAppleAccountsPlist(t *testing.T) {
 	wantServer(t, "imap", a.IMAP, "imap.example.com:993", "alice@example.com", string(TLSImplicit))
 	wantServer(t, "smtp", a.SMTP, "smtp.example.com:587", "alice@example.com", string(TLSStartTLS))
 }
+
+func TestEvolutionUnescape(t *testing.T) {
+	if got := evolutionUnescape("Lists/v1_2E2 notes_5Fold"); got != "Lists/v1.2 notes_old" {
+		t.Fatalf("%q", got)
+	}
+}

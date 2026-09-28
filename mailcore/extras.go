@@ -435,6 +435,22 @@ func (f *featureHost) dropOutboxLocked(id string) {
 	f.outbox = out
 }
 
+// pendingUID reports whether a queued op takes uid out of folder on the
+// server (a move or purge made here, not replayed yet).
+func (f *featureHost) pendingUID(folder FolderID, uid uint32) bool {
+	if f == nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, op := range f.outbox {
+		if op.Src == folder && op.UID == uid && (op.Kind == "move" || op.Kind == "delete") {
+			return true
+		}
+	}
+	return false
+}
+
 // pendingRead reports whether a queued Mark Folder Read will mark uid in
 // folder read, so a sync must not set it back to unread meanwhile.
 func (f *featureHost) pendingRead(folder FolderID, uid uint32) bool {
