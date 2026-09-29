@@ -210,3 +210,36 @@ func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
 		t.Fatalf("after remove: %v rows %d changed %d", got, table.RowCount, changed)
 	}
 }
+
+// The reading pane's HTML tab is there only for a message with HTML, and
+// a message without it, shown while that tab is open, goes back to the
+// text rather than on to Markdown.
+func TestHTMLTabOnlyForHTMLMail(t *testing.T) {
+	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	var tabs *widgets.TabView
+	widget.Walk(mailTree(w), func(c widget.Component) {
+		if tv, ok := c.(*widgets.TabView); ok && tabs == nil && len(tv.Bar().Titles) == 4 && tv.Bar().Titles[2] == "HTML" {
+			tabs = tv
+		}
+	})
+	if tabs == nil {
+		t.Fatal("no reading-pane tabs")
+	}
+	s.showBody(mailcore.Message{ID: "x", Subject: "hi", Body: "text", HTML: "<p>text</p>"})
+	a.PumpOnce()
+	if !tabs.TabVisible(2) {
+		t.Fatal("no HTML tab for an HTML message")
+	}
+	tabs.Select(2)
+	s.showBody(mailcore.Message{ID: "y", Subject: "hi", Body: "just plain"})
+	a.PumpOnce()
+	if tabs.TabVisible(2) || tabs.Selected() != 0 {
+		t.Fatalf("plain message: HTML tab visible %v, showing tab %d", tabs.TabVisible(2), tabs.Selected())
+	}
+	s.showBody(mailcore.Message{ID: "x", Subject: "hi", Body: "text", HTML: "<p>text</p>"})
+	a.PumpOnce()
+	if !tabs.TabVisible(2) {
+		t.Fatal("the HTML tab did not come back")
+	}
+}

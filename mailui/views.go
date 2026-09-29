@@ -32,6 +32,19 @@ type browserPane struct {
 	warn *widgets.Label
 	open *widgets.Button
 	msg  mailcore.Message
+	// onHas is told, for each message shown, whether it has HTML: the tab
+	// is there only when it does.
+	onHas func(has bool)
+}
+
+// showHTMLTab shows or hides tab i of tabs, the HTML tab, for a message
+// that has HTML or has none. Hiding the tab that is showing goes back to
+// the first (the text), not on to the next one.
+func showHTMLTab(tabs *widgets.TabView, i int, has bool) {
+	if !has && tabs.Selected() == i {
+		tabs.Select(0)
+	}
+	tabs.SetTabVisible(i, has)
 }
 
 func newBrowserPane(s *session) *browserPane {
@@ -56,6 +69,9 @@ func (p *browserPane) show(m mailcore.Message) {
 	}
 	p.open.SetVisible(has)
 	p.warn.SetVisible(has)
+	if p.onHas != nil {
+		p.onHas(has)
+	}
 }
 
 func (p *browserPane) clear() {

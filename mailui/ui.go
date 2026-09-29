@@ -404,7 +404,8 @@ func (s *session) build() widget.Component {
 	// images the renderer will not fetch.
 	// Four tabs: Message is the text/plain body (the default), Source the
 	// raw RFC822, HTML offers to open the HTML part in the browser (views.go:
-	// nothing of it is drawn here), and Markdown is the message rendered from
+	// nothing of it is drawn here; the tab is there only for a message with
+	// HTML), and Markdown is the message rendered from
 	// Markdown, with its Markdown text (mailcore.MessageMarkdown). The
 	// rendering is the rich-text view with the remote-images bar (htmlPane).
 	s.browser = newBrowserPane(s)
@@ -423,6 +424,7 @@ func (s *session) build() widget.Component {
 		widgets.Tab{Title: "HTML", Content: htmlTab},
 		widgets.Tab{Title: "Markdown", Content: markdownTab},
 	)
+	s.browser.onHas = func(has bool) { showHTMLTab(tabs, 2, has) }
 	s.sourceOpen = false
 	tabs.OnChange = func(i int) {
 		s.sourceOpen = i == 1
