@@ -135,6 +135,8 @@ func TestMessageStampCoversEveryField(t *testing.T) {
 			} else {
 				v.Set(reflect.MakeSlice(v.Type(), 1, 1))
 			}
+		case reflect.Map:
+			v.Set(reflect.ValueOf(map[string]string{"List-Id": "x"}))
 		case reflect.Struct:
 			if v.Type() == reflect.TypeOf(time.Time{}) {
 				v.Set(reflect.ValueOf(time.Unix(1, 0)))

@@ -260,6 +260,9 @@ func kmailField(f string) string {
 	case "<body>":
 		return "body"
 	}
+	if f = strings.TrimSpace(f); f != "" && !strings.HasPrefix(f, "<") {
+		return "header:" + f // List-Id, X-Spam-Flag, Reply-To, …
+	}
 	return f
 }
 

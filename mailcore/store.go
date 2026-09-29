@@ -151,9 +151,12 @@ type FilterRule struct {
 
 // RuleCondition is a match clause (AND together).
 type RuleCondition struct {
-	Field string `json:"field"` // from, to, subject, body, attachment, unread, tag, account, inbox
+	Field string `json:"field"` // from, to, subject, body, header, attachment, unread, tag, account, inbox
 	Op    string `json:"op"`    // contains, notcontains, is, isnot, begins, ends (default contains)
 	Value string `json:"value,omitempty"`
+	// Header names the header a "header" test reads (List-Id,
+	// X-Spam-Flag, …).
+	Header string `json:"header,omitempty"`
 }
 
 // RuleAction runs when all conditions match.
@@ -237,6 +240,9 @@ type Message struct {
 	Answered bool `json:"answered,omitempty"`
 	// Forwarded is the $Forwarded keyword: the user forwarded it.
 	Forwarded bool `json:"forwarded,omitempty"`
+	// Headers are the message's headers that a rule tests (List-Id, …),
+	// by canonical name, fetched for that and nothing else.
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 func messageHasBody(m Message) bool {
@@ -254,6 +260,12 @@ func (m Message) Clone() Message {
 	}
 	if m.Parts != nil {
 		out.Parts = append([]Part(nil), m.Parts...)
+	}
+	if m.Headers != nil {
+		out.Headers = make(map[string]string, len(m.Headers))
+		for k, v := range m.Headers {
+			out.Headers[k] = v
+		}
 	}
 	if m.Keywords != nil {
 		out.Keywords = append([]string(nil), m.Keywords...)

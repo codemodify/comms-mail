@@ -44,9 +44,6 @@ new ones turn up.
 - **Import: KMail filters with Akonadi on MySQL** — their folders and tags
   are ids in Akonadi's database; only SQLite is read, so with MySQL (the
   default before KDE Gear 26.04) filters that move or tag are left out.
-- **Rules on any header** — a rule tests From, To/Cc, Subject and the body;
-  imported filters on `List-Id` and other headers (common in KMail) are left
-  out.
 - **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 
 ## Offline / sync

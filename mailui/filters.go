@@ -58,6 +58,8 @@ func ruleSummary(r mailcore.FilterRule, folderName func(mailcore.FolderID) strin
 			tests = append(tests, "is unread")
 		case "tag":
 			tests = append(tests, "is tagged "+c.Value)
+		case "header":
+			tests = append(tests, fmt.Sprintf("%s %s “%s”", c.Header, labelOf(ruleOps, orDefault(c.Op, "contains")), c.Value))
 		default:
 			tests = append(tests, fmt.Sprintf("%s %s “%s”", labelOf(ruleFields, c.Field), labelOf(ruleOps, orDefault(c.Op, "contains")), c.Value))
 		}
@@ -269,7 +271,7 @@ func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) wid
 // Tests and actions the editor offers, beyond ruleFields / ruleActions.
 var editorFields = []struct{ key, label string }{
 	{"from", "From"}, {"to", "To or Cc"}, {"subject", "Subject"}, {"body", "Body"},
-	{"tag", "Tagged"}, {"attachment", "Has an attachment"}, {"unread", "Is unread"},
+	{"header", "Header"}, {"tag", "Tagged"}, {"attachment", "Has an attachment"}, {"unread", "Is unread"},
 }
 
 var editorActions = []struct{ key, label string }{
@@ -324,6 +326,7 @@ type ruleEditor struct {
 type condRow struct {
 	field, op *widgets.ComboBox
 	value     *widgets.TextField
+	header    *widgets.TextField // the header a Header test reads
 	row       *widgets.FlexBox
 }
 
@@ -431,12 +434,15 @@ func (e *ruleEditor) addCond(c mailcore.RuleCondition) {
 	cr.field = widgets.NewComboBox(labelsOf(editorFields), keyIndex(editorFields, c.Field), nil)
 	cr.op = widgets.NewComboBox(labelsOf(ruleOps), keyIndex(ruleOps, orDefault(c.Op, "contains")), nil)
 	cr.value = widgets.NewTextField(c.Value, "text", nil)
-	remove := widgets.NewButton("×", nil)
+	cr.header = widgets.NewTextField(c.Header, "List-Id", nil)
+	remove := widgets.NewButton("Remove", nil)
 	remove.Tip = "Remove this test"
-	cr.row = widgets.NewRow(cr.field, cr.op, cr.value, remove).WithGap(6)
+	cr.row = widgets.NewRow(cr.field, cr.header, cr.op, cr.value, remove).WithGap(6)
 	cr.row.AddFlex(cr.value, 1)
 	sync := func() {
-		switch editorFields[cr.field.Selected].key {
+		key := editorFields[cr.field.Selected].key
+		cr.header.SetVisible(key == "header")
+		switch key {
 		case "attachment", "unread":
 			cr.op.SetVisible(false)
 			cr.value.SetVisible(false)
@@ -472,9 +478,9 @@ func (e *ruleEditor) addAct(a mailcore.RuleAction) {
 	ar := &actRow{path: a.Path, account: a.Account}
 	ar.action = widgets.NewComboBox(labelsOf(editorActions), keyIndex(editorActions, a.Type), nil)
 	ar.target = widgets.NewComboBox(nil, 0, nil)
-	remove := widgets.NewButton("×", nil)
+	remove := widgets.NewButton("Remove", nil)
 	remove.Tip = "Remove this action"
-	gap := widgets.NewSpacer() // keeps × at the right when there is no target
+	gap := widgets.NewSpacer() // keeps Remove at the right when there is no target
 	ar.row = widgets.NewRow(ar.action, ar.target, gap, remove).WithGap(6)
 	ar.row.AddFlex(ar.target, 1)
 	ar.row.AddFlex(gap, 1)
@@ -550,6 +556,12 @@ func (e *ruleEditor) save() error {
 			if c.Value == "" {
 				return fmt.Errorf("say which tag")
 			}
+		case "header":
+			c.Header = strings.TrimSpace(cr.header.Text)
+			if c.Header == "" {
+				return fmt.Errorf("say which header (List-Id, X-Spam-Flag, …)")
+			}
+			c.Op, c.Value = ruleOps[cr.op.Selected].key, strings.TrimSpace(cr.value.Text)
 		default:
 			c.Op, c.Value = ruleOps[cr.op.Selected].key, strings.TrimSpace(cr.value.Text)
 			if c.Value == "" {

@@ -10,6 +10,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	_ "modernc.org/sqlite" // pure Go: comms-maild stays cgo-free
@@ -461,6 +462,16 @@ func messageStamp(m *Message) uint64 {
 	strs(h, m.Keywords)
 	flag(m.Answered)
 	flag(m.Forwarded)
+	keys := make([]string, 0, len(m.Headers))
+	for k := range m.Headers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		str(k)
+		str(m.Headers[k])
+	}
+	num(uint64(len(keys)))
 	return h.Sum64()
 }
 

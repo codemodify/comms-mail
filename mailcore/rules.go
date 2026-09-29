@@ -1,7 +1,11 @@
 package mailcore
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"net/textproto"
+	"sort"
 	"strings"
 )
 
@@ -71,6 +75,10 @@ func (c RuleCondition) match(m Message) bool {
 		return matchText(m.Subject, op, val)
 	case "body":
 		return matchText(m.Body+" "+m.HTML, op, val)
+	case "header":
+		// A header the message lacks reads as empty: it contains nothing,
+		// is nothing.
+		return matchText(m.Headers[CanonicalHeader(c.Header)], op, val)
 	case "attachment":
 		return m.HasAttach
 	case "unread":
@@ -211,4 +219,105 @@ func folderByPath(folders []Folder, account, path string) (FolderID, bool) {
 		}
 	}
 	return "", false
+}
+
+// CanonicalHeader is a header name as messages keep it (List-Id).
+func CanonicalHeader(name string) string {
+	return textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
+}
+
+// validHeaderName reports whether name can be a header's name: printable
+// ASCII without spaces or colons (RFC 5322), so it goes into an IMAP
+// command as it is.
+func validHeaderName(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c <= ' ' || c >= 127 || c == ':' || c == '(' || c == ')' || c == '"' || c == '\\' || c == '[' || c == ']' || c == '{' {
+			return false
+		}
+	}
+	return true
+}
+
+// ruleHeaderNames are the headers the enabled rules test, canonical and
+// sorted.
+func ruleHeaderNames(rules []FilterRule) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range rules {
+		if !r.Enabled {
+			continue
+		}
+		for _, c := range r.Conditions {
+			if !strings.EqualFold(c.Field, "header") || !validHeaderName(strings.TrimSpace(c.Header)) {
+				continue
+			}
+			if n := CanonicalHeader(c.Header); !seen[n] {
+				seen[n] = true
+				out = append(out, n)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// headersOf reads the named headers out of a raw message (or header
+// block), values decoded, several of one name joined with ", ". A name the
+// message lacks is there, empty: it was looked for.
+func headersOf(raw []byte, names []string) map[string]string {
+	if len(names) == 0 {
+		return nil
+	}
+	end := bytes.Index(raw, []byte("\r\n\r\n"))
+	if end < 0 {
+		end = bytes.Index(raw, []byte("\n\n"))
+	}
+	if end >= 0 {
+		raw = raw[:end]
+	}
+	h, _ := textproto.NewReader(bufio.NewReader(bytes.NewReader(append(append([]byte(nil), raw...), "\r\n\r\n"...)))).ReadMIMEHeader()
+	out := map[string]string{}
+	for _, n := range names {
+		vs := h.Values(n)
+		for i := range vs {
+			vs[i] = decodeRFC2047(strings.TrimSpace(vs[i]))
+		}
+		out[n] = strings.Join(vs, ", ")
+	}
+	return out
+}
+
+// hasHeaders reports whether every one of names has been looked for in m.
+func hasHeaders(m Message, names []string) bool {
+	for _, n := range names {
+		if _, ok := m.Headers[n]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeHeaders(into, from map[string]string) map[string]string {
+	if into == nil {
+		into = map[string]string{}
+	}
+	for k, v := range from {
+		into[k] = v
+	}
+	return into
+}
+
+// checkRule refuses a rule that could not work: a header test without a
+// header's name (it goes into an IMAP command as it is).
+func checkRule(r FilterRule) error {
+	for _, c := range r.Conditions {
+		if strings.EqualFold(c.Field, "header") && !validHeaderName(strings.TrimSpace(c.Header)) {
+			return fmt.Errorf("%q is not a header's name (a name like List-Id: letters, digits and dashes, no spaces)", c.Header)
+		}
+	}
+	return nil
 }

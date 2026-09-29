@@ -173,7 +173,6 @@ func TestKMailFiltersBecomeRules(t *testing.T) {
 	res := st.ImportFilters(sets)
 	joined := strings.Join(res.Skipped, "\n")
 	for _, want := range []string{
-		`"Example list" tests "List-Id"`,
 		`"To Bob" moves mail to another account`,
 		`"By hand" runs in KMail only by hand`,
 		`"Everywhere": its account (imap.other.example) is not set up here`,
@@ -183,7 +182,7 @@ func TestKMailFiltersBecomeRules(t *testing.T) {
 			t.Errorf("skipped lacks %q:\n%s", want, joined)
 		}
 	}
-	if res.Added != 4 || len(res.Skipped) != 5 {
+	if res.Added != 5 || len(res.Skipped) != 4 {
 		t.Fatalf("added %d, skipped %d:\n%s", res.Added, len(res.Skipped), joined)
 	}
 
@@ -199,6 +198,11 @@ func TestKMailFiltersBecomeRules(t *testing.T) {
 	if len(inv.Actions) != 3 || inv.Actions[0].Type != "markRead" || inv.Actions[1] != (RuleAction{Type: "tag", Tag: "Work"}) ||
 		inv.Actions[2] != (RuleAction{Type: "move", Account: "work", Path: "INBOX/Invoices"}) {
 		t.Fatalf("Invoices actions: %+v", inv.Actions)
+	}
+	// A filter on a header of its own (List-Id) comes as a header test.
+	if el := rules["KMail: Example list@work"]; len(el.Conditions) != 3 ||
+		el.Conditions[2] != (RuleCondition{Field: "header", Header: "List-Id", Op: "contains", Value: "<dev.lists.example.com>"}) {
+		t.Fatalf("Example list: %+v", el)
 	}
 	if sp := rules["KMail: Spaced@pop"]; len(sp.Conditions) != 3 || sp.Conditions[2].Value != " board" || sp.Conditions[2].Field != "to" || !sp.Stop {
 		t.Fatalf("Spaced: %+v", sp)

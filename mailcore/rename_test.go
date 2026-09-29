@@ -18,6 +18,10 @@ type folderServer struct {
 	delim string
 	boxes map[string][]uint32 // wire (modified UTF-7) name → UIDs
 	log   []string
+	// hdrs is the header block (List-Id: …) of a UID, for HEADER.FIELDS
+	// fetches; fetches counts them.
+	hdrs          map[uint32]string
+	headerFetches int
 	// hits answers UID SEARCH in a mailbox (every UID there when nil).
 	hits map[string][]uint32
 	// flags are a message's flags by UID (\Seen when unset).
@@ -161,6 +165,22 @@ func newFolderServer(t *testing.T, delim string, boxes map[string][]uint32) *fol
 		case strings.Contains(strings.ToUpper(line), "UID FETCH") && strings.Contains(strings.ToUpper(line), "(UID)"):
 			for i, u := range fs.boxes[s.box] {
 				s.send("* %d FETCH (UID %d)", i+1, u)
+			}
+			s.send("%s OK fetch", tag)
+		case strings.Contains(strings.ToUpper(line), "HEADER.FIELDS"):
+			fs.headerFetches++
+			set := strings.Fields(line)[3]
+			want := map[uint32]bool{}
+			for _, u := range expandUIDSet(set) {
+				want[u] = true
+			}
+			for i, u := range fs.boxes[s.box] {
+				if !want[u] {
+					continue
+				}
+				block := fs.hdrs[u] + "\r\n"
+				// The UID after the literal, as some servers send it.
+				s.send("* %d FETCH (BODY[HEADER.FIELDS (LIST-ID)] {%d}\r\n%s UID %d)", i+1, len(block), block, u)
 			}
 			s.send("%s OK fetch", tag)
 		case strings.Contains(strings.ToUpper(line), "UID FETCH") && strings.Contains(strings.ToUpper(line), "ENVELOPE"):

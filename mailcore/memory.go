@@ -859,6 +859,9 @@ func (s *MemoryStore) ListRules() []FilterRule {
 }
 
 func (s *MemoryStore) PutRule(r FilterRule) (FilterRule, error) {
+	if err := checkRule(r); err != nil {
+		return FilterRule{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if r.ID == "" {

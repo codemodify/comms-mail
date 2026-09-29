@@ -2147,11 +2147,15 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 
 	s.mu.Lock()
 	meta := s.loadFolderMeta(f.ID)
+	// The headers the rules test (List-Id, …) come with new mail, so the
+	// rules can read them when it arrives.
+	hdrNames := ruleHeaderNames(s.rules)
 	s.mu.Unlock()
 
 	// Everything from the SELECT to the UID list reads the one mailbox, so
 	// it holds the session's mailbox lock throughout.
 	var (
+		ruleHdrs   map[uint32]map[string]string
 		st         imapSelect
 		vanished   []uint32
 		from       = uint32(1)
@@ -2197,6 +2201,24 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 			if len(missing) > 0 && len(missing) <= 500 {
 				if more, err := cli.uidFetchMetaSet(uidSetString(sortedUIDs(missing))); err == nil {
 					list = append(list, more...)
+				}
+			}
+		}
+
+		if len(hdrNames) > 0 && len(list) > 0 {
+			var uids []uint32
+			for _, im := range list {
+				if im.UID != 0 {
+					uids = append(uids, im.UID)
+				}
+			}
+			ruleHdrs = map[uint32]map[string]string{}
+			for i := 0; i < len(uids); i += 500 {
+				chunk := sortedUIDs(uids[i:min(i+500, len(uids))])
+				if got, err := cli.uidFetchHeaderFields(uidSetString(chunk), hdrNames); err == nil {
+					for u, h := range got {
+						ruleHdrs[u] = h
+					}
 				}
 			}
 		}
@@ -2254,6 +2276,7 @@ func (s *LocalStore) syncFolder(cli *imapClient, f Folder) (int, error) {
 			Answered: imapFlagAnswered(im.Flags), Forwarded: imapFlagForwarded(im.Flags),
 			Tags: keywordTags(im.Flags, s.tags), Parts: im.Parts,
 			RFCMessageID: im.RFCMessageID, InReplyTo: im.InReplyTo,
+			Headers: ruleHdrs[im.UID],
 		}
 		m.ThreadID = ThreadIDOf(m)
 		m.Keywords = append([]string(nil), m.Tags...)
@@ -2547,6 +2570,9 @@ func (s *LocalStore) ListRules() []FilterRule {
 }
 
 func (s *LocalStore) PutRule(r FilterRule) (FilterRule, error) {
+	if err := checkRule(r); err != nil {
+		return FilterRule{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if r.ID == "" {
@@ -2582,6 +2608,7 @@ func (s *LocalStore) DeleteRule(id string) error {
 }
 
 func (s *LocalStore) ApplyRules(folder FolderID) (int, error) {
+	s.fillRuleHeaders(folder)
 	s.mu.Lock()
 	n := 0
 	for i := range s.Messages {
@@ -2598,6 +2625,67 @@ func (s *LocalStore) ApplyRules(folder FolderID) (int, error) {
 		_, _ = s.flushOutbox(func(op OutboxOp) bool { return op.Kind == "flag" || op.Kind == "move" })
 	}
 	return n, nil
+}
+
+// maxHeaderFetch bounds how many messages one run of the rules fetches
+// headers for.
+const maxHeaderFetch = 5000
+
+// fillRuleHeaders gets the headers the rules test (List-Id, …) for the
+// messages in folder ("" for all) that lack them: from the stored source
+// when the message is downloaded, else from the server.
+func (s *LocalStore) fillRuleHeaders(folder FolderID) {
+	s.mu.Lock()
+	names := ruleHeaderNames(s.rules)
+	need := map[FolderID][]uint32{}
+	wanted := 0
+	for i := range s.Messages {
+		m := &s.Messages[i]
+		if len(names) == 0 || folder != "" && m.Folder != folder && !IsVirtual(folder) || hasHeaders(*m, names) {
+			continue
+		}
+		if raw := s.readRawLocked(*m); raw != nil {
+			m.Headers = mergeHeaders(m.Headers, headersOf(raw, names))
+			continue
+		}
+		if m.UID != 0 && m.AccountID != LocalAccountID && wanted < maxHeaderFetch {
+			need[m.Folder] = append(need[m.Folder], m.UID)
+			wanted++
+		}
+	}
+	s.mu.Unlock()
+	for fid, uids := range need {
+		f, ok := s.GetFolder(fid)
+		if !ok || f.Virtual || f.NoSelect {
+			continue
+		}
+		if cfg, ok := s.accountCfg(f.AccountID); !ok || cfg.IsPOP3() || cfg.IsLocal() {
+			continue
+		}
+		cli, err := s.client(f.AccountID)
+		if err != nil {
+			continue
+		}
+		_ = cli.inBox(func() error {
+			if _, err := cli.selectBox(remoteName(f), true); err != nil {
+				return err
+			}
+			for i := 0; i < len(uids); i += 500 {
+				got, err := cli.uidFetchHeaderFields(uidSetString(sortedUIDs(uids[i:min(i+500, len(uids))])), names)
+				if err != nil {
+					return err
+				}
+				s.mu.Lock()
+				for u, h := range got {
+					if j, ok := s.indexLocked(MessageID(fmt.Sprintf("%s:%d", f.ID, u))); ok {
+						s.Messages[j].Headers = mergeHeaders(s.Messages[j].Headers, h)
+					}
+				}
+				s.mu.Unlock()
+			}
+			return nil
+		})
+	}
 }
 
 // applyRulesOnLocked runs the rules on m. What they change goes to the

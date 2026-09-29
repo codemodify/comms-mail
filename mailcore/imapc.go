@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/mail"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -603,6 +604,81 @@ func (c *imapClient) uidFetchMeta(fromUID uint32) ([]imapMeta, error) {
 		return nil, err
 	}
 	return parseUIDFetchMeta(lines), nil
+}
+
+// uidFetchHeaderFields reads the named headers of the messages in set
+// ("3,7:9"): BODY.PEEK[HEADER.FIELDS (…)], by UID. Names that cannot be a
+// header's are left out of the command.
+func (c *imapClient) uidFetchHeaderFields(set string, names []string) (map[uint32]map[string]string, error) {
+	var ok []string
+	for _, n := range names {
+		if validHeaderName(n) {
+			ok = append(ok, strings.ToUpper(n))
+		}
+	}
+	if len(ok) == 0 || set == "" {
+		return nil, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.selected == "" {
+		return nil, fmt.Errorf("imap: no mailbox selected")
+	}
+	lines, err := c.cmdLocked("UID FETCH %s (UID BODY.PEEK[HEADER.FIELDS (%s)])", set, strings.Join(ok, " "))
+	if err != nil {
+		return nil, err
+	}
+	out := map[uint32]map[string]string{}
+	for _, ln := range lines {
+		if fetchAttrStart(ln) < 0 {
+			continue
+		}
+		block, rest := cutHeaderLiteral(ln)
+		m := fetchUIDRe.FindStringSubmatch(rest)
+		if m == nil {
+			continue
+		}
+		uid, _ := strconv.ParseUint(m[1], 10, 32)
+		out[uint32(uid)] = headersOf([]byte(block), names)
+	}
+	return out, nil
+}
+
+var fetchUIDRe = regexp.MustCompile(`(?i)\bUID (\d+)`)
+
+// cutHeaderLiteral takes the header block (the literal after
+// HEADER.FIELDS (…)]) out of a FETCH response line, and returns it and
+// the line without it, where the UID is looked for.
+func cutHeaderLiteral(ln string) (block, rest string) {
+	i := strings.Index(strings.ToUpper(ln), "HEADER.FIELDS")
+	if i < 0 {
+		return "", ln
+	}
+	open := strings.IndexByte(ln[i:], '{')
+	if open < 0 {
+		return "", ln
+	}
+	open += i
+	close := strings.IndexByte(ln[open:], '}')
+	if close < 0 {
+		return "", ln
+	}
+	close += open
+	n, err := strconv.Atoi(ln[open+1 : close])
+	if err != nil || n < 0 {
+		return "", ln
+	}
+	start := close + 1
+	if strings.HasPrefix(ln[start:], "\r\n") {
+		start += 2
+	} else if strings.HasPrefix(ln[start:], "\n") {
+		start++
+	}
+	end := start + n
+	if end > len(ln) {
+		end = len(ln)
+	}
+	return ln[start:end], ln[:open] + ln[end:]
 }
 
 // uidFetchMetaSet is uidFetchMeta for a UID set ("3,7:9").

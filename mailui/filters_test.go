@@ -121,3 +121,44 @@ func TestEditorKeepsScopeAndServerPath(t *testing.T) {
 		t.Fatalf("saved %+v", got)
 	}
 }
+
+// A test on a header of the message's own: the editor asks which header,
+// and the rule keeps it.
+func TestEditorTestsAHeader(t *testing.T) {
+	cli := demoClient(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	e := openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil)
+	cr := e.condRows[0]
+	if cr.header.Visible() {
+		t.Fatal("the header name shows before Header is chosen")
+	}
+	cr.field.Selected = keyIndex(editorFields, "header")
+	cr.field.OnChange(0)
+	if !cr.header.Visible() {
+		t.Fatal("no field for the header's name")
+	}
+	cr.value.SetText("dev.lists")
+	if err := e.save(); err == nil {
+		t.Fatal("saved a header test without a header")
+	}
+	cr.header.SetText("List-Id")
+	e.actRows[0].action.Selected = keyIndex(editorActions, "markRead")
+	e.actRows[0].action.OnChange(0)
+	if err := e.save(); err != nil {
+		t.Fatal(err)
+	}
+	rules, _ := cli.Rules()
+	r := rules[len(rules)-1]
+	var got mailcore.RuleCondition
+	for _, c := range r.Conditions {
+		if c.Field == "header" {
+			got = c
+		}
+	}
+	if got.Header != "List-Id" || got.Value != "dev.lists" || got.Op != "contains" {
+		t.Fatalf("condition %+v", got)
+	}
+	if s := ruleSummary(r, func(mailcore.FolderID) string { return "" }); !strings.Contains(s, "List-Id contains “dev.lists”") {
+		t.Fatalf("summary %q", s)
+	}
+}

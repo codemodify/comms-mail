@@ -155,7 +155,7 @@ func parseTBCondition(v string) (string, [][3]string) {
 		i++
 		var parts []string
 		var b strings.Builder
-		quoted := false
+		quoted, sawQuote := false, false
 		for ; i < len(v); i++ {
 			c := v[i]
 			switch {
@@ -164,8 +164,14 @@ func parseTBCondition(v string) (string, [][3]string) {
 				b.WriteByte(v[i])
 			case c == '"':
 				quoted = !quoted
+				sawQuote = true
 			case c == ',' && !quoted && len(parts) < 2:
-				parts = append(parts, b.String())
+				p := b.String()
+				if len(parts) == 0 && sawQuote {
+					// A quoted field is a custom header ("List-Id").
+					p = "header:" + strings.TrimSpace(p)
+				}
+				parts = append(parts, p)
 				b.Reset()
 			case c == ')' && !quoted:
 				parts = append(parts, b.String())
@@ -184,8 +190,11 @@ func parseTBCondition(v string) (string, [][3]string) {
 }
 
 // tbField and tbOp translate a Thunderbird clause; "" means rules here
-// cannot test it.
+// cannot test it. A custom header ("header:List-Id") is a header test.
 func tbField(f string) string {
+	if strings.HasPrefix(f, "header:") {
+		return "header"
+	}
 	switch strings.ToLower(f) {
 	case "from":
 		return "from"
@@ -247,7 +256,14 @@ func tbRule(f ThunderbirdFilter, set FilterSet, account string, known []Tag) (Fi
 		if op == "" {
 			return r, fmt.Sprintf("uses %q, which rules here cannot", c[1])
 		}
-		r.Conditions = append(r.Conditions, RuleCondition{Field: field, Op: op, Value: c[2]})
+		rc := RuleCondition{Field: field, Op: op, Value: c[2]}
+		if field == "header" {
+			rc.Header = strings.TrimPrefix(c[0], "header:")
+			if !validHeaderName(rc.Header) {
+				return r, fmt.Sprintf("tests a header named %q, which is not a header's name", rc.Header)
+			}
+		}
+		r.Conditions = append(r.Conditions, rc)
 	}
 	if f.Match == "ALL" {
 		r.Conditions = append(r.Conditions, RuleCondition{Field: "from", Op: "contains", Value: ""})
