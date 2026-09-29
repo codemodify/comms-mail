@@ -2,12 +2,16 @@ package mailcore
 
 import (
 	"database/sql"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 // KMail's filters, imported as rules the way Thunderbird's are: read into
@@ -46,7 +50,7 @@ func readKMailFilters(dir string) (sets []FilterSet, note string) {
 		return nil, ""
 	}
 	accounts := kmailAccounts(dir)
-	akonadi := openAkonadiDB(dir)
+	akonadi, akonadiProblem := openAkonadiDB(dir)
 	if akonadi != nil {
 		defer akonadi.close()
 	}
@@ -86,7 +90,7 @@ func readKMailFilters(dir string) (sets []FilterSet, note string) {
 		sets = append(sets, *bySet[k])
 	}
 	if unresolved {
-		note = "Some KMail filters name a folder or a tag by an id in Akonadi's database, which can only be read when Akonadi uses SQLite; those filters are left out."
+		note = "Some KMail filters name a folder or a tag by an id in Akonadi's database, and those filters are left out. " + akonadiProblem
 	}
 	return sets, note
 }
@@ -373,6 +377,9 @@ func kconfigList(v string) []string {
 // folders) and tags.
 type akonadiDB struct {
 	db *sql.DB
+	// cast is the type a BLOB column is read as text with: TEXT in
+	// SQLite, CHAR in MySQL.
+	cast string
 	// resources are the agent id of each resource, by its row id.
 	resources map[int64]string
 	cols      map[int64]akonadiCol
@@ -391,32 +398,137 @@ type akonadiFolder struct {
 	host, user, path string
 }
 
-// openAkonadiDB opens Akonadi's database when it is SQLite, else nil.
-func openAkonadiDB(configDir string) *akonadiDB {
-	path := ""
-	if f, ok := readINIFile(filepath.Join(configDir, "akonadi", "akonadiserverrc")); ok {
-		driver := firstNonEmpty(f.get("%General", "Driver"), f.get("General", "Driver"))
-		if driver != "" && !strings.EqualFold(driver, "QSQLITE") && !strings.EqualFold(driver, "QSQLITE3") {
-			return nil
+// akonadiSource is where Akonadi keeps its database, from its
+// akonadiserverrc: a SQLite file, or its own MySQL server's socket.
+type akonadiSource struct {
+	driver string // "sqlite", "mysql", or another this cannot read
+	path   string // the SQLite file
+	socket string // the MySQL server's socket
+	dbName string // the MySQL database
+}
+
+func akonadiSourceOf(configDir string) akonadiSource {
+	f, _ := readINIFile(filepath.Join(configDir, "akonadi", "akonadiserverrc"))
+	driver := ""
+	if f != nil {
+		driver = strings.ToUpper(firstNonEmpty(f.get("%General", "Driver"), f.get("General", "Driver")))
+	}
+	data := os.Getenv("XDG_DATA_HOME")
+	if data == "" {
+		data = filepath.Join(homeDir(), ".local", "share")
+	}
+	sqlitePath := filepath.Join(data, "akonadi", "akonadi.db")
+	if f != nil {
+		sqlitePath = firstNonEmpty(f.get("QSQLITE", "Name"), f.get("QSQLITE3", "Name"), sqlitePath)
+	}
+	switch driver {
+	case "QSQLITE", "QSQLITE3":
+		return akonadiSource{driver: "sqlite", path: sqlitePath}
+	case "":
+		// No choice recorded: SQLite when its file is there (KDE Gear 26.04
+		// and later), else the MySQL server older installs have.
+		if _, err := os.Stat(sqlitePath); err == nil {
+			return akonadiSource{driver: "sqlite", path: sqlitePath}
 		}
-		path = firstNonEmpty(f.get("QSQLITE", "Name"), f.get("QSQLITE3", "Name"))
-	}
-	if path == "" {
-		data := os.Getenv("XDG_DATA_HOME")
-		if data == "" {
-			data = filepath.Join(homeDir(), ".local", "share")
+		fallthrough
+	case "QMYSQL":
+		src := akonadiSource{driver: "mysql", dbName: "akonadi"}
+		if f != nil {
+			src.dbName = firstNonEmpty(f.get("QMYSQL", "Name"), "akonadi")
+			// Options="UNIX_SOCKET=/run/user/1000/akonadi/mysql.socket;…"
+			for _, opt := range strings.Split(strings.Trim(f.get("QMYSQL", "Options"), `"`), ";") {
+				if k, v, ok := strings.Cut(strings.TrimSpace(opt), "="); ok && strings.EqualFold(k, "UNIX_SOCKET") {
+					src.socket = strings.TrimSpace(v)
+				}
+			}
 		}
-		path = filepath.Join(data, "akonadi", "akonadi.db")
+		if src.socket == "" {
+			src.socket = defaultAkonadiSocket(data)
+		}
+		return src
 	}
-	db, err := openReadOnlySQLite(path)
-	if err != nil {
-		return nil
+	if driver == "QPSQL" {
+		return akonadiSource{driver: "PostgreSQL"}
 	}
-	a := &akonadiDB{db: db, resources: map[int64]string{}, cols: map[int64]akonadiCol{}, accounts: map[string]kmailAccount{}}
-	rows, err := db.Query("SELECT id, name FROM ResourceTable")
-	if err != nil {
+	return akonadiSource{driver: strings.TrimPrefix(driver, "Q")}
+}
+
+// defaultAkonadiSocket is where Akonadi's MySQL server listens when its
+// config does not say: under the runtime directory, which
+// ~/.local/share/akonadi/socket-<host>-default also points at.
+func defaultAkonadiSocket(data string) string {
+	if host, err := os.Hostname(); err == nil {
+		p := filepath.Join(data, "akonadi", "socket-"+host+"-default", "mysql.socket")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	run := os.Getenv("XDG_RUNTIME_DIR")
+	if run == "" {
+		run = filepath.Join(os.TempDir(), "runtime-"+strconv.Itoa(os.Getuid()))
+	}
+	return filepath.Join(run, "akonadi", "mysql.socket")
+}
+
+// openAkonadiDB opens Akonadi's database to read its collections and tags,
+// or says why it cannot.
+func openAkonadiDB(configDir string) (*akonadiDB, string) {
+	src := akonadiSourceOf(configDir)
+	var db *sql.DB
+	cast := "TEXT"
+	switch src.driver {
+	case "sqlite":
+		var err error
+		if db, err = openReadOnlySQLite(src.path); err != nil {
+			return nil, "Akonadi's database (" + src.path + ") could not be opened."
+		}
+	case "mysql":
+		var err error
+		if db, err = openAkonadiMySQL(src); err != nil {
+			return nil, "Akonadi keeps KMail's folders in its own MySQL server, which answers only while Akonadi runs: start KMail, then scan again."
+		}
+		cast = "CHAR"
+	default:
+		return nil, "Akonadi keeps its database in " + src.driver + ", which comms-mail does not read."
+	}
+	a := &akonadiDB{db: db, cast: cast, resources: map[int64]string{}, cols: map[int64]akonadiCol{}, accounts: map[string]kmailAccount{}}
+	if err := a.load(); err != nil {
 		_ = db.Close()
-		return nil
+		return nil, "Akonadi's database could not be read: " + err.Error()
+	}
+	for _, acct := range kmailAccounts(configDir) {
+		a.accounts[acct.agent] = acct
+	}
+	return a, ""
+}
+
+// openAkonadiMySQL connects to Akonadi's MySQL server over its socket.
+// The server runs with its grant tables off (any user is let in), and
+// nothing here writes: the session is made read-only too.
+func openAkonadiMySQL(src akonadiSource) (*sql.DB, error) {
+	cfg := mysql.NewConfig()
+	cfg.Net, cfg.Addr, cfg.DBName = "unix", src.socket, src.dbName
+	cfg.User = firstNonEmpty(os.Getenv("USER"), "akonadi")
+	cfg.Timeout, cfg.ReadTimeout = 3*time.Second, 10*time.Second
+	conn, err := mysql.NewConnector(cfg)
+	if err != nil {
+		return nil, err
+	}
+	db := sql.OpenDB(conn)
+	db.SetMaxOpenConns(1)
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	_, _ = db.Exec("SET SESSION TRANSACTION READ ONLY")
+	return db, nil
+}
+
+// load reads the resources and collections.
+func (a *akonadiDB) load() error {
+	rows, err := a.db.Query("SELECT id, name FROM ResourceTable")
+	if err != nil {
+		return err
 	}
 	for rows.Next() {
 		var id int64
@@ -426,11 +538,11 @@ func openAkonadiDB(configDir string) *akonadiDB {
 		}
 	}
 	rows.Close()
-	rows, err = db.Query("SELECT id, CAST(IFNULL(remoteId, '') AS TEXT), CAST(IFNULL(name, '') AS TEXT), IFNULL(parentId, 0), resourceId FROM CollectionTable")
+	rows, err = a.db.Query(fmt.Sprintf("SELECT id, CAST(IFNULL(remoteId, '') AS %s), CAST(IFNULL(name, '') AS %s), IFNULL(parentId, 0), resourceId FROM CollectionTable", a.cast, a.cast))
 	if err != nil {
-		_ = db.Close()
-		return nil
+		return err
 	}
+	defer rows.Close()
 	for rows.Next() {
 		var id int64
 		var c akonadiCol
@@ -438,11 +550,7 @@ func openAkonadiDB(configDir string) *akonadiDB {
 			a.cols[id] = c
 		}
 	}
-	rows.Close()
-	for _, acct := range kmailAccounts(configDir) {
-		a.accounts[acct.agent] = acct
-	}
-	return a
+	return rows.Err()
 }
 
 func (a *akonadiDB) close() { _ = a.db.Close() }
@@ -499,8 +607,8 @@ func (a *akonadiDB) tagName(ref string) (string, bool) {
 		return "", false
 	}
 	var attr, gid string
-	_ = a.db.QueryRow("SELECT CAST(value AS TEXT) FROM TagAttributeTable WHERE tagId = ? AND CAST(type AS TEXT) = 'TAG'", id).Scan(&attr)
-	_ = a.db.QueryRow("SELECT CAST(IFNULL(gid, '') AS TEXT) FROM TagTable WHERE id = ?", id).Scan(&gid)
+	_ = a.db.QueryRow(fmt.Sprintf("SELECT CAST(value AS %s) FROM TagAttributeTable WHERE tagId = ? AND CAST(type AS %s) = 'TAG'", a.cast, a.cast), id).Scan(&attr)
+	_ = a.db.QueryRow(fmt.Sprintf("SELECT CAST(IFNULL(gid, '') AS %s) FROM TagTable WHERE id = ?", a.cast), id).Scan(&gid)
 	// The attribute is ("Name" "icon" …); its first quoted string is the name.
 	if _, rest, ok := strings.Cut(attr, `"`); ok {
 		if name, _, ok := strings.Cut(rest, `"`); ok && strings.TrimSpace(name) != "" {

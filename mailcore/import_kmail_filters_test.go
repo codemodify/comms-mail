@@ -215,11 +215,17 @@ func TestKMailFiltersBecomeRules(t *testing.T) {
 	}
 }
 
-// With Akonadi on MySQL the folders cannot be looked up: those filters are
-// left out, and the import says why.
-func TestKMailFiltersWithoutAkonadiSQLite(t *testing.T) {
-	sets, note := readKMailFilters(kmailFilterFixture(t, "QMYSQL"))
-	if !strings.Contains(note, "Akonadi uses SQLite") {
+// With Akonadi on MySQL and its server not running, the folders cannot be
+// looked up: those filters are left out, and the import says to start
+// KMail and scan again.
+func TestKMailFiltersWithAkonadiMySQLDown(t *testing.T) {
+	dir := kmailFilterFixture(t, "QMYSQL")
+	rc := filepath.Join(dir, "akonadi", "akonadiserverrc")
+	if err := os.WriteFile(rc, []byte("[%General]\nDriver=QMYSQL\n\n[QMYSQL]\nName=akonadi\nOptions=\"UNIX_SOCKET="+filepath.Join(dir, "no-such.socket")+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sets, note := readKMailFilters(dir)
+	if !strings.Contains(note, "MySQL") || !strings.Contains(note, "start KMail") {
 		t.Fatalf("note %q", note)
 	}
 	for _, s := range sets {
@@ -237,5 +243,42 @@ func TestKConfigEscapes(t *testing.T) {
 	}
 	if got := kconfigList(`a,b\,c, d`); len(got) != 3 || got[1] != "b,c" || got[2] != "d" {
 		t.Fatalf("%q", got)
+	}
+}
+
+// Where Akonadi's database is, from akonadiserverrc.
+func TestAkonadiSourceOf(t *testing.T) {
+	write := func(t *testing.T, rc string) string {
+		dir := t.TempDir()
+		t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+		t.Setenv("XDG_RUNTIME_DIR", filepath.Join(dir, "run"))
+		if rc != "" {
+			p := filepath.Join(dir, "akonadi", "akonadiserverrc")
+			_ = os.MkdirAll(filepath.Dir(p), 0o700)
+			if err := os.WriteFile(p, []byte(rc), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	dir := write(t, "[%General]\nDriver=QMYSQL\n\n[QMYSQL]\nName=akonadi2\nOptions=\"UNIX_SOCKET=/run/user/1000/akonadi/mysql.socket;SOME=1\"\n")
+	if got := akonadiSourceOf(dir); got.driver != "mysql" || got.socket != "/run/user/1000/akonadi/mysql.socket" || got.dbName != "akonadi2" {
+		t.Fatalf("mysql with options: %+v", got)
+	}
+	dir = write(t, "[%General]\nDriver=QMYSQL\n")
+	if got := akonadiSourceOf(dir); got.socket != filepath.Join(dir, "run", "akonadi", "mysql.socket") || got.dbName != "akonadi" {
+		t.Fatalf("mysql by default: %+v", got)
+	}
+	dir = write(t, "[%General]\nDriver=QSQLITE\n")
+	if got := akonadiSourceOf(dir); got.driver != "sqlite" || got.path != filepath.Join(dir, "data", "akonadi", "akonadi.db") {
+		t.Fatalf("sqlite: %+v", got)
+	}
+	dir = write(t, "[%General]\nDriver=QPSQL\n")
+	if _, why := openAkonadiDB(dir); !strings.Contains(why, "PostgreSQL") {
+		t.Fatalf("postgres: %q", why)
+	}
+	dir = write(t, "") // nothing recorded and no SQLite file: the MySQL server
+	if got := akonadiSourceOf(dir); got.driver != "mysql" {
+		t.Fatalf("no config: %+v", got)
 	}
 }

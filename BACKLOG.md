@@ -41,9 +41,10 @@ new ones turn up.
   rule); the list's cells take no icons yet, so this waits for
   uitoolkit-gaps.md #16 — and then ★ 📎 🔇 ● and the thread mark move to
   icons too.
-- **Import: KMail filters with Akonadi on MySQL** — their folders and tags
-  are ids in Akonadi's database; only SQLite is read, so with MySQL (the
-  default before KDE Gear 26.04) filters that move or tag are left out.
+- **Import: KMail filters with Akonadi on MySQL — untried on a real
+  Akonadi** — read over its socket with go-sql-driver/mysql; the socket
+  lookup and the shared queries are tested (the queries through SQLite),
+  the connection itself only against no server. PostgreSQL is not read.
 - **Import: Outlook (.pst)** — PINNED by the user; not until unpinned.
 
 ## Offline / sync
