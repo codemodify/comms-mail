@@ -6,6 +6,7 @@ import (
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/paintengine2d"
+	"github.com/codemodify/uitoolkit/richtext"
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
@@ -65,7 +66,7 @@ func (p *htmlPane) show(m mailcore.Message) {
 		p.bar.SetVisible(false)
 		return
 	}
-	p.rich.ResolveImage = p.s.imageResolver(m.ID)
+	p.rich.ResolveImageKind = p.s.imageResolver(m.ID)
 	p.rich.SetHTML(m.HTML)
 	p.loadImages()
 }
@@ -83,7 +84,7 @@ func (p *htmlPane) clear() {
 // offers them.
 func (p *htmlPane) loadImages() {
 	s, m := p.s, p.msg
-	cids, remote := splitImageSources(htmlImageSources(m.HTML))
+	cids, remote := docImages(p.rich.Document())
 	missingCID := false
 	for _, c := range cids {
 		if rest, _ := cutFold(strings.TrimSpace(c), "cid:"); s.images[cidKey(m.ID, rest)] == nil {
@@ -169,7 +170,7 @@ func (p *htmlPane) showRemote() {
 	if !p.shown {
 		return
 	}
-	if _, remote := splitImageSources(htmlImageSources(p.msg.HTML)); len(remote) > 0 {
+	if _, remote := docImages(p.rich.Document()); len(remote) > 0 {
 		p.fetchRemote(remote)
 	}
 }
@@ -188,14 +189,21 @@ func (p *htmlPane) alwaysShow() {
 	p.showRemote()
 }
 
-// imageResolver is the HTML view's ResolveImage for message id: cid:
-// parts and remote URLs from the cache, a placeholder for the rest.
-func (s *session) imageResolver(id mailcore.MessageID) func(string) *paintengine2d.Image {
-	return func(src string) *paintengine2d.Image {
-		if rest, ok := cutFold(strings.TrimSpace(src), "cid:"); ok {
-			return s.images[cidKey(id, rest)]
+// imageResolver is the HTML view's ResolveImageKind for message id: cid:
+// parts and remote images from the cache (a remote one is there only once
+// the user asked for it), a placeholder for everything else — a local
+// file is never read for a message.
+func (s *session) imageResolver(id mailcore.MessageID) func(string, richtext.ImageKind) *paintengine2d.Image {
+	return func(src string, _ richtext.ImageKind) *paintengine2d.Image {
+		switch imageKind(src) { // the toolkit's kind, but //host is remote
+		case richtext.ImageInline:
+			if rest, ok := cutFold(strings.TrimSpace(src), "cid:"); ok {
+				return s.images[cidKey(id, rest)]
+			}
+		case richtext.ImageRemote:
+			return s.images[src]
 		}
-		return s.images[src]
+		return nil
 	}
 }
 

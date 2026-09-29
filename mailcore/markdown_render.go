@@ -10,10 +10,9 @@ import (
 // MarkdownToHTML renders Markdown as the HTML subset the window's
 // rich-text view draws: headings, paragraphs with hard line breaks,
 // emphasis, code, links and images, nested lists, quotes, fenced and
-// indented code, rules. A table is kept as its lines in a code block
-// (the view draws no tables; set in the monospace face, its columns stay
-// aligned). Raw HTML in the Markdown is shown as text, never passed
-// through. It reads what MessageMarkdown writes, and the Markdown people
+// indented code, rules, and tables (GitHub's pipe tables: a header row,
+// then the rows under it). Raw HTML in the Markdown is shown as text,
+// never passed through. It reads what MessageMarkdown writes, and the Markdown people
 // write in plain-text mail (CommonMark's common ground, GitHub's tables).
 func MarkdownToHTML(md string) string {
 	lines := strings.Split(strings.ReplaceAll(strings.ReplaceAll(md, "\r\n", "\n"), "\t", "    "), "\n")
@@ -88,7 +87,7 @@ func renderBlocks(b *strings.Builder, lines []string, depth int) {
 				rows = append(rows, strings.TrimSpace(lines[i]))
 				i++
 			}
-			b.WriteString("<pre>" + html.EscapeString(strings.Join(rows, "\n")) + "</pre>")
+			writeTable(b, rows)
 		default:
 			var para []string
 			for i < len(lines) && strings.TrimSpace(lines[i]) != "" && !startsBlock(lines, i) &&
@@ -112,6 +111,53 @@ func renderBlocks(b *strings.Builder, lines []string, depth int) {
 			b.WriteString("<p>" + paragraphHTML(para) + "</p>")
 		}
 	}
+}
+
+// writeTable writes a pipe table: rows[0] is the header, rows[1] the
+// --- line under it, the rest its body. A row with fewer cells than the
+// header is filled out, one with more is cut to it.
+func writeTable(b *strings.Builder, rows []string) {
+	head := tableCells(rows[0])
+	b.WriteString("<table><tr>")
+	for _, c := range head {
+		b.WriteString("<th>" + inlineMarkdown(c) + "</th>")
+	}
+	b.WriteString("</tr>")
+	for _, r := range rows[2:] {
+		cells := tableCells(r)
+		b.WriteString("<tr>")
+		for j := range head {
+			c := ""
+			if j < len(cells) {
+				c = cells[j]
+			}
+			b.WriteString("<td>" + inlineMarkdown(c) + "</td>")
+		}
+		b.WriteString("</tr>")
+	}
+	b.WriteString("</table>")
+}
+
+// tableCells splits a table row at its pipes — not an escaped one (\|),
+// which stays in the cell — without the pipes at either end.
+func tableCells(row string) []string {
+	row = strings.TrimSpace(row)
+	row = strings.TrimPrefix(row, "|")
+	if strings.HasSuffix(row, "|") && !strings.HasSuffix(row, `\|`) {
+		row = row[:len(row)-1]
+	}
+	var cells []string
+	start := 0
+	for i := 0; i < len(row); i++ {
+		switch row[i] {
+		case '\\':
+			i++
+		case '|':
+			cells = append(cells, strings.TrimSpace(row[start:i]))
+			start = i + 1
+		}
+	}
+	return append(cells, strings.TrimSpace(row[start:]))
 }
 
 // startsBlock reports whether lines[i] begins a block other than a

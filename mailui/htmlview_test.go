@@ -10,12 +10,20 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/platform"
+	"github.com/codemodify/uitoolkit/richtext"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-func TestHTMLHasRemoteImages(t *testing.T) {
+// docOf is html as the reading pane's rich-text view reads it.
+func docOf(html string) *richtext.Doc {
+	rt := newReadOnlyRich(nil)
+	rt.SetHTML(html)
+	return rt.Document()
+}
+
+func TestRemoteImagesAreFound(t *testing.T) {
 	yes := []string{
 		`<img src="https://track.example/pixel.gif">`,
 		`<img alt=x src='http://a/b.png'>`,
@@ -25,15 +33,17 @@ func TestHTMLHasRemoteImages(t *testing.T) {
 	no := []string{
 		`<img src="data:image/png;base64,AAAA">`,
 		`<img src="cid:logo@1">`, // part of the message: drawn, not blocked
+		`<img src="file:///etc/passwd">`,
+		`<img src="images/logo.png">`,
 		`<p>no images at all</p>`,
 	}
 	for _, h := range yes {
-		if !htmlHasRemoteImages(h) {
+		if _, remote := docImages(docOf(h)); len(remote) != 1 {
 			t.Errorf("should be flagged: %q", h)
 		}
 	}
 	for _, h := range no {
-		if htmlHasRemoteImages(h) {
+		if _, remote := docImages(docOf(h)); len(remote) != 0 {
 			t.Errorf("should not be flagged: %q", h)
 		}
 	}
@@ -110,15 +120,25 @@ func TestHTMLLinkOpensCompose(t *testing.T) {
 }
 
 func TestHTMLImageSources(t *testing.T) {
-	got := htmlImageSources(`<img src="cid:a@x"><img alt='b' src='https://h.example/p.png?x=1&amp;y=2'>` +
-		`<img src=//cdn.example/c.gif><img src="data:image/png;base64,AA"><img src="cid:a@x">`)
-	want := []string{"cid:a@x", "https://h.example/p.png?x=1&y=2", "//cdn.example/c.gif", "data:image/png;base64,AA"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("sources %q", got)
+	cids, remote := docImages(docOf(`<p><img src="cid:a@x"><img alt='b' src='https://h.example/p.png?x=1&amp;y=2'>` +
+		`<img src=//cdn.example/c.gif><img src="data:image/png;base64,AA"><img src="cid:a@x"></p>`))
+	if strings.Join(cids, "|") != "cid:a@x" {
+		t.Fatalf("cids %q", cids)
 	}
-	cids, remote := splitImageSources(got)
-	if len(cids) != 1 || len(remote) != 2 {
-		t.Fatalf("cids %q remote %q", cids, remote)
+	if strings.Join(remote, "|") != "https://h.example/p.png?x=1&y=2|//cdn.example/c.gif" {
+		t.Fatalf("remote %q", remote)
+	}
+}
+
+// An image that is not drawn shows what its alt text says, not an empty
+// box.
+func TestBlockedImageShowsItsAltText(t *testing.T) {
+	d := docOf(`<p><img src="https://track.example/banner.png" alt="Autumn sale"></p>`)
+	if un := d.UnresolvedImages(); len(un) != 1 || un[0].Alt != "Autumn sale" {
+		t.Fatalf("unresolved %v", un)
+	}
+	if got := d.PlainText(); !strings.Contains(got, "Autumn sale") {
+		t.Fatalf("the placeholder does not carry the alt text: %q", got)
 	}
 }
 
@@ -139,8 +159,13 @@ func TestInlineImagesDrawAndRemoteWait(t *testing.T) {
 	if s.images[cidKey(m.ID, "logo@news.example")] == nil {
 		t.Fatal("the inline logo was not read from the message")
 	}
-	if got := s.previewRich.ResolveImage("cid:logo@news.example"); got == nil || got.Bounds().Dx() != 96 {
+	if got := s.previewRich.ResolveImageKind("cid:logo@news.example", richtext.ImageInline); got == nil || got.Bounds().Dx() != 96 {
 		t.Fatalf("the HTML view does not draw the logo: %v", got)
+	}
+	for _, im := range s.previewRich.Document().UnresolvedImages() {
+		if im.Kind() == richtext.ImageInline {
+			t.Fatalf("the logo is still a placeholder: %q", im.Src)
+		}
 	}
 	if !s.imgBar.Visible() || !strings.Contains(s.alwaysImgs.Tip, "weekly@news.example") {
 		t.Fatalf("the remote banner should wait behind the bar (%v %q)", s.imgBar.Visible(), s.alwaysImgs.Tip)
@@ -152,8 +177,11 @@ func TestInlineImagesDrawAndRemoteWait(t *testing.T) {
 	// What was fetched is drawn: pretend the banner came back.
 	s.cacheImage(mailcore.DemoNewsletterBanner, decodeImage(onePixelPNG(t)))
 	s.html.rerender(s.html.gen)
-	if s.previewRich.ResolveImage(mailcore.DemoNewsletterBanner) == nil {
+	if s.previewRich.ResolveImageKind(mailcore.DemoNewsletterBanner, richtext.ImageRemote) == nil {
 		t.Fatal("a fetched remote image is not drawn")
+	}
+	if n := len(s.previewRich.Document().UnresolvedImages()); n != 0 {
+		t.Fatalf("%d images still placeholders after the banner came back", n)
 	}
 
 	// Always from Sender is kept by the daemon.
@@ -241,5 +269,21 @@ func TestHTMLTabOnlyForHTMLMail(t *testing.T) {
 	a.PumpOnce()
 	if !tabs.TabVisible(2) {
 		t.Fatal("the HTML tab did not come back")
+	}
+}
+
+// Markdown's tables, quotes and rules are drawn as such in the rendered
+// view, not as lines of text.
+func TestMarkdownRendersTablesQuotesAndRules(t *testing.T) {
+	s, a, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	s.showBody(mailcore.Message{ID: "t", Subject: "prices", Body: "| Item | Price |\n| --- | --- |\n| Tea | £3 |\n\n> said before\n\n---\n\nend"})
+	a.PumpOnce()
+	kinds := map[richtext.Kind]int{}
+	for _, b := range s.md.rendered.rich.Document().Blocks() {
+		kinds[b.Kind]++
+	}
+	if kinds[richtext.TableRow] != 2 || kinds[richtext.Quote] == 0 || kinds[richtext.Rule] != 1 {
+		t.Fatalf("blocks by kind %v", kinds)
 	}
 }

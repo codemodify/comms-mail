@@ -6,6 +6,7 @@ import (
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit/platform"
+	"github.com/codemodify/uitoolkit/richtext"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 )
@@ -150,7 +151,7 @@ func TestMessageTabShowsHTMLAndMarkdown(t *testing.T) {
 	if got := r.rich.PlainText(); !strings.Contains(got, "images in richtext") {
 		t.Fatalf("tab Markdown %q", got)
 	}
-	if !r.bar.Visible() || r.rich.ResolveImage("cid:logo@news.example") == nil {
+	if !r.bar.Visible() || r.rich.ResolveImageKind("cid:logo@news.example", richtext.ImageInline) == nil {
 		t.Fatal("the tab should draw the inline logo and offer the remote banner")
 	}
 	if !strings.Contains(mt.md.text.Text, "# uitoolkit Weekly") {

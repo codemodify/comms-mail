@@ -2,16 +2,15 @@ package mailui
 
 import (
 	"bytes"
-	"html"
 	"image"
 	_ "image/gif"  // images in HTML mail
 	_ "image/jpeg" // images in HTML mail
 	_ "image/png"  // images in HTML mail
-	"regexp"
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/paintengine2d"
+	"github.com/codemodify/uitoolkit/richtext"
 	"github.com/codemodify/uitoolkit/widgets"
 	_ "golang.org/x/image/webp" // images in HTML mail
 )
@@ -29,42 +28,41 @@ import (
 // message, or Always for everything from its sender. comms-maild does the
 // fetching, from public addresses only.
 
-var imgSrcRe = regexp.MustCompile(`(?is)<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
-
-// htmlImageSources lists html's <img> sources, entity-decoded as the
-// renderer sees them, each once.
-func htmlImageSources(src string) []string {
-	var out []string
+// docImages is the images a rendered document asks for, each once, in
+// the two kinds that are fetched: cid: parts of the message and remote
+// web addresses. A data: image needs neither, and a local file or any
+// other scheme is never loaded.
+func docImages(d *richtext.Doc) (cids, remote []string) {
 	seen := map[string]bool{}
-	for _, m := range imgSrcRe.FindAllStringSubmatch(src, -1) {
-		v := html.UnescapeString(m[1] + m[2] + m[3])
-		if v != "" && !seen[v] {
-			seen[v] = true
-			out = append(out, v)
+	for _, im := range d.Images() {
+		src := im.Src
+		t := strings.TrimSpace(src)
+		if t == "" || seen[src] {
+			continue
+		}
+		seen[src] = true
+		switch imageKind(t) {
+		case richtext.ImageInline:
+			if hasPrefixFold(t, "cid:") {
+				cids = append(cids, src)
+			}
+		case richtext.ImageRemote:
+			if hasPrefixFold(t, "http:") || hasPrefixFold(t, "https:") || strings.HasPrefix(t, "//") {
+				remote = append(remote, src)
+			}
 		}
 	}
-	return out
+	return cids, remote
 }
 
-// splitImageSources sorts image sources into cid: parts and remote URLs;
-// data: images need neither.
-func splitImageSources(srcs []string) (cids, remote []string) {
-	for _, v := range srcs {
-		t := strings.TrimSpace(v)
-		switch {
-		case hasPrefixFold(t, "cid:"):
-			cids = append(cids, v)
-		case hasPrefixFold(t, "http:"), hasPrefixFold(t, "https:"), strings.HasPrefix(t, "//"):
-			remote = append(remote, v)
-		}
+// imageKind is richtext.ClassifyImageSrc, except that a protocol-relative
+// address (//cdn.example/pixel.gif) is the remote fetch it is: the toolkit
+// reads it as a path beside the document (uitoolkit-gaps.md #20).
+func imageKind(src string) richtext.ImageKind {
+	if strings.HasPrefix(strings.TrimSpace(src), "//") {
+		return richtext.ImageRemote
 	}
-	return
-}
-
-// htmlHasRemoteImages reports whether html references a remote image.
-func htmlHasRemoteImages(src string) bool {
-	_, remote := splitImageSources(htmlImageSources(src))
-	return len(remote) > 0
+	return richtext.ClassifyImageSrc(src)
 }
 
 func hasPrefixFold(s, prefix string) bool {
@@ -89,11 +87,11 @@ func decodeImage(data []byte) *paintengine2d.Image {
 	return paintengine2d.NewImageFromNRGBA(img)
 }
 
-// blockedImageResolver is a RichText.ResolveImage that draws nothing:
-// data: images are decoded by the widget before it is consulted, so every
-// src that reaches it is remote or a cid: part, and returning nil leaves a
-// placeholder rather than fetching it.
-func blockedImageResolver(string) *paintengine2d.Image { return nil }
+// blockedImageResolver is a RichText.ResolveImageKind that draws nothing:
+// data: images are decoded by the widget before it is consulted, and
+// returning nil leaves a placeholder, with the image's alt text, rather
+// than fetching anything.
+func blockedImageResolver(string, richtext.ImageKind) *paintengine2d.Image { return nil }
 
 // newReadOnlyRich is a read-only HTML view: links followed through onLink,
 // no network for images.
@@ -102,7 +100,7 @@ func newReadOnlyRich(onLink func(string)) *widgets.RichText {
 	rt.ReadOnly = true
 	rt.MinRows = 8
 	rt.OnLink = onLink
-	rt.ResolveImage = blockedImageResolver
+	rt.ResolveImageKind = blockedImageResolver
 	return rt
 }
 

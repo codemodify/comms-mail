@@ -19,11 +19,13 @@ func TestMarkdownToHTML(t *testing.T) {
 			`<p><img src="cid:logo@x" alt="Logo"> <img src="https://i.example/b.png" alt="banner"></p>`},
 		"nested lists": {"- One\n- Two\n  - Two a\n\n3. Third\n4. Fourth",
 			`<ul><li>One</li><li>Two<ul><li>Two a</li></ul></li></ul><ol start="3"><li>Third</li><li>Fourth</li></ol>`},
-		"quote":            {"> Quoted line\n>\n> Second", "<blockquote><p>Quoted line</p><p>Second</p></blockquote>"},
-		"rule":             {"a\n\n---\n\nb", "<p>a</p><hr><p>b</p>"},
-		"table":            {"| Item | Price |\n| ---- | ----- |\n| Tea  | £3    |", "<pre>| Item | Price |\n| ---- | ----- |\n| Tea  | £3    |</pre>"},
-		"raw html is text": {"<script>alert(1)</script> & co", "<p>&lt;script&gt;alert(1)&lt;/script&gt; &amp; co</p>"},
-		"escapes":          {`\*not em\* and 1\. not a list`, "<p>*not em* and 1. not a list</p>"},
+		"quote": {"> Quoted line\n>\n> Second", "<blockquote><p>Quoted line</p><p>Second</p></blockquote>"},
+		"rule":  {"a\n\n---\n\nb", "<p>a</p><hr><p>b</p>"},
+		"table": {"| Item | Price |\n| ---- | ----- |\n| **Tea**  | £3    |\n| Cake |\n| a \\| b | 1 | extra |",
+			"<table><tr><th>Item</th><th>Price</th></tr><tr><td><b>Tea</b></td><td>£3</td></tr><tr><td>Cake</td><td></td></tr><tr><td>a | b</td><td>1</td></tr></table>"},
+		"table without edge pipes": {"a | b\n--- | ---\n1 | 2", "<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>"},
+		"raw html is text":         {"<script>alert(1)</script> & co", "<p>&lt;script&gt;alert(1)&lt;/script&gt; &amp; co</p>"},
+		"escapes":                  {`\*not em\* and 1\. not a list`, "<p>*not em* and 1. not a list</p>"},
 	} {
 		if got := MarkdownToHTML(tc.in); got != tc.want {
 			t.Errorf("%s:\ngot  %s\nwant %s", name, got, tc.want)
