@@ -39,8 +39,10 @@ new ones turn up.
   `Accounts4.sqlite` by the published layout, not yet tried on a real Mac
   (which property holds the port, how Google / iCloud accounts nest).
 - **Replied / forwarded in the message list** — both are tracked and the
-  reading pane says so; the list has no mark for them (the UI font has no
-  ↩ / ↪ glyph and the toolkit draws no stand-in — uitoolkit-gaps.md #2).
+  reading pane says so. Marks are icons, never font glyphs (the owner's
+  rule); the list's cells take no icons yet, so this waits for
+  uitoolkit-gaps.md #16 — and then ★ 📎 🔇 ● and the thread mark move to
+  icons too.
 - **Import: KMail filters with Akonadi on MySQL** — their folders and tags
   are ids in Akonadi's database; only SQLite is read, so with MySQL (the
   default before KDE Gear 26.04) filters that move or tag are left out.

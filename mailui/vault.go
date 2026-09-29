@@ -53,7 +53,7 @@ func plainIntro(st mailcore.SecretsStatus) string {
 const accountIntro = "Before comms-mail saves this account's password, choose where your passwords are kept."
 
 // laterNote is under the choices when they are first offered.
-const laterNote = "You can set this up later, or switch to another place at any time, in Settings › Privacy › Change where…"
+const laterNote = "You can set this up later, or switch to another place at any time, with Change where… on the Privacy tab in Settings."
 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
@@ -307,7 +307,7 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, don
 func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window) {
 	widgets.Confirm(win.Content(), "Forget the saved passwords?",
 		"Without the passphrase the saved passwords cannot be read. Starting over deletes them and every sign-in; "+
-			"your accounts and mail stay, and each account needs its password again (Settings › Accounts).",
+			"your accounts and mail stay, and each account needs its password again (the Accounts tab in Settings).",
 		func(yes bool) {
 			if !yes {
 				return
@@ -318,7 +318,7 @@ func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window)
 					return
 				}
 				widgets.Info(win.Content(), "Passwords forgotten",
-					"Enter each account's password again in Settings › Accounts; you will choose where to keep it then.",
+					"Enter each account's password again on the Accounts tab in Settings; you will choose where to keep it then.",
 					func() { win.Close() })
 			})
 		})
@@ -385,7 +385,7 @@ func (s *session) checkVault() {
 		case st.Problem != "":
 			widgets.Warn(s.win.Content(), "Passwords",
 				"comms-mail cannot read your saved passwords from "+mailcore.StoreLabel(st.Store)+": "+st.Problem+
-					"\n\nSettings › Privacy can move them elsewhere once it can reach them again.", nil)
+					"\n\nThe Privacy tab in Settings can move them elsewhere once it can reach them again.", nil)
 		}
 	})
 }

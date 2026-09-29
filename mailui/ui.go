@@ -1831,7 +1831,7 @@ func (s *session) recategorize(cat string) {
 		s.mark(err.Error())
 		return
 	}
-	s.mark("Sender › " + cat)
+	s.mark("Sender filed under " + cat)
 	s.refreshAll()
 }
 
@@ -2565,14 +2565,10 @@ func (s *session) toggleFilterPin(p filterPin) {
 	s.refreshList()
 }
 
-// filterPinLabel marks a pin that is on. "•", not "✓": the UI font has no
-// check mark and the toolkit draws no stand-in for it (uitoolkit-gaps.md #2).
-func filterPinLabel(name string, on bool) string {
-	if on {
-		return "• " + name
-	}
-	return name
-}
+// filterPinLabel is a pin's label. A pin that is on is shown bold (its
+// node's Bold), not with a mark: marks are icons, and tree nodes take none
+// until uitoolkit gives them icons (uitoolkit-gaps.md #16).
+func filterPinLabel(name string, on bool) string { return name }
 
 func (s *session) about() {
 	widgets.Info(s.win.Content(), "About Mail",

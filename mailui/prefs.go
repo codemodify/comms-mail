@@ -254,7 +254,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 	syncRemove()
 	col := widgets.NewColumn(
 		widgets.NewTitle("Tags"),
-		widgets.NewLabel("The sidebar Tags group is this list: locked Unread / Starred / Attachment plus keywords you add. Message › Tag toggles keywords."),
+		widgets.NewLabel("The sidebar Tags group is this list: locked Unread / Starred / Attachment plus keywords you add. The Tag menu on a message toggles keywords."),
 		table,
 		widgets.NewRow(add, edit, remove).WithGap(8),
 	).WithGap(8)

@@ -145,3 +145,19 @@ light pack like `metal-steel` then shows as dark, with nothing to say why
 **Fix:** expose "this pack is not in the build" (a flag on Appearance, or
 `LoadTheme` reporting why), and fall back to the pack's own family (the
 light starter for a light pack) rather than dark.
+
+### 16. No icons in table cells, column headers or tree nodes — and no mail icons
+Marks belong in icons, not in the font (fonts are for text only). But
+`TableView` cells and column titles are text (`CellText`, `TableColumn.
+Title`), and `TreeNode` has a label, bold and a colour swatch only. So the
+message list's marks — ★ starred, 📎 attachment, 🔇 muted, ● unread, the
+thread reply mark, and the replied / forwarded marks the list still lacks —
+can only be characters today (the four the toolkit draws as vector
+stand-ins, and nothing for the rest), and a folder tree cannot show an
+active filter pin except in bold. The icon set (`style.ToolIcon`) has no
+paperclip, star, reply, forward, check, mute or dot either.
+**Fix:** `TableColumn.Icon`, a `TableView.CellIcon func(row, col int)
+style.ToolIcon` (with a colour), a `TreeNode.Icon`, and ToolIcons for
+paperclip, star (filled / outline), reply, forward, check, mute and a dot.
+comms-mail waits for these (the owner's call): the replied / forwarded
+marks come with them, and ★ 📎 🔇 ● and the thread mark move to them.

@@ -114,7 +114,7 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 			list.Add(sec.contacts)
 		}
 		if n := filterCount(src.Filters); n > 0 {
-			sec.filters = widgets.NewCheckbox(fmt.Sprintf("Filters — %d, as rules (Settings › Filters)", n), true, nil)
+			sec.filters = widgets.NewCheckbox(fmt.Sprintf("Filters — %d, as rules (the Filters tab in Settings)", n), true, nil)
 			list.Add(sec.filters)
 		}
 		sections = append(sections, sec)
@@ -260,7 +260,7 @@ func importSummary(r importOutcome) string {
 		fmt.Fprintf(&b, "Added %d contact(s) to the address book (the rest it already had).\n", r.people)
 	}
 	if f := r.filters; f != nil {
-		fmt.Fprintf(&b, "Added %d filter(s) as rules (Settings › Filters).\n", f.Added)
+		fmt.Fprintf(&b, "Added %d filter(s) as rules (the Filters tab in Settings).\n", f.Added)
 		for _, s := range f.Skipped {
 			fmt.Fprintf(&b, "Not imported: %s.\n", s)
 		}
