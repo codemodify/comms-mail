@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/codemodify/paintengine2d v0.11.0
-	github.com/codemodify/uitoolkit v0.21.0
+	github.com/codemodify/uitoolkit v0.22.1
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/godbus/dbus/v5 v5.1.0
 	golang.org/x/crypto v0.57.0
