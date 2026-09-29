@@ -387,10 +387,10 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 
 	menubar := widgets.NewMenuBar(
 		widgets.NewMenu("&File",
-			iconItem(style.IconMail, "&Send Now", "Ctrl+Enter", send),
+			iconItem(style.IconSend, "&Send Now", "Ctrl+Enter", send),
 			iconItem(style.IconSave, "Save as &Draft", "Ctrl+S", saveDraft),
 			widgets.Sep(),
-			widgets.Item("Close", closeWin),
+			widgets.ItemIcon(style.IconClose, "Close", closeWin),
 		),
 		widgets.NewMenu("&Edit",
 			widgets.ItemAccel("Select &All", "Ctrl+A", func() {
@@ -415,7 +415,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		),
 	)
 
-	sendBtn := widgets.ToolIconBtn(style.IconMail, "Send", send)
+	sendBtn := widgets.ToolIconBtn(style.IconSend, "Send", send)
 	sendBtn.Tip = "Send Now (demo: file in Sent)"
 	draftBtn := widgets.ToolIconBtn(style.IconSave, "Save", saveDraft)
 	draftBtn.Tip = "Save as Draft"

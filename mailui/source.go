@@ -38,7 +38,7 @@ func MessageSourceApp(win *app.Window, msg mailcore.Message, rfc822 string) widg
 	)
 	menubar := widgets.NewMenuBar(
 		widgets.NewMenu("&File",
-			widgets.ItemAccel("&Close Window", "Ctrl+W", func() { win.Close() }),
+			iconItem(style.IconClose, "&Close Window", "Ctrl+W", func() { win.Close() }),
 		),
 		widgets.NewMenu("&Edit",
 			widgets.ItemAccel("Select &All", "Ctrl+A", func() {

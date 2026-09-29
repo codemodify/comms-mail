@@ -133,7 +133,7 @@ func prefsAppearance(a *app.Application) widget.Component {
 		shade = i
 		filter()
 	})
-	follow = widgets.NewButton("", func() {
+	follow = newButton("", func() {
 		setOwnTheme(a, "")
 		show()
 		filter()

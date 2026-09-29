@@ -165,7 +165,7 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 	}
 	first.OnSubmit = func(string) { submit() }
 	again.OnSubmit = func(string) { submit() }
-	okBtn = widgets.NewButton("OK", submit)
+	okBtn = newButton("OK", submit)
 	okBtn.Primary = true
 	okBtn.SetEnabled(false)
 	cancelText := "Not now"
@@ -173,7 +173,7 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 		cancelText = "Cancel"
 	}
 	buttons := widgets.NewButtonBox().
-		AddButton(widgets.NewButton(cancelText, func() { win.Close() }), widgets.RoleReject).
+		AddButton(newButton(cancelText, func() { win.Close() }), widgets.RoleReject).
 		AddButton(okBtn, widgets.RoleAccept)
 
 	// The explanation and the choices scroll in a small window; the
@@ -277,15 +277,15 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, don
 	for _, f := range []*widgets.TextField{current, first, again} {
 		f.OnSubmit = func(string) { submit() }
 	}
-	okBtn = widgets.NewButton(okText, submit)
+	okBtn = newButton(okText, submit)
 	okBtn.Primary = true
 	cancelText := "Not now"
 	if mode == passChange {
 		cancelText = "Cancel"
 	}
-	buttons := widgets.NewButtonBox().AddButton(widgets.NewButton(cancelText, func() { win.Close() }), widgets.RoleReject)
+	buttons := widgets.NewButtonBox().AddButton(newButton(cancelText, func() { win.Close() }), widgets.RoleReject)
 	if mode == passUnlock {
-		buttons.AddButton(widgets.NewButton("Forgot it…", func() { forgotPassphrase(a, cli, win) }), widgets.RoleHelp)
+		buttons.AddButton(newButton("Forgot it…", func() { forgotPassphrase(a, cli, win) }), widgets.RoleHelp)
 	}
 	buttons.AddButton(okBtn, widgets.RoleAccept)
 

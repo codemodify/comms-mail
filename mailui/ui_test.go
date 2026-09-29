@@ -1459,7 +1459,7 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 	}
 	star()
 	a.PumpOnce()
-	if got := starOf(row); got != style.IconStar {
+	if got := starOf(row); got != style.IconStarFilled {
 		t.Fatalf("after star the cell's icon is %v", got)
 	}
 	if got := table.CellText(row, colStar); got != "" {
@@ -1468,7 +1468,7 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 	img := paintengine2d.NewImage(32, 28)
 	ctx := paintengine2d.NewContext(img)
 	lk := table.Look()
-	style.DrawToolIcon(ctx, paintengine2d.XYWH(4, 4, 20, 20), style.IconStar, starColor, style.IconSetOf(lk))
+	style.DrawToolIcon(ctx, paintengine2d.XYWH(4, 4, 20, 20), style.IconStarFilled, starColor, style.IconSetOf(lk))
 	if ink := cellInk(img, 0, 26); ink < 8 {
 		t.Fatalf("star icon missing in 28px cell, ink=%d", ink)
 	}

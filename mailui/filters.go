@@ -7,6 +7,7 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
+	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
@@ -204,16 +205,16 @@ func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) wid
 		table.Selected = 0
 	}
 	warn := func(err error) { widgets.Warn(win.Content(), "Filters", err.Error(), nil) }
-	add := widgets.NewButton("Add…", func() {
+	add := newButton("Add…", func() {
 		openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true, Conditions: []mailcore.RuleCondition{{Field: "inbox"}}}, refresh)
 	})
-	edit = widgets.NewButton("Edit…", func() {
+	edit = newButton("Edit…", func() {
 		if r, ok := selected(); ok {
 			openRuleEditor(a, cli, r, refresh)
 		}
 	})
 	edit.Tip = "Change what the rule looks for and what it does"
-	toggle = widgets.NewButton("Turn Off", func() {
+	toggle = newButton("Turn Off", func() {
 		r, ok := selected()
 		if !ok {
 			return
@@ -225,7 +226,7 @@ func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) wid
 		}
 		refresh()
 	})
-	del = widgets.NewButton("Delete", func() {
+	del = newButton("Delete", func() {
 		r, ok := selected()
 		if !ok {
 			return
@@ -241,7 +242,7 @@ func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) wid
 			refresh()
 		})
 	})
-	run := widgets.NewButton("Run Now", func() {
+	run := newButton("Run Now", func() {
 		n := 0
 		accts, _ := cli.Accounts()
 		for _, acct := range accts {
@@ -262,7 +263,7 @@ func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) wid
 		widgets.NewTitle("Filters"),
 		wrapLabel("Rules run on new mail as it arrives, in order: the first that says stop ends the run."),
 		table,
-		widgets.NewRow(add, edit, toggle, del, widgets.NewSpacer(), run).WithGap(8),
+		foldRowTrail(add, edit, toggle, del, run),
 	).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
@@ -392,8 +393,8 @@ func openRuleEditor(a *app.Application, cli *mailcore.Client, r mailcore.FilterR
 	e.on = widgets.NewCheckbox("On", r.Enabled || r.ID == "", nil)
 
 	matchRow := widgets.NewRow(widgets.NewLabel("When a message matches"), e.match).WithGap(8)
-	addCond := widgets.NewButton("Add a test", func() { e.addCond(mailcore.RuleCondition{Field: "subject", Op: "contains"}); e.relayout() })
-	addAct := widgets.NewButton("Add an action", func() { e.addAct(mailcore.RuleAction{Type: "tag"}); e.relayout() })
+	addCond := newButton("Add a test", func() { e.addCond(mailcore.RuleCondition{Field: "subject", Op: "contains"}); e.relayout() })
+	addAct := newButton("Add an action", func() { e.addAct(mailcore.RuleAction{Type: "tag"}); e.relayout() })
 	body := widgets.NewColumn(
 		widgets.NewLabel("Name"), e.name,
 		matchRow, e.conds, widgets.NewRow(addCond).WithGap(8),
@@ -404,7 +405,7 @@ func openRuleEditor(a *app.Application, cli *mailcore.Client, r mailcore.FilterR
 		body.Add(wrapLabel("Only for account " + e.scope[0].Value + " (as it was imported)."))
 	}
 	fields := widgets.NewScrollView(body)
-	save := widgets.NewButton("Save", func() {
+	save := newButton("Save", func() {
 		if err := e.save(); err != nil {
 			widgets.Warn(win.Content(), title, err.Error(), nil)
 			return
@@ -415,7 +416,7 @@ func openRuleEditor(a *app.Application, cli *mailcore.Client, r mailcore.FilterR
 		win.Close()
 	})
 	save.Primary = true
-	cancel := widgets.NewButton("Cancel", func() { win.Close() })
+	cancel := newButton("Cancel", func() { win.Close() })
 	root := widgets.NewColumn(fields, widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)).WithGap(8)
 	root.AddFlex(fields, 1)
 	win.SetContent(widgets.NewPad(12, root))
@@ -435,8 +436,7 @@ func (e *ruleEditor) addCond(c mailcore.RuleCondition) {
 	cr.op = widgets.NewComboBox(labelsOf(ruleOps), keyIndex(ruleOps, orDefault(c.Op, "contains")), nil)
 	cr.value = widgets.NewTextField(c.Value, "text", nil)
 	cr.header = widgets.NewTextField(c.Header, "List-Id", nil)
-	remove := widgets.NewButton("Remove", nil)
-	remove.Tip = "Remove this test"
+	remove := iconOnly(style.IconTrash, "Remove this test")
 	cr.row = widgets.NewRow(cr.field, cr.header, cr.op, cr.value, remove).WithGap(6)
 	cr.row.AddFlex(cr.value, 1)
 	sync := func() {
@@ -478,8 +478,7 @@ func (e *ruleEditor) addAct(a mailcore.RuleAction) {
 	ar := &actRow{path: a.Path, account: a.Account}
 	ar.action = widgets.NewComboBox(labelsOf(editorActions), keyIndex(editorActions, a.Type), nil)
 	ar.target = widgets.NewComboBox(nil, 0, nil)
-	remove := widgets.NewButton("Remove", nil)
-	remove.Tip = "Remove this action"
+	remove := iconOnly(style.IconTrash, "Remove this action")
 	gap := widgets.NewSpacer() // keeps Remove at the right when there is no target
 	ar.row = widgets.NewRow(ar.action, ar.target, gap, remove).WithGap(6)
 	ar.row.AddFlex(ar.target, 1)

@@ -23,7 +23,7 @@ type inviteCard struct {
 	view                   *widgets.Panel
 	what, when, who        *widgets.Label
 	state                  *widgets.Label
-	btns                   *widgets.FlexBox
+	btns                   *widgets.Wrap
 	accept, maybe, decline *widgets.Button
 	declineCounter         *widgets.Button
 	openCal, more          *widgets.Button
@@ -50,17 +50,18 @@ func newInviteCard(s *session) *inviteCard {
 	c.state = wrapLabel("")
 	// Yes / Maybe / No, as calendars put it: short enough for a narrow
 	// reading pane.
-	c.accept = widgets.NewButton("Yes", func() { c.answer(mailcore.PartStatAccepted) })
+	c.accept = newButton("Yes", func() { c.answer(mailcore.PartStatAccepted) })
 	c.accept.Tip = "Accept"
-	c.maybe = widgets.NewButton("Maybe", func() { c.answer(mailcore.PartStatTentative) })
+	c.maybe = newButton("Maybe", func() { c.answer(mailcore.PartStatTentative) })
 	c.maybe.Tip = "Accept tentatively"
-	c.decline = widgets.NewButton("No", func() { c.answer(mailcore.PartStatDeclined) })
+	c.decline = newButton("No", func() { c.answer(mailcore.PartStatDeclined) })
 	c.decline.Tip = "Decline"
-	c.declineCounter = widgets.NewButton("Decline Proposal", func() { c.answer("DECLINECOUNTER") })
-	c.btns = widgets.NewRow(c.accept, c.maybe, c.decline, c.declineCounter).WithGap(8)
-	c.openCal = widgets.NewButton("Open in Calendar", c.openInCalendar)
+	c.declineCounter = newButton("Decline Proposal", func() { c.answer("DECLINECOUNTER") })
+	// The answers and the tools fold onto another line in a narrow pane.
+	c.btns = foldRow(c.accept, c.maybe, c.decline, c.declineCounter)
+	c.openCal = newButton("Open in Calendar", c.openInCalendar)
 	c.openCal.Tip = "Hand the event to your calendar application"
-	c.more = widgets.NewButton("Less", func() {
+	c.more = newButton("Less", func() {
 		s.inviteCompact = !s.inviteCompact
 		s.inviteLayoutChanged()
 		s.persistChrome() // remembered across restarts
@@ -70,7 +71,7 @@ func newInviteCard(s *session) *inviteCard {
 	c.asLabel = widgets.NewLabel("Answer as")
 	c.as = widgets.NewComboBox(nil, 0, nil)
 	c.opts = widgets.NewColumn(widgets.NewRow(c.tell, c.asLabel, c.as).WithGap(8), c.note).WithGap(4)
-	tools := widgets.NewRow(c.openCal, c.more).WithGap(8)
+	tools := foldRow(c.openCal, c.more)
 	c.view = widgets.NewPanel("", c.what, c.when, c.who, c.opts, c.state, c.btns, tools)
 	c.view.Content().WithGap(4)
 	c.view.SetAccessibleName("Calendar invitation")

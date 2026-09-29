@@ -49,7 +49,7 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 		widgets.Tab{Title: "Privacy", Content: widgets.NewPad(10, privacyTab)},
 		widgets.Tab{Title: "Appearance", Content: widgets.NewPad(10, appearanceTab)},
 	)
-	closeBtn := widgets.NewButton("Close", func() { win.Close() })
+	closeBtn := newButton("Close", func() { win.Close() })
 	tools := widgets.NewRow(widgets.NewSpacer(), closeBtn).WithGap(8)
 	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · filters · privacy · appearance · v"+uitoolkit.Version)
 	root := widgets.NewColumn(chrome, tabs, tools, status).WithGap(0)
@@ -106,7 +106,7 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 		"Backend: %s · Health: %s · %d account(s)\nConfig: %s   ·   Passwords: 0600 plaintext or OAuth (docs/mail.md)",
 		st.Backend, health, st.Accounts, mailcore.ConfigPath(),
 	))
-	add := widgets.NewButton("Add account…", func() {
+	add := newButton("Add account…", func() {
 		_, _ = OpenAddAccount(a, cli, func() {
 			refresh()
 			if onChange != nil {
@@ -114,7 +114,7 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 			}
 		})
 	})
-	remove := widgets.NewButton("Remove account…", func() {
+	remove := newButton("Remove account…", func() {
 		i := table.Selected
 		if i < 0 || i >= len(accounts) {
 			widgets.Warn(win.Content(), "Remove account", "Select an account first.", nil)
@@ -132,7 +132,7 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 			}
 		})
 	})
-	importBtn := widgets.NewButton("Import…", func() {
+	importBtn := newButton("Import…", func() {
 		startImport(a, win, cli, accounts, func() {
 			refresh()
 			if onChange != nil {
@@ -143,7 +143,7 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 	importBtn.Tip = "Bring accounts in from Thunderbird or KMail"
 	return widgets.NewColumn(
 		widgets.NewTitle("Accounts (stores / transports)"),
-		info, table, widgets.NewRow(add, remove, importBtn).WithGap(8),
+		info, table, foldRow(add, remove, importBtn),
 	).WithGap(8)
 }
 
@@ -200,7 +200,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 	if len(tags) > 0 {
 		table.Selected = 0
 	}
-	add := widgets.NewButton("Add", func() {
+	add := newButton("Add", func() {
 		_, _ = OpenTagEditor(a, mailcore.Tag{Color: "#7f8c8d"}, false, func(t mailcore.Tag) {
 			if _, err := cli.PutTag(t); err != nil {
 				widgets.Warn(win.Content(), "Tags", err.Error(), nil)
@@ -209,7 +209,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 			refresh()
 		})
 	})
-	edit := widgets.NewButton("Edit", func() {
+	edit := newButton("Edit", func() {
 		t, ok := selected()
 		if !ok {
 			widgets.Warn(win.Content(), "Tags", "Select a tag first.", nil)
@@ -230,7 +230,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 			refresh()
 		})
 	})
-	remove = widgets.NewButton("Remove", func() {
+	remove = newButton("Remove", func() {
 		t, ok := selected()
 		if !ok {
 			widgets.Warn(win.Content(), "Tags", "Select a tag first.", nil)
@@ -256,7 +256,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 		widgets.NewTitle("Tags"),
 		widgets.NewLabel("The sidebar Tags group is this list: locked Unread / Starred / Attachment plus keywords you add. The Tag menu on a message toggles keywords."),
 		table,
-		widgets.NewRow(add, edit, remove).WithGap(8),
+		foldRow(add, edit, remove),
 	).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
@@ -279,7 +279,7 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 		name.SetEnabled(false)
 	}
 	color := widgets.NewTextField(initial.Color, "#rrggbb", nil)
-	save := widgets.NewButton("Save", func() {
+	save := newButton("Save", func() {
 		t := mailcore.Tag{
 			Name:   strings.TrimSpace(name.Text),
 			Color:  strings.TrimSpace(color.Text),
@@ -297,7 +297,7 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 		}
 		win.Close()
 	})
-	cancel := widgets.NewButton("Cancel", func() { win.Close() })
+	cancel := newButton("Cancel", func() { win.Close() })
 	hint := "Color is #rrggbb. Unread, Starred, and Attachment cannot be renamed or removed."
 	if nameLocked {
 		hint = initial.Name + " is a system tag. You can change its color."
@@ -340,7 +340,7 @@ func prefsSignatures(win *app.Window, cli *mailcore.Client) widget.Component {
 			status.SetText("")
 		}
 	})
-	save := widgets.NewButton("Save signature", func() {
+	save := newButton("Save signature", func() {
 		i := pick.Selected
 		if i < 0 || i >= len(idents) {
 			return
@@ -392,7 +392,7 @@ func prefsPrivacy(a *app.Application, win *app.Window, cli *mailcore.Client, onC
 		}
 		return senders[row]
 	}, func(int) { remove.SetEnabled(table.Selected >= 0 && table.Selected < len(senders)) })
-	remove = widgets.NewButton("Remove", func() {
+	remove = newButton("Remove", func() {
 		i := table.Selected
 		if i < 0 || i >= len(senders) {
 			return
@@ -474,7 +474,7 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 			show(cur)
 		}
 	}
-	move = widgets.NewButton("", func() {
+	move = newButton("", func() {
 		cur, err := cli.SecretsStatus()
 		if err != nil {
 			return
@@ -485,7 +485,7 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		}
 		openStoreChooser(a, cli, intro, cur, refresh)
 	})
-	change = widgets.NewButton("Change passphrase…", func() { openPassphrase(a, cli, passChange, refresh) })
+	change = newButton("Change passphrase…", func() { openPassphrase(a, cli, passChange, refresh) })
 	show(st)
-	return widgets.NewColumn(widgets.NewTitle("Passwords"), note, widgets.NewRow(move, change).WithGap(8)).WithGap(8)
+	return widgets.NewColumn(widgets.NewTitle("Passwords"), note, foldRow(move, change)).WithGap(8)
 }

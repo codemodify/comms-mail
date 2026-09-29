@@ -281,19 +281,19 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		})
 	}
 
-	google := widgets.NewButton("Sign in with Google", func() { runOAuth("google", "loopback") })
-	ms := widgets.NewButton("Sign in with Microsoft", func() { runOAuth("microsoft", "loopback") })
-	device := widgets.NewButton("Device code…", func() {
+	google := newButton("Sign in with Google", func() { runOAuth("google", "loopback") })
+	ms := newButton("Sign in with Microsoft", func() { runOAuth("microsoft", "loopback") })
+	device := newButton("Device code…", func() {
 		p := mailcore.ProviderForAddress(addr.Text)
 		if p == "" {
 			p = "google"
 		}
 		runOAuth(p, "device")
 	})
-	test := widgets.NewButton("Test connection", func() { runProbe(false, 0) })
-	save := widgets.NewButton("Save account", savePass)
+	test := newButton("Test connection", func() { runProbe(false, 0) })
+	save := newButton("Save account", savePass)
 	save.Primary = true
-	cancel := widgets.NewButton("Cancel", func() { win.Close() })
+	cancel := newButton("Cancel", func() { win.Close() })
 
 	form := widgets.NewColumn(
 		widgets.NewTitle("Add account"),
@@ -314,9 +314,9 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 	// Three rows, so the narrowest window still shows every button: the
 	// sign-in choices, device code and testing, then the dialog's own. The
 	// form scrolls; the buttons stay put.
-	signIn := widgets.NewRow(google, ms).WithGap(8)
+	signIn := foldRow(google, ms)
 	box := widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)
-	tools := widgets.NewPad(8, widgets.NewColumn(signIn, widgets.NewRow(device, test).WithGap(8), box).WithGap(8))
+	tools := widgets.NewPad(8, widgets.NewColumn(signIn, foldRow(device, test), box).WithGap(8))
 	chrome := widgets.NewTitleBar("Add account", "IMAP or POP3 · Test connection · typed password or OAuth · mail.json 0600")
 	scroll := widgets.NewScrollView(widgets.NewPad(12, form))
 	root := widgets.NewColumn(chrome, scroll, tools, status).WithGap(0)

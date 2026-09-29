@@ -81,18 +81,40 @@ func TestRenameAndSubfolderFromTheFolderMenu(t *testing.T) {
 		t.Fatalf("no subfolder Acme under %s (now showing %s)", f.ID, s.folder)
 	}
 
-	// A name that is taken is refused: a warning says why, and then the
-	// prompt comes back with what was typed.
+	// A name that is taken is refused where it was typed: the prompt stays
+	// up with the name in it and the server's reason under the field, and
+	// the button says what it does.
 	fillAndSubmit(t, a, w, func() { s.renameFolder(f) }, "Archives")
 	if f2, _, _ := s.cli.GetFolder(f.ID); f2.Name != "Clients 2026" {
 		t.Fatalf("a taken name was accepted: %q", f2.Name)
 	}
-	if w.Overlay() == nil || promptField(w) != nil {
-		t.Fatal("no warning saying why")
+	field := promptField(w)
+	if field == nil || field.Text != "Archives" {
+		t.Fatal("the prompt closed, or lost the name")
 	}
-	pressPrimary(t, a, w)
-	if again := promptField(w); again == nil || again.Text != "Archives" {
-		t.Fatal("the prompt did not come back with the name")
+	var labels []string
+	var accept string
+	widget.Walk(w.Overlay(), func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.Label:
+			if v.Visible() && v.Text != "" {
+				labels = append(labels, v.Text)
+			}
+		case *widgets.Button:
+			if v.Primary {
+				accept = v.Text
+			}
+		}
+	})
+	if accept != "Rename" {
+		t.Fatalf("the button says %q", accept)
+	}
+	said := false
+	for _, l := range labels {
+		said = said || strings.Contains(strings.ToLower(l), "exist") || strings.Contains(strings.ToLower(l), "already")
+	}
+	if !said {
+		t.Fatalf("no reason under the field: %q", labels)
 	}
 }
 

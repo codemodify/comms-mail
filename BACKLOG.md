@@ -9,10 +9,10 @@ new ones turn up.
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
 - **Emoji, Greek, Cyrillic and CJK show as ▯** — the toolkit has no font
-  fallback, and 0.22.1 states that as its rule (uitoolkit-gaps.md #2);
-  very visible in subjects and bodies.
-- **Table cells lose their formatting** in the Markdown view — bold and
-  links in a cell come out plain (uitoolkit-gaps.md #24).
+  fallback and has declined it for good (uitoolkit-gaps.md #2): comms-mail
+  has to plan around it. Very visible in subjects and bodies.
+- **Tables whose cells wrap overlap** in the Markdown view — the next row
+  is drawn over a wrapped row's second line (uitoolkit-gaps.md #32).
 
 ## Calendar invitations
 - **Conflicts** — no "you are busy then" hint: comms-mail has no calendar
@@ -23,14 +23,7 @@ new ones turn up.
   the calendar application.
 
 ## Compose
-- **Square recipient chips** — asked for; the toolkit draws chips as
-  capsules even in a square theme and has no option (uitoolkit-gaps.md
-  #26).
 - **Spell check.**
-- **Space under the Write form** — with recipients that fold onto more
-  lines at the field's asked-for width than in the window, the form keeps
-  the taller height (uitoolkit-gaps.md #22); and a chip can cut its
-  address short with "…" (#20). Both cosmetic, both the toolkit's.
 - **HTML compose** — the editor is plain text only; replying to HTML loses
   its formatting.
 
@@ -57,14 +50,14 @@ new ones turn up.
   thousands. Loading the text from `mail.db` on demand would fix it.
 
 ## Icons
-- **Icons on every menu row and button** — asked for. Every tool bar
-  button has one, and so does every menu row that a toolkit icon fits.
-  Waiting for more icons and an icon on Button (uitoolkit-gaps.md #27):
-  Delete, Delete Folder…, Empty Trash (trash); Archive; Print; Add sender
-  to VIP (user); Settings; Quit, Close, Close Window, Close Tab, Close
-  Other Tabs (close / x); Notify (bell); Remove Account…, Compact Folder,
-  Select All, the View submenu; and every dialog's buttons. Tag and Junk
-  use stand-ins (a flag, a warning sign) until tag and junk icons exist.
+- **A few rows still without an icon** — Compact Folder, Select All,
+  Body as plain text, Run Now, Unlock / Protect and the toggles (Turn Off,
+  Less / More): no toolkit icon means what they do. Buttons with icons are
+  wide (uitoolkit-gaps.md #29), so their rows fold in narrow windows.
+- **Icons after a toolkit update** — the icon packs are copied into
+  `~/.config/uitoolkit/icons/` by hand; until they are, new icons draw as
+  "no icon" (uitoolkit-gaps.md #33). heroicons' Reply All is a share mark
+  (#34).
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header

@@ -97,13 +97,16 @@ func TestMessageMenu(t *testing.T) {
 	if j := byText["Junk"]; j == nil || j.Shortcut != "J" {
 		t.Fatalf("junk row %+v", j)
 	}
-	if d := byText["Delete"]; d == nil || d.Icon == style.IconCut {
-		t.Fatal("Delete is shown with scissors")
+	if d := byText["Delete"]; d == nil || d.Icon != style.IconTrash {
+		t.Fatal("Delete should show the bin")
 	}
-	if icons < 10 {
-		t.Fatalf("only %d rows have icons", icons)
+	for text, it := range byText {
+		if it.Icon == style.IconNone {
+			t.Errorf("%q has no icon", text)
+		}
 	}
-	if mv := byText["Move to"]; mv == nil || mv.Icon != style.IconOpen || len(mv.Submenu) == 0 || mv.Submenu[0].Icon != style.IconOpen {
+	_ = icons
+	if mv := byText["Move to"]; mv == nil || mv.Icon != style.IconFolder || len(mv.Submenu) == 0 || mv.Submenu[0].Icon != style.IconFolder {
 		t.Fatal("Move to and its folders should carry the folder icon")
 	}
 }

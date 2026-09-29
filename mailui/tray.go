@@ -33,16 +33,29 @@ func (s *session) attachTray() {
 			Menu: app.StatusMenuFromItems([]*widgets.MenuItem{
 				widgets.ItemIcon(style.IconMail, "Show Mail", s.showMain),
 				widgets.Sep(),
-				widgets.Item("Quit", s.quitFromTray),
+				widgets.ItemIcon(style.IconQuit, "Quit", s.quitFromTray),
 			}),
 			OnClick:       s.showMain,
 			OnNotifyClick: s.showMain,
 		})
 		if err == nil && item != nil {
 			s.setStatusItem(item)
-			if s.win != nil && item.Alive() {
-				s.win.SetCloseHides(true)
+			// Closing hides the window only while a tray shows the icon to
+			// bring it back: a session bus is not a tray (GNOME without an
+			// AppIndicator extension has one and no tray). A tray that
+			// goes away while the window is hidden puts the window back.
+			if s.win != nil {
+				s.win.SetCloseHides(item.Shown())
 			}
+			item.SetOnShownChange(func(shown bool) {
+				if s.win == nil || s.win.Closed() {
+					return
+				}
+				s.win.SetCloseHides(shown)
+				if !shown {
+					s.win.Show()
+				}
+			})
 		}
 	}
 	// Subscribe after the tray is published so the event goroutine sees it.
@@ -126,7 +139,7 @@ func (s *session) showMain() {
 		}
 		s.win = win
 		win.SetContent(s.build())
-		if it := s.statusItem(); it != nil && it.Alive() {
+		if it := s.statusItem(); it != nil && it.Shown() {
 			win.SetCloseHides(true)
 		}
 	}

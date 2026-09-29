@@ -5,6 +5,7 @@ import (
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/paintengine2d"
+	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
@@ -50,8 +51,8 @@ func (s *session) setupTabs(main widget.Component) {
 			return false
 		}
 		widgets.ShowContextMenu(s.tabs, at,
-			widgets.ItemAccel("Close Tab", "Ctrl+W", func() { s.tabs.CloseTab(i) }),
-			widgets.Item("Close Other Tabs", func() { s.closeTabsExcept(i) }),
+			iconItem(style.IconClose, "Close Tab", "Ctrl+W", func() { s.tabs.CloseTab(i) }),
+			iconItem(style.IconClose, "Close Other Tabs", "", func() { s.closeTabsExcept(i) }),
 		)
 		return true
 	}

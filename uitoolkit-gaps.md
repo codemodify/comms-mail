@@ -6,8 +6,10 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.22.1** (2026-09-29). 0.22 closed
-sixteen of the first seventeen; what comms-mail now uses for each is under
+Last checked against **uitoolkit v0.22.2** (2026-09-29). 0.22 closed
+sixteen of the first seventeen; 0.22.2 closed eight of the next ten, and
+half of each of the other two (#19, #24). Checking 0.22.2 turned up seven
+new items (#29–#35). What comms-mail uses for each closed item is under
 **Resolved**.
 
 ## Open
@@ -18,162 +20,169 @@ glyphs) has Latin only — no Greek, no Cyrillic, no CJK — and nothing
 falls back to another face for a rune it lacks, so a subject in Russian,
 Greek or Japanese is a row of boxes in the message list, and so are the
 emoji that marketing mail and people alike put in subjects ("👀", "🥳").
-0.22.1's docs/contracts.md now states this as the rule ("One face draws
-everything"), which is honest, and comms-mail keeps to its side of it
-(marks are icons, never characters). But a mail client shows other
-people's text, which it cannot choose.
-**Fix:** a fallback for *text content* — a label's, a table cell's, rich
-text's — to installed faces that have the rune (Noto Sans for the scripts,
-Noto Color Emoji), as browsers and every other toolkit do. The interface's
-own strings can stay one face.
+comms-mail keeps to its side of the rule (marks are icons, never
+characters), but a mail client shows other people's text, which it cannot
+choose.
+**Fix asked for:** a fallback for *text content* to installed faces that
+have the rune.
 
-### 18. Icons: heroicons' forward is fast-forward; the drawn paperclip is a box; no filled star or dot
-Checked with the 0.22 marks in comms-mail's message list:
-- **heroicons' `forward.png` is the media fast-forward** (two triangles),
-  not a mail forward arrow. lucide, material-symbols, phosphor and
-  tabler all draw a forward arrow. heroicons is the pack comms-mail's
-  owner uses.
-- **The drawn (classic / sharp) paperclip reads as a rounded box** at list
-  size (20 px): nested rounded rectangles, no clip shape. The star and the
-  envelope drawn beside it are clear.
-- #16 asked for a filled star and a dot. There is one star (an outline),
-  so "starred" is an outline star in amber; and no dot, so comms-mail
-  marks unread with the envelope (`IconMail`), which works.
-**Fix:** heroicons' `arrow-uturn-right` as its forward; a drawn paperclip
-with the clip's bend; `IconStarFilled` (or a filled variant) and a dot.
+**Declined, and settled** (2026-09-29, second time of asking). One face
+draws everything; a rune it lacks is a box. docs/contracts.md states it
+at length and names the answer for a product that cannot live with it —
+Qt or GTK, which have shaping engines. This will not be reopened, so
+comms-mail should plan around it rather than around its arriving.
 
-### 19. TokenField cuts a quoted name at its comma
-`TokenField.splitInput` ends a token at every separator, including one
-inside a quoted display name: typing or pasting `"Doe, Jane"
-<jane@example.com>,` gives `"Doe` (refused by Accept) and then
-`"Doe Jane" <jane@example.com>` with the comma lost. Names with commas are
-common in address books ("Last, First"). comms-mail replaces the editor's
-OnInput with its own split that reads the address grammar (quotes,
-comments, angle brackets).
-**Fix:** a `Split func(text string) (done []string, rest string)` on
-TokenField, or have the default split skip separators inside `"…"`,
-`(…)` and `<…>`.
+### 19. TokenField cuts a quoted name at its comma — still, while typing
+0.22.2 honours quotes: pasting `"Doe, Jane" <jane@example.com>, bob@x.org,`
+gives the two chips it should. But an unclosed quote is read as no quote
+("the user is still typing"), and while someone *types* that address the
+quote is unclosed at the moment the comma is typed — so the comma splits,
+`"Doe` is refused, and the comma is gone: the chip comes out as
+`"Doe Jane" <jane@example.com>`. Verified on 0.22.2 with `Window.Type` on
+a bare TokenField (Accept = a mail-address check). Comments (`(Smith, J)`)
+and angle brackets are not skipped either.
+comms-mail keeps its own split, which treats an open quote as open (the
+comma stays in it until the quote is closed) and skips `(…)` and `<…>`.
+**Fix:** while a quote is open at the end of the text, do not split inside
+it — the separator can only end the value once the quote is closed. (A
+stray `"` then holds splitting until it is closed or deleted, which the
+user can see in the editor.)
 
-### 20. A chip cuts its own text short
-`Token.Measure` returns a fractional width (`2*pad + Advance(text) +
-cross`); the bounds it is arranged in are whole pixels; `Token.Paint` then
-finds `Advance(text) > room` by the fraction and ellipsizes. So a chip
-sized for its text shows "Bob <bob@example.or…" — about one chip in two,
-depending on the text. Seen in comms-mail's To field.
-**Fix:** round the measured width up (as Grid's `ceilPx` does), or fit
-with a small tolerance.
+### 24. Rich-text tables: a wrapped cell overlaps the next row
+0.22.2 closed what was asked: a cell keeps its bold and its links, and the
+block after a table gets its space (verified). Laying cells out as
+paragraphs brought two new problems, #31 and #32 below.
 
-### 21. TokenField measured without a width asks for every chip on one line
-`TokenField.Measure` with no MaxW returns the width of all the chips in a
-row. A `Form` sizes its field column from that (Grid measures columns
-unbounded), and a Flex track never goes below its content, so three
-addresses push the Write window's form past the window's edge, clipped.
-comms-mail's recipient field reports a text field's width (400 px) when no
-width is offered, and wraps to the width it is given.
-**Fix:** when unbounded, report a field's preferred width (or the widest
-chip), since the field can wrap; its height-for-width answer is what
-matters.
+### 29. `Button.Icon` makes a button an icon-and-a-half wider
+The documented trade-off (the label stays centred, so a strip is reserved
+at *both* ends) costs about 64 px at 1x per button: "No" is 124 px wide,
+"Maybe" 150. Rows that fitted the narrowest windows stopped fitting as
+soon as their buttons got icons — in comms-mail the invitation's answers,
+Settings' account and filter rows, the Add account sign-in row, the
+rule editor's Remove, and the remote-images bar (caught by comms-mail's
+minimum-size test). comms-mail folds those rows with `widgets.Wrap` and
+made the rule editor's Remove an icon-only tool button.
+**Fix:** a leading-icon layout that moves the label over by one strip
+rather than reserving two — through a label rect the engine draws into
+(`DrawButton` taking the text's box), or an opt-in `IconLeading` for
+looks whose label treatment tolerates it.
 
-### 22. Grid measures its rows at the columns' natural widths, not the width it is offered
-`Grid.Measure` computes `columns(-1)` and, while their sum fits in MaxW,
-measures every row at those natural widths; only `Arrange` gives a Flex
-column the rest of the width. A child whose height depends on its width
-(a chip field, a wrapping label) is measured narrow and tall, then
-arranged wide and short, and the form is left taller than what it draws —
-blank space under comms-mail's Write form when the recipients wrap at
-400 px but not in the window.
-**Fix:** when MaxW is given, measure rows at `columns(c.MaxW)` — the
-widths Arrange will use.
+### 30. `uitoolkit.Version` still says 0.22.1 in the 0.22.2 release
+`version.go` at tag v0.22.2 (aee5242) is `const Version = "0.22.1"`, so
+every application that shows the toolkit's version (comms-mail's Write
+window and status bar) shows the wrong one.
+**Fix:** bump it with the release; a test that compares it with the
+latest `release:` note would keep it from drifting.
 
-### 23. ClassifyImageSrc reads `//host/x.gif` as a local file
-A protocol-relative address has no scheme, so `ClassifyImageSrc` returns
-`ImageLocal`. It is a network fetch (the page's scheme, http or https),
-and tracking pixels use it. An application that trusts the classification
-would either treat a tracker as a local file or never offer to load a
-real remote image. comms-mail counts `//` as remote itself.
-**Fix:** `//` → `ImageRemote`.
+### 31. A table's header row is laid out as a level-1 heading
+`layoutTableRow` lays a header row's cells out with
+`kind = richtext.Heading` and the row's `Level`, which the HTML parser
+sets to 1 for `<th>` — so a header cell is an H1: title-sized, where it
+should be bold at the body's size. "Item / Price / Notes" come out as
+headlines, and "Price" breaks mid-word in a narrow column.
+comms-mail writes a Markdown table's header row as `<td><b>…</b></td>`
+until this is fixed.
+**Fix:** a header cell in the table face, bold.
 
-### 24. Rich-text table cells are drawn as plain text, on one line
-The model keeps each cell's spans (`Block.Cells [][]Span`), but
-`RichText.layoutTableRow` draws a cell as `CellText(j)` — its plain text —
-in one face, fitted to one line with "…". So bold, italics, code and links
-in a `<td>` are lost on screen (a newsletter's table of links loses its
-links; a Markdown table's `**bold**` cell is plain), and a long cell is cut
-rather than wrapped. Separately, `spacing` gives a TableRow no space after
-it, so the block that follows a table (a quote's rule) starts right under
-its last row.
-**Fix:** lay a cell's spans out like a paragraph's, wrapped to the column's
-width (the row as tall as its tallest cell); paragraph spacing after the
-last row of a run.
+### 32. A table row whose cells wrap is overlapped by the next row
+With cells now wrapping, a row two lines tall is drawn two lines tall but
+the next row starts one line below its top, over its second line; the
+column rules are drawn beside the first line only. Seen in comms-mail's
+Markdown view with this, at 1280×800 in the reading pane:
 
-### 25. Prompt closes before the caller can refuse the value, and its button is always OK
-`Prompt` dismisses on OK and then reports the value, so a name the
-server refuses ("a folder with that name exists") cannot be shown in the
-prompt: comms-mail shows a warning and then opens the prompt again with
-what was typed. And the accept button is "OK" where the action has a name
-("Rename", "Create") — the button names the action in every desktop's
-guidelines.
-**Fix:** a `Validate func(string) error` that keeps the prompt up with the
-error under the field (asynchronous would be better still: the check is a
-server round trip), and an accept label.
+```markdown
+| Item | Price | Notes |
+| --- | --- | --- |
+| **Tea** | £3 | see [the list](https://example.com/list) and `code` |
+| Cake with a long name that should wrap inside its cell | £4.50 | |
+```
 
-### 26. A chip is always a capsule, even in a square-cornered theme
-`Token.Paint` takes half the chip's height as its radius and uses the
-look's radius only when it is smaller **and above zero**
-(`if m := lk.Metrics().Radius; m > 0 && m < rad`). A square-cornered
-theme — Metal, which comms-mail's owner uses, has `Radius` 0, as does any
-look with `corners: square` — therefore gets round capsules, the opposite
-of what the comment above that line says it intends ("a square-cornered
-era gets square chips"). There is also no way for an application to ask
-for square chips in a rounded theme. The owner asked for square chips in
-the Write window; comms-mail cannot draw them without redrawing the chip.
-**Fix:** `m >= 0` (zero radius is square); and a `ChipRadius` (or shape)
-on TokenField / Token for an application that wants its own.
+"and code" (Tea's second line) is drawn on the same line as "Cake…", and
+"wrap inside its cell" sits under the Cake row outside its rules. After a
+resize the header row overlaps the first row too. `layoutTableRow`
+computes a multi-line row's height (`lay.h` covers every line); where the
+next row's top comes from was not traced. comms-mail has no workaround.
+**Fix:** position each row by the laid-out height of the rows above it;
+draw the column rules for the row's full height.
 
-### 27. Too few icons to put on menus and buttons, and Button has none
-`ToolIcon` has 23 ids. A mail client's menus need more, and most of them
-are already PNGs in the five shipped sets (ShippedIconStems) with no id
-to name them by: **trash** (Delete), **archive**, **junk**, **tag**,
-**folder** (Move to), **reply-all**, **settings**, **external-link**
-(Open HTML, open in browser), **eye** (Show Images), **user** (VIP),
-**bell** (Notify), **send**, **close** / **x** (Close, Close Tab, Close
-Window), **quit**. **print** is not shipped at all. There is no
-way to draw a stem by name either (`ToolIconByName` knows the 23), so an
-application cannot use the PNGs that are there. And `widgets.Button` has
-no `Icon` — only ToolButton and MenuItem do — so a dialog's buttons cannot
-carry one (KDE puts icons on OK, Cancel, Apply, Save).
-comms-mail uses the ids that fit (open, reply, forward, check, mail, star,
-mute, save, attach, download, new, pen, undo, info) and two stand-ins
-(tag → flag, junk → warning); Delete, Archive, Move to, Print, VIP,
-Settings and Quit have no icon, and the action row under a message uses
-ToolButtons to get icons at all.
-**Fix:** ids for the stems above (and a print icon), `IconByStem(name)`
-for the rest, and `Button.Icon`.
+### 33. Icon packs installed before an update go stale, and new icons draw as "no icon"
+The premiere packs are not embedded: they are read from
+`~/.config/uitoolkit/icons/<set>/`, which the README says to refresh by
+copying `icons/*` by hand after every pull. Until someone does, every
+application on the machine draws the old art (heroicons' forward stayed
+the fast-forward the 0.22.2 notes say was fixed) and the **no-icon**
+placeholder for every icon added since (`heroicons missing print.png,
+using no-icon`). An application cannot ship an update that uses a new
+icon without its users running a copy they have never heard of.
+comms-mail's owner had packs installed on 2026-09-13; they were refreshed
+by hand for this check.
+**Fix:** embed the premiere packs and use the installed copy only as an
+override, or fall back to the embedded PNG for a stem the installed copy
+lacks; at the least, have the Settings app refresh an installed premiere
+pack whose files are older than the library's.
 
-### 28. Withdrawn
-Filed as "nothing lays controls out in a row that wraps". Wrong:
-`widgets.Wrap` does exactly that and has since v0.20.0
-(docs/widgets.md, Layout and structure). comms-mail uses it.
+### 34. heroicons' reply-all is a share icon
+`icons/heroicons/reply-all.png` (0.22.2) is the three-linked-dots share
+mark, not a reply-all arrow; the other four packs draw a double reply
+arrow. comms-mail uses `IconReplyAll` in the message menu.
+**Fix:** heroicons has no reply-all — two `arrow-uturn-left`s offset, as
+the other packs do it.
+
+### 35. An asynchronous check in a prompt needs a keep-open trick
+`MessageBoxInput.Validate` runs on the UI goroutine; for a check that is a
+round trip (the mail server refusing a folder name) its docs say to keep
+the dialog up and call `SetInputError` when the answer comes. There is no
+way to say "keep it up" other than returning a non-nil error — comms-mail
+returns `errors.New("")`, which shows no message — no busy state for the
+button while the answer is on its way (a second press has to be ignored
+by the caller), and no call to close the box with its result; comms-mail
+closes it with `widget.DismissOverlay(mb.Overlay())`, so `OnResult` never
+runs. It works; it is not a pattern anyone would find.
+**Fix:** `ValidateAsync func(string, done func(error))`, with the accept
+button busy until `done`, and the box closing with its result on nil.
 
 ## Resolved
 
-Closed in 0.22, and how comms-mail uses each.
+### Closed in 0.22.2
+
+| # | Gap | 0.22.2 | In comms-mail |
+| --- | --- | --- | --- |
+| 18 | heroicons' forward was fast-forward; the drawn paperclip a box; no filled star or dot | heroicons' forward is `arrow-turn-up-right`; the drawn paperclip is a hairpin that reads at 20 px; `IconStarFilled` and `IconDot`, drawn by the toolkit in every set | Starred rows show the filled star in amber, unread rows the dot; checked in the drawn set and in all five packs (heroicons after #33's copy) |
+| 20 | A chip cut its own text short | `Token.Measure` asks for whole pixels | Checked: every chip shows its whole address |
+| 21 | TokenField measured without a width asked for every chip on one line | A field's width, `TokenField.PreferredWidth`, the widest chip as the floor | comms-mail's own width override is gone |
+| 22 | Grid measured rows at natural widths | Tracks that fold are told from tracks that cannot by height; rows measured at the widths `Arrange` uses | Checked: no space left under the Write form with several recipients |
+| 23 | `//host/x.gif` read as a local file | `ImageRemote` | comms-mail's own classification is gone; the resolver uses the toolkit's kind |
+| 25 | A prompt could not refuse a value or name its button | `Validate`, `AcceptLabel`, `SetInputError`, `PromptFor` | New Folder says Create, Rename Folder Rename; a name the server refuses is said under the field with the name still there (see #35) |
+| 26 | Chips were capsules in square packs | Zero is a radius; 41 of 135 packs draw square chips | Checked in metal-steel, the owner's pack |
+| 27 | Too few icons; none on Button | 15 typed ids plus `IconStarFilled` and `IconDot`, `IconByStem`, `Button.Icon` | Every menu row, tool bar button and dialog button with a meaning an icon has, through one verb-to-icon table; only typed ids, since a stem draws no-icon in the drawn sets (see #29, #33, #34) |
+
+Also taken up from 0.22.2: `StatusItem.Shown` — comms-mail closes to the
+tray only while a tray shows its icon, and puts the window back if the
+tray goes away.
+
+### Withdrawn
+
+**28.** Filed as "nothing lays controls out in a row that wraps". Wrong:
+`widgets.Wrap` does exactly that and has since v0.20.0 (docs/widgets.md,
+Layout and structure). comms-mail uses it.
+
+### Closed in 0.22
 
 | # | Gap | 0.22 | In comms-mail |
 | --- | --- | --- | --- |
 | 1 | No focus-preserving completion popup | `widget.SetPopupKeysPass` | The address suggestions float over the Write window while typing goes on in the field |
 | 3 | Image placeholder is an empty box | Alt text in the placeholder | Blocked remote images show their alt text |
 | 4 | ResolveImage can't tell inline from remote; no image list | `ResolveImageKind`, `Doc.Images` | The reading views ask the document for its images; the regex is gone |
-| 5 | No chip field | `TokenField` | To / Cc / Bcc are chips (with #19–#21 worked around) |
-| 6 | No per-tab hide | `SetTabVisible` | The HTML tab is there only for mail with HTML |
+| 5 | No chip field | `TokenField` | To / Cc / Bcc are chips |
+| 6 | No per-tab hide | `SetTabVisible` | Used for the HTML tab, since replaced by an Open HTML button |
 | 7 | `SetText` leaves the caret at 0 | Caret at the end | Nothing to change (tests only) |
 | 8 | No height for N rows | `HeightForRows` | Sizes the suggestion popup |
 | 9 | No folder-picking dialog | `FileOpenFolder` | Import's Add a folder…, Save All |
-| 10 | No prompt dialog | `Prompt` / `MessageBoxOptions.Input` | New Folder, Rename Folder (with #25 worked around) |
+| 10 | No prompt dialog | `Prompt` / `MessageBoxOptions.Input` | New Folder, Rename Folder |
 | 11 | Wrapping label clipped in a row | Height-for-width in Flex | Nothing to change: the invite card's title had been given its own line |
 | 12 | No suggested name for Save | `FileDialogOptions.Name` | Save message as, Save As |
 | 13 | A text field takes a file drop | Files go to whoever takes files | Files dropped on the message text are attached (tested) |
 | 14 | ScrollView cannot shrink to its content | `ShrinkToContent` | The reading pane's header |
 | 15 | A missing theme turns dark silently | `Appearance.Missing`, `MissingThemeNote`, light fallback | The startup line uses it |
-| 16 | No icons in cells, headers, tree nodes | `CellIcon`, `TableColumn.Icon`, `TreeNode.Icon`, seven mail icons | Star, paperclip, status (unread / forwarded / replied), muted bell; filter pins; attachment rows (see #18) |
-| 17 | Rich text has no tables or quotes | Table, Quote and Rule blocks | The Markdown view draws tables, quotes and rules (see #24) |
+| 16 | No icons in cells, headers, tree nodes | `CellIcon`, `TableColumn.Icon`, `TreeNode.Icon`, seven mail icons | Star, paperclip, status, muted bell; filter pins; attachment rows |
+| 17 | Rich text has no tables or quotes | Table, Quote and Rule blocks | The Markdown view draws tables, quotes and rules |

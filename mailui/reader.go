@@ -93,7 +93,7 @@ func newReader(s *session) *reader {
 	r.attAll.Tip = "Save every attachment in a folder"
 	// Nothing of the HTML is drawn in the window: it opens in the browser,
 	// as it was sent (views.go).
-	r.htmlBtn = widgets.NewToolButton("Open HTML", style.IconOpen, r.openHTML)
+	r.htmlBtn = widgets.NewToolButton("Open HTML", style.IconExternalLink, r.openHTML)
 	r.htmlBtn.Tip = "Open the message as it was sent, in your browser. Its remote images load there, " +
 		"which tells the sender you opened it; scripts are blocked."
 	// It folds onto a second line in a narrow pane.

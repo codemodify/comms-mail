@@ -47,9 +47,9 @@ func newHTMLPane(s *session) *htmlPane {
 	p.rich = newReadOnlyRich(s.openLink)
 	p.rich.Placeholder = "This message has no HTML part."
 	p.notice = wrapLabel(remoteImagesNotice)
-	p.always = widgets.NewButton("Always", p.alwaysShow)
+	p.always = newButton("Always", p.alwaysShow)
 	p.bar = widgets.NewColumn(p.notice,
-		widgets.NewRow(widgets.NewButton("Show Images", p.showRemote), p.always).WithGap(8)).WithGap(4)
+		foldRow(newButton("Show Images", p.showRemote), p.always)).WithGap(4)
 	p.bar.SetVisible(false)
 	p.view = widgets.NewColumn(p.bar, p.rich).WithGap(4)
 	p.view.AddFlex(p.rich, 1)
@@ -194,8 +194,8 @@ func (p *htmlPane) alwaysShow() {
 // the user asked for it), a placeholder for everything else — a local
 // file is never read for a message.
 func (s *session) imageResolver(id mailcore.MessageID) func(string, richtext.ImageKind) *paintengine2d.Image {
-	return func(src string, _ richtext.ImageKind) *paintengine2d.Image {
-		switch imageKind(src) { // the toolkit's kind, but //host is remote
+	return func(src string, kind richtext.ImageKind) *paintengine2d.Image {
+		switch kind {
 		case richtext.ImageInline:
 			if rest, ok := cutFold(strings.TrimSpace(src), "cid:"); ok {
 				return s.images[cidKey(id, rest)]

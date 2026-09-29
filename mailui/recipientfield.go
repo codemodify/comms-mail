@@ -8,7 +8,6 @@ import (
 	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
@@ -351,25 +350,9 @@ func (rf *recipientField) moveSel(d int) {
 	rf.list.Invalidate()
 }
 
-// Measure asks, when no width is offered, for what one line of a text
-// field would — not for every chip on one line, which a form would give
-// it and run off the window with (uitoolkit-gaps.md #21). Given a width,
-// the chips wrap to it and the field is as tall as they need.
 func (rf *recipientField) Measure(c layout.Constraints) paintengine2d.Point {
-	if !c.HasMaxW() {
-		sz := rf.chips.Measure(layout.Constraints{MaxW: style.Dip(rf.Look(), fieldPrefW), MaxH: c.MaxH})
-		return c.Constrain(sz)
-	}
 	return rf.chips.Measure(c)
 }
-
-// fieldPrefW is the width a recipient field asks for when nothing says
-// how wide it can be. A Form sizes its rows at the width a field asks for
-// rather than the width it will have (uitoolkit-gaps.md #22), so the wider
-// this is, the less room is left over under the fields when chips fold
-// sooner at it than in the window; it stays inside the Write window's
-// narrowest width.
-const fieldPrefW = 400
 
 func (rf *recipientField) Arrange(r paintengine2d.Rect) {
 	rf.SetBounds(r)

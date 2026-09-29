@@ -158,17 +158,17 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 			},
 		})
 	}
-	addFolder := widgets.NewButton("Add a folder…", func() {
+	addFolder := newButton("Add a folder…", func() {
 		addFrom("Choose a mail folder", widgets.FileOpenFolder)
 	})
 	addFolder.Tip = "A Maildir, an MH folder or a folder of .eml files"
-	addFile := widgets.NewButton("Add a mailbox file…", func() {
+	addFile := newButton("Add a mailbox file…", func() {
 		addFrom("Choose a mailbox file", widgets.FileOpen)
 	})
 	addFile.Tip = "An mbox file"
 
 	var imp *widgets.Button
-	imp = widgets.NewButton("Import", func() {
+	imp = newButton("Import", func() {
 		var accounts []mailcore.AccountConfig
 		var stores []mailcore.LocalMailStore
 		var people []mailcore.Contact
@@ -239,7 +239,7 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 		})
 	})
 	imp.Primary = true
-	cancel := widgets.NewButton("Cancel", func() { win.Close() })
+	cancel := newButton("Cancel", func() { win.Close() })
 
 	scroll := widgets.NewScrollView(list)
 	body := widgets.NewColumn(

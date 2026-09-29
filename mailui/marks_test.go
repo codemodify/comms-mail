@@ -27,9 +27,9 @@ func TestListMarksAreIcons(t *testing.T) {
 		row, col int
 		want     style.ToolIcon
 	}{
-		{0, colStar, style.IconStar},
+		{0, colStar, style.IconStarFilled},
 		{0, colAttach, style.IconAttach},
-		{0, colStatus, style.IconMail},
+		{0, colStatus, style.IconDot},
 		{0, colTopic, style.IconNone},
 		{1, colStar, style.IconNone},
 		{1, colStatus, style.IconReply},

@@ -370,7 +370,7 @@ func (s *session) build() widget.Component {
 	s.cards.SetVisible(s.cardView)
 	s.listStack = widgets.NewStack(s.table, s.cards)
 	s.undoLabel = widgets.NewLabel("")
-	s.undoBar = widgets.NewRow(s.undoLabel, widgets.NewSpacer(), widgets.NewButton("Undo", s.undoLast)).WithGap(8)
+	s.undoBar = widgets.NewRow(s.undoLabel, widgets.NewSpacer(), newButton("Undo", s.undoLast)).WithGap(8)
 	s.undoBar.SetVisible(s.undo != nil)
 	if s.win != nil {
 		// Closing the window must not lose a move still in its undo window.
@@ -442,7 +442,7 @@ func (s *session) menuBar() *widgets.MenuBar {
 	layoutClassic := s.opts.Layout == LayoutClassic
 	return widgets.NewMenuBar(
 		widgets.NewMenu("M",
-			widgets.Submenu("&View",
+			withIcon(style.IconEye, widgets.Submenu("&View",
 				widgets.RadioItem("&Vertical (3-pane)", "layout", !layoutClassic, func() {
 					s.opts.Layout = LayoutVertical
 					s.rebuild()
@@ -469,13 +469,13 @@ func (s *session) menuBar() *widgets.MenuBar {
 					s.persistChrome()
 					s.refreshList()
 				}),
-			),
+			)),
 			widgets.Sep(),
-			s.notifyMenuItems(),
+			withIcon(style.IconBell, s.notifyMenuItems()),
 			widgets.Sep(),
-			widgets.ItemAccel("Settings", "Ctrl+,", s.openPrefs),
+			iconItem(style.IconSettings, "Settings", "Ctrl+,", s.openPrefs),
 			widgets.Sep(),
-			widgets.ItemAccel("&Quit", "Ctrl+Q", func() {
+			iconItem(style.IconQuit, "&Quit", "Ctrl+Q", func() {
 				s.commitUndoNow()
 				s.app.Quit()
 			}),
@@ -497,7 +497,7 @@ func (s *session) toolBar() *widgets.ToolBar {
 	s.qfBtn.Toggle = true
 	s.qfBtn.Down = s.opts.ShowFilter
 	s.allBtn = widgets.ToolToggle("All folders", s.searchAll, s.toggleSearchAll)
-	s.allBtn.Icon = style.IconOpen
+	s.allBtn.Icon = style.IconFolder
 	s.allBtn.Tip = "Search every folder, not just this one"
 	s.srv.btn = widgets.ToolToggle("On server", s.srv.on, s.toggleServerSearch)
 	s.srv.btn.Icon = style.IconMail
@@ -565,9 +565,8 @@ func (s *session) tagPopup(from widget.Component, p paintengine2d.Point) {
 	widgets.ShowContextMenu(from, p, items...)
 }
 
-// messageMenu is the right-click menu on a message. Rows carry an icon
-// where the toolkit has one for what they do (uitoolkit-gaps.md #27 for
-// the rest).
+// messageMenu is the right-click menu on a message; every row has an
+// icon.
 func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
 	star := "Star"
 	if m, ok := s.primary(); ok && m.Starred {
@@ -577,24 +576,30 @@ func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
 		iconItem(style.IconOpen, "Open in New Tab", "E", s.openInTab),
 		widgets.Sep(),
 		iconItem(style.IconReply, "Reply", "R", s.reply),
-		iconItem(style.IconReply, "Reply All", "Shift+R", s.replyAll),
+		iconItem(style.IconReplyAll, "Reply All", "Shift+R", s.replyAll),
 		iconItem(style.IconForward, "Forward", "F", s.forward),
 		widgets.Sep(),
 		iconItem(style.IconCheck, "Mark as Read", "M", func() { s.setRead(true) }),
-		iconItem(style.IconMail, "Mark as Unread", "", func() { s.setRead(false) }),
+		iconItem(style.IconDot, "Mark as Unread", "", func() { s.setRead(false) }),
 		iconItem(style.IconStar, star, "S", s.toggleStar),
 		widgets.Sep(),
-		&widgets.MenuItem{Text: "Tag", Shortcut: "T", Icon: style.IconFlag, Submenu: s.tagMenuItems()},
+		&widgets.MenuItem{Text: "Tag", Shortcut: "T", Icon: style.IconTag, Submenu: s.tagMenuItems()},
 		iconItem(style.IconMute, "Mute Thread", "", func() { s.muteThread(true) }),
-		widgets.Item("Add sender to VIP", s.addVIP),
-		widgets.ItemAccel("Archive", "A", s.archive),
-		&widgets.MenuItem{Text: "Move to", Icon: style.IconOpen, Submenu: s.moveMenu()},
-		iconItem(style.IconWarning, "Junk", "J", s.junk),
-		widgets.ItemAccel("Delete", "D", s.deleteSel),
+		iconItem(style.IconUser, "Add sender to VIP", "", s.addVIP),
+		iconItem(style.IconArchive, "Archive", "A", s.archive),
+		&widgets.MenuItem{Text: "Move to", Icon: style.IconFolder, Submenu: s.moveMenu()},
+		iconItem(style.IconJunk, "Junk", "J", s.junk),
+		iconItem(style.IconTrash, "Delete", "D", s.deleteSel),
 		widgets.Sep(),
-		widgets.ItemAccel("Print…", "Ctrl+P", s.printMessage),
+		iconItem(style.IconPrint, "Print…", "Ctrl+P", s.printMessage),
 		iconItem(style.IconSave, "Save As…", "", s.saveMessageAs),
 	)
+}
+
+// withIcon gives a menu row (a submenu, say) an icon.
+func withIcon(icon style.ToolIcon, it *widgets.MenuItem) *widgets.MenuItem {
+	it.Icon = icon
+	return it
 }
 
 // iconItem is a menu row with an icon and, when there is one, its key.
@@ -672,9 +677,9 @@ func (s *session) cellText(row, col int) string {
 	}
 }
 
-// cellIcon is a row's marks: the star, the paperclip, the status (unread,
-// forwarded or replied, in that order) and the muted bell before the
-// topic. Unread is also the row in bold.
+// cellIcon is a row's marks: the filled star, the paperclip, the status
+// (the unread dot, else forwarded or replied) and the muted bell before
+// the topic. Unread is also the row in bold.
 func (s *session) cellIcon(row, col int) (style.ToolIcon, paintengine2d.Color) {
 	var none paintengine2d.Color
 	if row < 0 || row >= len(s.rows) {
@@ -684,7 +689,7 @@ func (s *session) cellIcon(row, col int) (style.ToolIcon, paintengine2d.Color) {
 	switch col {
 	case colStar:
 		if m.Starred {
-			return style.IconStar, starColor
+			return style.IconStarFilled, starColor
 		}
 	case colAttach:
 		if m.HasAttach {
@@ -693,7 +698,7 @@ func (s *session) cellIcon(row, col int) (style.ToolIcon, paintengine2d.Color) {
 	case colStatus:
 		switch {
 		case !m.Read:
-			return style.IconMail, none
+			return style.IconDot, none
 		case m.Forwarded:
 			return style.IconForward, none
 		case m.Answered:
@@ -1017,19 +1022,19 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 		}
 		items := []*widgets.MenuItem{
 			iconItem(style.IconDownload, "Fetch", "", s.getMessages),
-			iconItem(style.IconNew, "New Folder…", "", s.newFolder),
+			iconItem(style.IconFolder, "New Folder…", "", s.newFolder),
 		}
 		if haveFolder && !folder.Virtual {
 			f := folder
 			if !f.NoSelect {
 				items = append(items, iconItem(style.IconCheck, "Mark Folder Read", "", func() { s.markFolderRead(f.ID) }))
 			}
-			items = append(items, iconItem(style.IconNew, "New Subfolder…", "", func() { s.newSubfolder(f) }))
+			items = append(items, iconItem(style.IconFolder, "New Subfolder…", "", func() { s.newSubfolder(f) }))
 			if folder.Kind == mailcore.FolderCustom {
 				items = append(items,
 					iconItem(style.IconPen, "Rename Folder…", "", func() { s.renameFolder(f) }),
-					&widgets.MenuItem{Text: "Move Folder To", Icon: style.IconOpen, Submenu: s.folderMoveMenu(f)},
-					widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
+					&widgets.MenuItem{Text: "Move Folder To", Icon: style.IconFolder, Submenu: s.folderMoveMenu(f)},
+					iconItem(style.IconTrash, "Delete Folder…", "", func() { s.confirmDeleteFolder(f) }))
 			}
 			if !f.NoSelect {
 				items = append(items, widgets.Item("Compact Folder", func() { s.compactFolder(f) }))
@@ -1037,8 +1042,8 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 		}
 		items = append(items,
 			widgets.Sep(),
-			widgets.Item("Remove Account…", s.removeCurrentAccount),
-			widgets.Item("Empty Trash", s.emptyTrash),
+			iconItem(style.IconUser, "Remove Account…", "", s.removeCurrentAccount),
+			iconItem(style.IconTrash, "Empty Trash", "", s.emptyTrash),
 		)
 		widgets.ShowContextMenu(tv, p, items...)
 	}
@@ -1681,7 +1686,7 @@ func (s *session) newSmartFolder() {
 	}
 	name := widgets.NewTextField("", "Folder name", nil)
 	query := widgets.NewTextField(s.filter.Query, "Search query", nil)
-	save := widgets.NewButton("Save", func() {
+	save := newButton("Save", func() {
 		sf, err := s.cli.PutSmartFolder(mailcore.SmartFolder{
 			Name:   strings.TrimSpace(name.Text),
 			Filter: mailcore.Filter{Query: strings.TrimSpace(query.Text), Unread: s.filter.Unread, Starred: s.filter.Starred, Attachment: s.filter.Attachment},
@@ -1697,7 +1702,7 @@ func (s *session) newSmartFolder() {
 		win.Close()
 	})
 	save.Primary = true
-	cancel := widgets.NewButton("Cancel", func() { win.Close() })
+	cancel := newButton("Cancel", func() { win.Close() })
 	// The fields scroll in a short window; Save and Cancel stay in view.
 	fields := widgets.NewScrollView(widgets.NewColumn(
 		widgets.NewTitle("Saved search"),
@@ -2017,7 +2022,7 @@ func (s *session) moveMenu() []*widgets.MenuItem {
 	walk = func(parent mailcore.FolderID, depth int) {
 		for _, f := range orderFolderChildren(byParent[parent]) {
 			f := f
-			it := iconItem(style.IconOpen, strings.Repeat("    ", depth)+f.Name, "", func() { s.moveTo(s.ids(), f) })
+			it := iconItem(style.IconFolder, strings.Repeat("    ", depth)+f.Name, "", func() { s.moveTo(s.ids(), f) })
 			it.Disabled = f.ID == s.folder
 			items = append(items, it)
 			walk(f.ID, depth+1)
@@ -2040,7 +2045,7 @@ func (s *session) folderMoveMenu(f mailcore.Folder) []*widgets.MenuItem {
 			byParent[x.Parent] = append(byParent[x.Parent], x)
 		}
 	}
-	top := iconItem(style.IconOpen, "Top Level", "", func() { s.moveFolder(f, "") })
+	top := iconItem(style.IconFolder, "Top Level", "", func() { s.moveFolder(f, "") })
 	top.Disabled = f.Parent == ""
 	items := []*widgets.MenuItem{top, widgets.Sep()}
 	var walk func(parent mailcore.FolderID, depth int)
@@ -2050,7 +2055,7 @@ func (s *session) folderMoveMenu(f mailcore.Folder) []*widgets.MenuItem {
 				continue // not into itself, nor anything inside it
 			}
 			x := x
-			it := iconItem(style.IconOpen, strings.Repeat("    ", depth)+x.Name, "", func() { s.moveFolder(f, x.ID) })
+			it := iconItem(style.IconFolder, strings.Repeat("    ", depth)+x.Name, "", func() { s.moveFolder(f, x.ID) })
 			it.Disabled = x.ID == f.Parent
 			items = append(items, it)
 			walk(x.ID, depth+1)
@@ -2355,7 +2360,7 @@ func (s *session) newSubfolder(parent mailcore.Folder) {
 
 func (s *session) createFolderNamed(acct string, parent mailcore.FolderID, title string) {
 	var made mailcore.Folder
-	askName(s.win.Content(), s.app, title, "Folder name", "", func(name string) error {
+	askName(s.win.Content(), s.app, title, "Folder name", "", "Create", func(name string) error {
 		f, err := s.cli.CreateFolder(acct, name, parent)
 		made = f
 		return err
@@ -2371,7 +2376,7 @@ func (s *session) createFolderNamed(acct string, parent mailcore.FolderID, title
 // renameFolder asks for a folder's new name. The folder keeps its messages,
 // its place in the tree, and — when it is the one showing — the view.
 func (s *session) renameFolder(f mailcore.Folder) {
-	askName(s.win.Content(), s.app, "Rename Folder", "New name for “"+f.Name+"”", f.Name, func(name string) error {
+	askName(s.win.Content(), s.app, "Rename Folder", "New name for “"+f.Name+"”", f.Name, "Rename", func(name string) error {
 		if name == f.Name {
 			return nil
 		}
@@ -2872,13 +2877,13 @@ func (s *session) showCenter() {
 func (s *session) buildAccountCentral() widget.Component {
 	s.acctTitle = widgets.NewTitle("Account Central")
 	s.acctBody = widgets.NewLabel("Use Settings or Account Central to add or remove stores. Open Inbox or pick a folder in the tree.")
-	get := widgets.NewButton("Fetch", s.getMessages)
-	write := widgets.NewButton("Write", s.write)
-	prefs := widgets.NewButton("Account Settings", s.openPrefs)
-	inbox := widgets.NewButton("Open Inbox", func() {
+	get := newButton("Fetch", s.getMessages)
+	write := newButton("Write", s.write)
+	prefs := newButton("Account Settings", s.openPrefs)
+	inbox := newButton("Open Inbox", func() {
 		s.goKind(mailcore.FolderInbox)
 	})
-	remove := widgets.NewButton("Remove account…", s.removeCurrentAccount)
+	remove := newButton("Remove account…", s.removeCurrentAccount)
 	return widgets.NewColumn(s.acctTitle, s.acctBody, widgets.NewSeparator(),
 		widgets.NewRow(get, write, inbox, prefs, remove).WithGap(8),
 	).WithGap(10).WithPad(16)
