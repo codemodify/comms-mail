@@ -47,7 +47,8 @@ func newRecipientField(placeholder string, fetch func(token string)) *recipientF
 	rf.chips.Accept = validRecipient
 	ed := rf.chips.Editor()
 	// The field's own split cuts at a comma inside a quoted name
-	// ("Doe, Jane" <jane@example.com>); this one reads the address grammar.
+	// ("Doe, Jane" <jane@example.com>, uitoolkit-gaps.md #19); this one
+	// reads the address grammar.
 	ed.OnInput = rf.splitTyped
 	ed.OnChange = func(string) { rf.onEdit() }
 	commit := ed.OnFocusLost
@@ -352,8 +353,8 @@ func (rf *recipientField) moveSel(d int) {
 
 // Measure asks, when no width is offered, for what one line of a text
 // field would — not for every chip on one line, which a form would give
-// it and run off the window with. Given a width, the chips wrap to it and
-// the field is as tall as they need.
+// it and run off the window with (uitoolkit-gaps.md #21). Given a width,
+// the chips wrap to it and the field is as tall as they need.
 func (rf *recipientField) Measure(c layout.Constraints) paintengine2d.Point {
 	if !c.HasMaxW() {
 		sz := rf.chips.Measure(layout.Constraints{MaxW: style.Dip(rf.Look(), fieldPrefW), MaxH: c.MaxH})
@@ -364,7 +365,7 @@ func (rf *recipientField) Measure(c layout.Constraints) paintengine2d.Point {
 
 // fieldPrefW is the width a recipient field asks for when nothing says
 // how wide it can be. A Form sizes its rows at the width a field asks for
-// rather than the width it will have (uitoolkit-gaps.md), so the wider
+// rather than the width it will have (uitoolkit-gaps.md #22), so the wider
 // this is, the less room is left over under the fields when chips fold
 // sooner at it than in the window; it stays inside the Write window's
 // narrowest width.

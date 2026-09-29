@@ -3,169 +3,134 @@
 Gaps and rough edges in [uitoolkit](https://github.com/codemodify/uitoolkit)
 hit while building this mail client, for the toolkit's maintainers. Each
 entry says where it was verified and what would fix it. New findings are
-appended under **Future** as they turn up.
+appended under **Open** as they turn up; numbers are never reused, so a
+number always means the same gap.
 
-Roughly ordered by impact.
+Last checked against **uitoolkit v0.22.1** (2026-09-29). 0.22 closed
+sixteen of the first seventeen; what comms-mail now uses for each is under
+**Resolved**.
 
-## Confirmed
+## Open
 
-### 1. No focus-preserving completion / type-ahead popup
-When a popup is shown via `widget.ShowPopup`, the window routes keys to the
-popup and stops bubbling them to the field (`app/window.go` key dispatch:
-"The popup owns the keyboard while it is up"). So there is no way to show a
-suggestion dropdown on the popup layer while the user keeps typing. Every
-autocomplete / type-ahead / search-suggest UI needs this. Worked around in
-comms-mail by laying the suggestion list out **inline** and relying on
-unhandled keys bubbling from the field to a wrapper — it works but reflows
-the form and is fiddly.
-**Fix:** a non-capturing popup mode (forwards non-nav keys to the anchor),
-or a built-in completion field.
+### 2. No font fallback: emoji, and whole scripts, are boxes
+Mail arrives in every script. Titillium Web (the interface face, 456
+glyphs) has Latin only — no Greek, no Cyrillic, no CJK — and nothing
+falls back to another face for a rune it lacks, so a subject in Russian,
+Greek or Japanese is a row of boxes in the message list, and so are the
+emoji that marketing mail and people alike put in subjects ("👀", "🥳").
+0.22.1's docs/contracts.md now states this as the rule ("One face draws
+everything"), which is honest, and comms-mail keeps to its side of it
+(marks are icons, never characters). But a mail client shows other
+people's text, which it cannot choose.
+**Fix:** a fallback for *text content* — a label's, a table cell's, rich
+text's — to installed faces that have the rune (Noto Sans for the scripts,
+Noto Color Emoji), as browsers and every other toolkit do. The interface's
+own strings can stay one face.
 
-### 2. No emoji / color-font fallback
-Emoji and many symbols render as ▯ (tofu) in subjects and bodies — seen
-across real messages ("👀", "🥳" in subjects, marketing copy). Mail is full
-of emoji, so this is high-impact and very visible.
-**Fix:** fall back to an installed emoji font (Noto Color Emoji / system)
-for glyphs the primary face lacks.
-*Precisely (checked against uitoolkit v0.20.1 dev):* there is no font
-fallback at all — `style/symbols.go` draws hand-made vector stand-ins for
-exactly four runes (★ 📎 ● 🔇); every other glyph Titillium lacks is tofu.
-That includes plain arrows and dingbats, not just emoji: ↳ (U+21B3), →,
-✓ (U+2713), ✗ (U+2717), ⊘, └. JetBrains Mono has several of them (✓ ✗ →
-└) but is not consulted for UI text. comms-mail works around it with
-glyphs Titillium has: › for thread replies, • for an active filter pin,
-"(yes)" / "(no)" beside invite guests.
+### 18. Icons: heroicons' forward is fast-forward; the drawn paperclip is a box; no filled star or dot
+Checked with the 0.22 marks in comms-mail's message list:
+- **heroicons' `forward.png` is the media fast-forward** (two triangles),
+  not a mail forward arrow. lucide, material-symbols, phosphor and
+  tabler all draw a forward arrow. heroicons is the pack comms-mail's
+  owner uses.
+- **The drawn (classic / sharp) paperclip reads as a rounded box** at list
+  size (20 px): nested rounded rectangles, no clip shape. The star and the
+  envelope drawn beside it are clear.
+- #16 asked for a filled star and a dot. There is one star (an outline),
+  so "starred" is an outline star in amber; and no dot, so comms-mail
+  marks unread with the envelope (`IconMail`), which works.
+**Fix:** heroicons' `arrow-uturn-right` as its forward; a drawn paperclip
+with the clip's bend; `IconStarFilled` (or a filled variant) and a dot.
 
-### 3. richtext image placeholder is an empty box with no alt text
-For an image-heavy HTML email with images unresolved (a real Apple
-newsletter rendered in the HTML pane), the body becomes a wall of empty
-boxes — worse than useless. The placeholder shows no alt text and no
-broken-image affordance.
-**Fix:** render the `<img alt>` text and/or a broken-image glyph inside the
-placeholder; honor width/height so layout does not collapse.
+### 19. TokenField cuts a quoted name at its comma
+`TokenField.splitInput` ends a token at every separator, including one
+inside a quoted display name: typing or pasting `"Doe, Jane"
+<jane@example.com>,` gives `"Doe` (refused by Accept) and then
+`"Doe Jane" <jane@example.com>` with the comma lost. Names with commas are
+common in address books ("Last, First"). comms-mail replaces the editor's
+OnInput with its own split that reads the address grammar (quotes,
+comments, angle brackets).
+**Fix:** a `Split func(text string) (done []string, rest string)` on
+TokenField, or have the default split skip separators inside `"…"`,
+`(…)` and `<…>`.
 
-### 4. richtext `ResolveImage` can't distinguish inline vs remote, and doesn't enumerate images
-The callback gets every non-`data:` src with no signal whether it is `cid:`
-(inline, safe to load) or `http(s):` (remote, a tracking pixel). And there
-is no way to list which images a document references for a "load images"
-control — the app must re-parse the HTML (comms-mail uses a regex).
-**Fix:** pass a classification (data / cid / remote), or expose the
-document's image list.
+### 20. A chip cuts its own text short
+`Token.Measure` returns a fractional width (`2*pad + Advance(text) +
+cross`); the bounds it is arranged in are whole pixels; `Token.Paint` then
+finds `Advance(text) > room` by the fraction and ellipsizes. So a chip
+sized for its text shows "Bob <bob@example.or…" — about one chip in two,
+depending on the text. Seen in comms-mail's To field.
+**Fix:** round the measured width up (as Grid's `ceilPx` does), or fit
+with a small tolerance.
 
-## Minor / nice-to-have
+### 21. TokenField measured without a width asks for every chip on one line
+`TokenField.Measure` with no MaxW returns the width of all the chips in a
+row. A `Form` sizes its field column from that (Grid measures columns
+unbounded), and a Flex track never goes below its content, so three
+addresses push the Write window's form past the window's edge, clipped.
+comms-mail's recipient field reports a text field's width (400 px) when no
+width is offered, and wraps to the width it is given.
+**Fix:** when unbounded, report a field's preferred width (or the widest
+chip), since the field can wrap; its height-for-width answer is what
+matters.
 
-### 5. No multi-value chip/token field
-No removable "pill" recipient field (Gmail / Thunderbird). comms-mail uses
-comma-separated text.
+### 22. Grid measures its rows at the columns' natural widths, not the width it is offered
+`Grid.Measure` computes `columns(-1)` and, while their sum fits in MaxW,
+measures every row at those natural widths; only `Arrange` gives a Flex
+column the rest of the width. A child whose height depends on its width
+(a chip field, a wrapping label) is measured narrow and tall, then
+arranged wide and short, and the form is left taller than what it draws —
+blank space under comms-mail's Write form when the recipients wrap at
+400 px but not in the window.
+**Fix:** when MaxW is given, measure rows at `columns(c.MaxW)` — the
+widths Arrange will use.
 
-### 6. TabView has no per-tab disable/hide
-Wanted the HTML tab only when a message has HTML; had to always show it with
-a placeholder.
+### 23. ClassifyImageSrc reads `//host/x.gif` as a local file
+A protocol-relative address has no scheme, so `ClassifyImageSrc` returns
+`ImageLocal`. It is a network fetch (the page's scheme, http or https),
+and tracking pixels use it. An application that trusts the classification
+would either treat a tracker as a local file or never offer to load a
+real remote image. comms-mail counts `//` as remote itself.
+**Fix:** `//` → `ImageRemote`.
 
-### 7. `TextField.SetText` leaves the caret at 0
-Rather than moving it to the end. Surprising for a programmatic set (bit a
-test); most toolkits move to end.
+### 24. Rich-text table cells are plain text
+Inline formatting in a `<td>` is dropped: bold, italics, code, and links —
+a newsletter's table of links loses its links, and a Markdown table's
+`**bold**` cell is plain. There is also no space after a table before the
+block that follows it (a quote's rule starts right under the last row).
+**Fix:** keep the cell's spans (Cells as spans, not strings); the usual
+paragraph spacing after the last row of a run.
 
-### 8. No "preferred height for N rows" on ListView
-`ListView` height requires a manual `Measure` call; a helper for popovers /
-inline lists would simplify.
+### 25. Prompt closes before the caller can refuse the value, and its button is always OK
+`Prompt` dismisses on OK and then reports the value, so a name the
+server refuses ("a folder with that name exists") cannot be shown in the
+prompt: comms-mail shows a warning and then opens the prompt again with
+what was typed. And the accept button is "OK" where the action has a name
+("Rename", "Create") — the button names the action in every desktop's
+guidelines.
+**Fix:** a `Validate func(string) error` that keeps the prompt up with the
+error under the field (asynchronous would be better still: the check is a
+server round trip), and an accept label.
 
-## Future
-<!-- append new findings here as they turn up -->
+## Resolved
 
-### 9. FileDialog has no folder-picking mode
-`FileDialogOptions.Mode` is `FileOpen` or `FileSave`. Choosing a directory
-works only implicitly: open the folder and press Open with nothing selected
-(the dialog returns what the path field says, then the selection, then the
-directory). comms-mail's "Add a folder or mailbox file…" relies on that and
-has to explain it in the title. Maildir / MH / .eml imports are directories.
-**Fix:** a `FileOpenFolder` mode (the portal's `directory` option does this
-natively).
+Closed in 0.22, and how comms-mail uses each.
 
-### 10. No text-input dialog (prompt)
-`MessageBoxOptions` has no input field, and there is no `Prompt` /
-`InputDialog`. Every "name this" (new folder, rename folder, save search)
-needs a hand-built window with a field and OK/Cancel — comms-mail has
-`askName` for it. Qt's `QInputDialog::getText` / GTK's entry dialog.
-**Fix:** a `Prompt(from, title, label, initial, on func(text string, ok bool))`
-alongside `Confirm` / `Warn`, as an in-window overlay like them.
-
-### 11. A wrapping Label that flexes in a Row is clipped
-`Label.Wrap` measures "to the width its parent offers", but a `FlexBox`
-row measures its flex child before it knows the width it will give it: the
-label reports one line's height, is then arranged narrower, wraps to three
-lines, and draws them centred in a one-line box — the first and last lines
-cut off. Seen in comms-mail's invite card (title beside two buttons).
-**Fix:** measure flex children again at their final main-axis size (a
-height-for-width pass), or have Row re-measure wrapping children after it
-distributes the space.
-
-### 12. FileDialog Save has no suggested file name
-`FileDialogOptions` has `Path` but no `Name`: to suggest "Invoice.eml" in
-a Save dialog, comms-mail passes the whole file path as `Path`. The native
-(portal) dialog splits it into folder and name correctly, but the themed
-dialog then tries to list the file as a folder and shows an empty list.
-**Fix:** a `Name` (suggested file name) option, and for `FileSave` list
-`filepath.Dir(Path)` when `Path` is not a directory.
-
-### 13. A text field takes a file drop meant for its container
-`Window.dropTarget` gives a drop to the component under the pointer if it
-takes *any* offered type, before asking its ancestors. File managers offer
-`text/uri-list` and `text/plain` (the paths as text) together, so dropping
-files on a `TextArea` inside a `DropZone` that wants files types the paths
-into the text instead of handing the files to the zone. comms-mail's Write
-window attaches files dropped anywhere else, but not on the body — where
-people drop them.
-**Fix:** when the offer carries `text/uri-list` (files), prefer the nearest
-ancestor that takes it over a descendant that only takes `text/plain`; or
-let `TextArea` decline file drops (an option, or by default).
-
-### 14. ScrollView cannot shrink to its content
-`ScrollView.Measure` always asks for the whole height it is offered, so a
-scrolling area that should be "as tall as what is in it, up to N" — a
-message header that grows with an invitation or attachments but must not
-push the body out — has to be wrapped in an app-side box that reads
-`ContentHeight()` after measuring. comms-mail's first attempt trusted the
-scroll view's answer, and the reading pane's header took every pixel up to
-its cap for every message.
-**Fix:** a `MaxHeight` (or `ShrinkToContent`) option: measure to the
-content's height, capped, and scroll past it.
-
-
-### 15. A theme whose engine is not in the build turns dark, silently
-Engines are opt-in at build time (docs/engines.md), which is fine; but
-when look.json names a pack whose engine the app was built without,
-`LoadAppearance` keeps the name and reports the theme as **dark** (it
-parses the unknown name), and the app paints the default dark palette. A
-light pack like `metal-steel` then shows as dark, with nothing to say why
-— comms-mail's owner saw it as "the theme is wrong". Verified on v0.21.0:
-`LoadTheme("metal-steel")` is false in a default build and true with
-`-tags theme_engine_metal`. comms-mail now builds with
-`theme_engine_all` and logs a line when the theme is missing.
-**Fix:** expose "this pack is not in the build" (a flag on Appearance, or
-`LoadTheme` reporting why), and fall back to the pack's own family (the
-light starter for a light pack) rather than dark.
-
-### 16. No icons in table cells, column headers or tree nodes — and no mail icons
-Marks belong in icons, not in the font (fonts are for text only). But
-`TableView` cells and column titles are text (`CellText`, `TableColumn.
-Title`), and `TreeNode` has a label, bold and a colour swatch only. So the
-message list's marks — ★ starred, 📎 attachment, 🔇 muted, ● unread, the
-thread reply mark, and the replied / forwarded marks the list still lacks —
-can only be characters today (the four the toolkit draws as vector
-stand-ins, and nothing for the rest), and a folder tree cannot show an
-active filter pin except in bold. The icon set (`style.ToolIcon`) has no
-paperclip, star, reply, forward, check, mute or dot either.
-**Fix:** `TableColumn.Icon`, a `TableView.CellIcon func(row, col int)
-style.ToolIcon` (with a colour), a `TreeNode.Icon`, and ToolIcons for
-paperclip, star (filled / outline), reply, forward, check, mute and a dot.
-comms-mail waits for these (the owner's call): the replied / forwarded
-marks come with them, and ★ 📎 🔇 ● and the thread mark move to them.
-
-### 17. Rich text has no tables and no quote styling
-`richtext` reads `<table>` for its text alone and `<blockquote>` as plain
-paragraphs, and has no `<hr>`. comms-mail's Markdown view renders the
-message through it: a table is shown as its aligned Markdown lines in the
-monospace face, and a quote is not set off from the text around it.
-**Fix:** table blocks (rows and cells, a header row), a quote block
-(indented, with a rule down its side), and a horizontal rule.
+| # | Gap | 0.22 | In comms-mail |
+| --- | --- | --- | --- |
+| 1 | No focus-preserving completion popup | `widget.SetPopupKeysPass` | The address suggestions float over the Write window while typing goes on in the field |
+| 3 | Image placeholder is an empty box | Alt text in the placeholder | Blocked remote images show their alt text |
+| 4 | ResolveImage can't tell inline from remote; no image list | `ResolveImageKind`, `Doc.Images` | The reading views ask the document for its images; the regex is gone |
+| 5 | No chip field | `TokenField` | To / Cc / Bcc are chips (with #19–#21 worked around) |
+| 6 | No per-tab hide | `SetTabVisible` | The HTML tab is there only for mail with HTML |
+| 7 | `SetText` leaves the caret at 0 | Caret at the end | Nothing to change (tests only) |
+| 8 | No height for N rows | `HeightForRows` | Sizes the suggestion popup |
+| 9 | No folder-picking dialog | `FileOpenFolder` | Import's Add a folder…, Save All |
+| 10 | No prompt dialog | `Prompt` / `MessageBoxOptions.Input` | New Folder, Rename Folder (with #25 worked around) |
+| 11 | Wrapping label clipped in a row | Height-for-width in Flex | Nothing to change: the invite card's title had been given its own line |
+| 12 | No suggested name for Save | `FileDialogOptions.Name` | Save message as, Save As |
+| 13 | A text field takes a file drop | Files go to whoever takes files | Files dropped on the message text are attached (tested) |
+| 14 | ScrollView cannot shrink to its content | `ShrinkToContent` | The reading pane's header |
+| 15 | A missing theme turns dark silently | `Appearance.Missing`, `MissingThemeNote`, light fallback | The startup line uses it |
+| 16 | No icons in cells, headers, tree nodes | `CellIcon`, `TableColumn.Icon`, `TreeNode.Icon`, seven mail icons | Star, paperclip, status (unread / forwarded / replied), muted bell; filter pins; attachment rows (see #18) |
+| 17 | Rich text has no tables or quotes | Table, Quote and Rule blocks | The Markdown view draws tables, quotes and rules (see #24) |

@@ -57,7 +57,7 @@ func docImages(d *richtext.Doc) (cids, remote []string) {
 
 // imageKind is richtext.ClassifyImageSrc, except that a protocol-relative
 // address (//cdn.example/pixel.gif) is the remote fetch it is: the toolkit
-// reads it as a path beside the document (uitoolkit-gaps.md #20).
+// reads it as a path beside the document (uitoolkit-gaps.md #23).
 func imageKind(src string) richtext.ImageKind {
 	if strings.HasPrefix(strings.TrimSpace(src), "//") {
 		return richtext.ImageRemote

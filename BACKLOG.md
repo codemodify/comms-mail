@@ -8,10 +8,11 @@ new ones turn up.
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
-- **Emoji show as ▯** (tofu) — blocked on a uitoolkit font-fallback gap
-  (uitoolkit-gaps.md #2), but very visible in subjects and bodies.
-- **HTML tab only when there is HTML** (or auto-select it for HTML-only
-  mail) — needs TabView per-tab hide (uitoolkit-gaps.md #6).
+- **Emoji, Greek, Cyrillic and CJK show as ▯** — the toolkit has no font
+  fallback, and 0.22.1 states that as its rule (uitoolkit-gaps.md #2);
+  very visible in subjects and bodies.
+- **Table cells lose their formatting** in the Markdown view — bold and
+  links in a cell come out plain (uitoolkit-gaps.md #24).
 
 ## Calendar invitations
 - **Conflicts** — no "you are busy then" hint: comms-mail has no calendar
@@ -23,6 +24,10 @@ new ones turn up.
 
 ## Compose
 - **Spell check.**
+- **Space under the Write form** — with recipients that fold onto more
+  lines at the field's asked-for width than in the window, the form keeps
+  the taller height (uitoolkit-gaps.md #22); and a chip can cut its
+  address short with "…" (#20). Both cosmetic, both the toolkit's.
 - **HTML compose** — the editor is plain text only; replying to HTML loses
   its formatting.
 
@@ -77,5 +82,10 @@ new ones turn up.
 - **S/MIME** — built in, own CMS code: `.p12` import, decrypt, sign/encrypt
   on send.
 - **Search inside encrypted mail** — a setting, off by default.
+- **Passphrase fields that never hold a string** — uitoolkit 0.22 has a
+  `SecretField` (a wiped byte buffer, no copy, input method off), a
+  secret clipboard, and Caps Lock state. The passphrase and account
+  password fields could use it; the passphrase still crosses the socket
+  to comms-maild as JSON text, so the protocol would carry bytes too.
 
 
