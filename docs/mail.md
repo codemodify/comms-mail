@@ -561,6 +561,11 @@ top level), **Delete Folder…**, **Mark Folder Read** and **Compact Folder**
 folders you made can be renamed, moved or deleted; Inbox, Sent, Drafts,
 Trash and the rest cannot.
 
+A folder can also be **dragged**: onto another folder of its account it
+goes inside it, onto the account it goes to the top level — the same move
+as Move Folder To (`folders.move`). It does not go into itself, into a
+folder inside it, or into another account.
+
 Folders nest as the server names them: `Archives/2023` shows as `2023`
 under `Archives`, using the server's own delimiter (`/` or `.`). A mailbox
 that only holds others (Gmail's `[Gmail]`, `\Noselect`) is their parent and

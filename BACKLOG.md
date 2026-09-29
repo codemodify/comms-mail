@@ -32,8 +32,6 @@ new ones turn up.
   its formatting.
 
 ## Folders / search
-- **Drag a folder onto another** to move it — Move Folder To does it from
-  the menu; the tree has no drag for its own nodes (uitoolkit).
 
 - **Import: Apple Mail accounts on 10.11+ are best-effort** — read from
   `Accounts4.sqlite` by the published layout, not yet tried on a real Mac

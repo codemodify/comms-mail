@@ -385,9 +385,10 @@ func (s *session) build() widget.Component {
 	s.rebuildTree()
 	s.wireFolderTree(s.tree)
 	s.wireFolderTree(s.outboxTree)
-	s.tree.DropMimes = []string{mimeMessageIDs}
+	s.tree.DropMimes = []string{mimeMessageIDs, mimeFolder}
 	s.tree.DropActions = platform.DragMove
 	s.tree.OnDropNode = s.dropOnFolder
+	s.tree.OnDrag = s.dragFolder
 
 	s.qf = widgets.NewTextField("", "Quick Filter (subject, people, body)", func(q string) {
 		s.filter.Query = q
@@ -2280,9 +2281,81 @@ func (s *session) dragMessages(rows []int) *widget.Drag {
 	}
 }
 
+// mimeFolder marks a drag of a folder inside the tree; the folder rides in
+// the drag's in-process payload.
+const mimeFolder = "application/x-comms-mail-folder"
+
+// dragFolder is what dragging a folder in the tree carries: the folder, to
+// drop on another folder of its account (it goes inside it) or on the
+// account (it goes to the top level). Only a folder you made moves, as in
+// Move Folder To; Inbox, Sent and the others stay where they are.
+func (s *session) dragFolder(n *widgets.TreeNode) *widget.Drag {
+	fid, ok := n.Data.(mailcore.FolderID)
+	if !ok || s.cli == nil {
+		return nil
+	}
+	f, ok, err := s.cli.GetFolder(fid)
+	if err != nil || !ok || f.Virtual || f.Kind != mailcore.FolderCustom {
+		return nil
+	}
+	return &widget.Drag{
+		Types: []string{mimeFolder, "text/plain"},
+		Data: func(mime string) ([]byte, bool) {
+			if mime == "text/plain" {
+				return []byte(f.Name), true
+			}
+			return nil, false
+		},
+		Payload:   f,
+		Source:    s.tree,
+		Local:     true,
+		Actions:   platform.DragMove,
+		Preferred: platform.DragMove,
+	}
+}
+
+// dropFolderOn moves folder f under the node it was dropped on: inside a
+// folder of its account, or to the top level on the account itself. Not
+// into itself, nor into a folder inside it.
+func (s *session) dropFolderOn(f mailcore.Folder, n *widgets.TreeNode) bool {
+	var parent mailcore.FolderID
+	switch d := n.Data.(type) {
+	case string:
+		if d != f.AccountID || d == mailcore.AccountTags || f.Parent == "" {
+			return false
+		}
+	case mailcore.FolderID:
+		t, ok, err := s.cli.GetFolder(d)
+		if err != nil || !ok || t.Virtual || t.AccountID != f.AccountID || t.ID == f.ID || t.ID == f.Parent {
+			return false
+		}
+		folders, _ := s.cli.ListFolders(f.AccountID)
+		byID := map[mailcore.FolderID]mailcore.Folder{}
+		for _, x := range folders {
+			byID[x.ID] = x
+		}
+		for p, hops := t.Parent, 0; p != "" && hops < 64; p, hops = byID[p].Parent, hops+1 {
+			if p == f.ID {
+				return false // a folder inside f
+			}
+		}
+		parent = t.ID
+	default:
+		return false
+	}
+	s.moveFolder(f, parent)
+	return true
+}
+
 // dropOnFolder moves messages dragged from the list onto the folder under
-// the drop.
+// the drop, or a folder dragged in the tree (dropFolderOn).
 func (s *session) dropOnFolder(n *widgets.TreeNode, e widget.DropEvent) bool {
+	if n == nil {
+		return false
+	}
+	if f, ok := e.Payload.(mailcore.Folder); ok {
+		return s.dropFolderOn(f, n)
+	}
 	ids, ok := e.Payload.([]mailcore.MessageID)
 	if !ok || len(ids) == 0 || n == nil {
 		return false
