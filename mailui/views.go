@@ -4,82 +4,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	stdhtml "html"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// Two of a message's views.
-//
 // HTML: nothing of the HTML is drawn in the window. A message that has an
-// HTML part offers to open it in the browser, as it was sent — its styles,
-// its remote images — with scripts blocked, since it opens as a local file.
-//
-// Markdown: the message as Markdown (mailcore.MessageMarkdown), rendered in
-// the window's rich-text view — a clean reading view of HTML mail, and real
-// formatting for mail written in Markdown — with the Markdown text beside
-// it. The rendering draws inline images; remote ones wait for Show Images,
-// as before (htmlPane).
-
-// browserPane is the HTML tab.
-type browserPane struct {
-	s    *session
-	view *widgets.FlexBox
-	note *widgets.Label
-	warn *widgets.Label
-	open *widgets.Button
-	msg  mailcore.Message
-	// onHas is told, for each message shown, whether it has HTML: the tab
-	// is there only when it does.
-	onHas func(has bool)
-}
-
-// showHTMLTab shows or hides tab i of tabs, the HTML tab, for a message
-// that has HTML or has none. Hiding the tab that is showing goes back to
-// the first (the text), not on to the next one.
-func showHTMLTab(tabs *widgets.TabView, i int, has bool) {
-	if !has && tabs.Selected() == i {
-		tabs.Select(0)
-	}
-	tabs.SetTabVisible(i, has)
-}
-
-func newBrowserPane(s *session) *browserPane {
-	p := &browserPane{s: s}
-	p.note = wrapLabel("Select a message.")
-	p.warn = wrapLabel("It opens as it was sent, remote images and all: loading them tells the sender you opened it. Scripts are blocked.")
-	p.open = widgets.NewButton("Open in browser", p.openInBrowser)
-	p.view = widgets.NewColumn(p.note, widgets.NewRow(p.open).WithGap(8), p.warn).WithGap(8)
-	p.view.AddFlex(widgets.NewSpacer(), 1)
-	p.clear()
-	return p
-}
-
-// show is m's HTML tab: whether it has an HTML version to open.
-func (p *browserPane) show(m mailcore.Message) {
-	p.msg = m
-	has := strings.TrimSpace(m.HTML) != ""
-	if has {
-		p.note.SetText("This message has an HTML version.")
-	} else {
-		p.note.SetText("This message has no HTML version.")
-	}
-	p.open.SetVisible(has)
-	p.warn.SetVisible(has)
-	if p.onHas != nil {
-		p.onHas(has)
-	}
-}
-
-func (p *browserPane) clear() {
-	p.msg = mailcore.Message{}
-	p.note.SetText("Select a message.")
-	p.open.SetVisible(false)
-	p.warn.SetVisible(false)
-}
+// HTML part has an Open HTML button (reader.go) that opens it in the
+// browser, as it was sent — its styles, its remote images — with scripts
+// blocked, since it opens as a local file.
 
 // browserCSP is what the page opened in the browser may not do: run
 // scripts (a local file would run them), embed plugins or frames, send a
@@ -95,78 +28,6 @@ const htmlViewPattern = "comms-mail-html-*.html"
 func browserPage(html string, images []mailcore.InlineImage) string {
 	return "<!doctype html>\n<meta charset=\"utf-8\">\n<meta http-equiv=\"Content-Security-Policy\" content=\"" + browserCSP + "\">\n" +
 		inlineCIDImages(html, images)
-}
-
-func (p *browserPane) openInBrowser() {
-	m := p.msg
-	if m.ID == "" {
-		return
-	}
-	s := p.s
-	s.mark("Opening the HTML in your browser…")
-	s.async(func() (any, error) {
-		raw, err := s.cli.Raw(m.ID)
-		if err != nil {
-			return nil, err
-		}
-		html, ok := mailcore.OriginalHTML(raw)
-		if !ok {
-			html = m.HTML // no part in the source (an imported message): the window's copy
-		}
-		imgs, _ := s.cli.InlineImages(m.ID)
-		mailcore.RemoveOld(filepath.Join(os.TempDir(), htmlViewPattern), mailcore.PrintedKeep)
-		f, err := os.CreateTemp("", htmlViewPattern)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		if _, err := f.WriteString(browserPage(html, imgs)); err != nil {
-			return nil, err
-		}
-		if !mailcore.OpenWithDesktop(f.Name()) {
-			return f.Name(), errNoBrowser(f.Name())
-		}
-		return f.Name(), nil
-	}, func(_ any, err error) {
-		if err != nil {
-			widgets.Warn(s.win.Content(), "Open in browser", err.Error(), nil)
-			return
-		}
-		s.mark("Opened in your browser")
-	})
-}
-
-// mdPane is the Markdown tab: the rendering, and the Markdown text.
-type mdPane struct {
-	s        *session
-	view     *widgets.TabView
-	rendered *htmlPane
-	text     *widgets.TextArea
-}
-
-func newMDPane(s *session) *mdPane {
-	p := &mdPane{s: s, rendered: newHTMLPane(s)}
-	p.rendered.rich.Placeholder = "This message has no text."
-	p.text = widgets.NewMonoTextView("", "Select a message")
-	p.text.MinRows = 8
-	p.view = widgets.NewTabView(
-		widgets.Tab{Title: "Rendered", Content: widgets.NewPad(4, p.rendered.view)},
-		widgets.Tab{Title: "Text", Content: widgets.NewPad(4, p.text)},
-	)
-	return p
-}
-
-// show renders m as Markdown, and puts its Markdown text beside.
-func (p *mdPane) show(m mailcore.Message) {
-	r := m
-	r.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(m))
-	p.rendered.show(r)
-	p.text.SetText(mailcore.MessageMarkdown(m))
-}
-
-func (p *mdPane) clear() {
-	p.rendered.clear()
-	p.text.SetText("")
 }
 
 // inlineCIDImages embeds the message's inline images (src="cid:…") as

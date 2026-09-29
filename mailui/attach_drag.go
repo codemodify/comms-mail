@@ -79,9 +79,9 @@ func (p *attachPromise) ready() bool {
 // dragAttachment is the drag of attachment i: the file it will be written
 // to, offered as a uri-list the way every file drag is, with the fetch
 // running off the UI goroutine behind it.
-func (s *session) dragAttachment(i int) *widget.Drag {
-	m, ok := s.primary()
-	if !ok || i < 0 || i >= len(s.attNames) {
+func (r *reader) dragAttachment(i int) *widget.Drag {
+	s, m := r.s, r.msg
+	if m.ID == "" || i < 0 || i >= len(r.attNames) {
 		return nil
 	}
 	dir := attachScratchDir()
@@ -90,12 +90,12 @@ func (s *session) dragAttachment(i int) *widget.Drag {
 	}
 	// Which part this is, and what it is called, are the window's to
 	// answer and are settled here; only the bytes are fetched later.
-	pid := s.attachPartID(m, i)
+	pid := r.attachPartID(m, i)
 	if pid == "" {
 		s.mark("Drag: no such attachment")
 		return nil
 	}
-	name := mailcore.AttachFileName(s.attNames[i])
+	name := mailcore.AttachFileName(r.attNames[i])
 	// One directory per attachment: two messages with a scan.pdf each
 	// must not write over one another mid-drag.
 	sub := filepath.Join(dir, safeDirName(m.ID, i))

@@ -33,7 +33,7 @@ func TestEOpensTheMessageInATab(t *testing.T) {
 	if !ok || mt.msg.ID != want.ID || s.tabs.Tab(1).Title != strings.TrimSpace(want.Subject) {
 		t.Fatalf("the tab shows %v, want %s %q", mt, want.ID, want.Subject)
 	}
-	if mt.body.Text == "" || !mt.view.Visible() || s.mainPage.Visible() {
+	if mt.rd.text.Text == "" || !mt.view.Visible() || s.mainPage.Visible() {
 		t.Fatal("the tab's message should show, with its body, and the three panes hidden")
 	}
 
@@ -103,7 +103,7 @@ func TestTagAndDeleteKeys(t *testing.T) {
 	if m, _, _ := s.cli.GetMessage(second); !containsTag(m.Tags, "Work") {
 		t.Fatalf("tagging from the tab did not reach the daemon: %v", m.Tags)
 	}
-	if !containsTag(mt.msg.Tags, "Work") || !strings.Contains(mt.head.Text, "Work") {
+	if !containsTag(mt.msg.Tags, "Work") || !strings.Contains(mt.rd.extra.Text, "Work") {
 		t.Fatal("the tab does not show the tag it was given")
 	}
 
@@ -125,9 +125,9 @@ func containsTag(tags []string, want string) bool {
 	return false
 }
 
-// A message opened in a tab has its views there too: HTML to open in the
-// browser, and the Markdown rendering with the inline images drawn and the
-// remote ones offered.
+// A message opened in a tab has its views there too: Open HTML, and the
+// Markdown rendering with the inline images drawn and the remote ones
+// offered.
 func TestMessageTabShowsHTMLAndMarkdown(t *testing.T) {
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
@@ -144,17 +144,14 @@ func TestMessageTabShowsHTMLAndMarkdown(t *testing.T) {
 	i := s.addMessageTab(row)
 	s.waitIdle()
 	mt := s.tabs.Tab(i).Data.(*messageTab)
-	if !mt.html.open.Visible() || !strings.Contains(mt.html.note.Text, "has an HTML version") {
-		t.Fatalf("tab HTML view: %q, open shown %v", mt.html.note.Text, mt.html.open.Visible())
+	if !mt.rd.htmlBtn.Visible() {
+		t.Fatal("the tab has no Open HTML")
 	}
-	r := mt.md.rendered
+	r := mt.rd.md
 	if got := r.rich.PlainText(); !strings.Contains(got, "images in richtext") {
 		t.Fatalf("tab Markdown %q", got)
 	}
 	if !r.bar.Visible() || r.rich.ResolveImageKind("cid:logo@news.example", richtext.ImageInline) == nil {
 		t.Fatal("the tab should draw the inline logo and offer the remote banner")
-	}
-	if !strings.Contains(mt.md.text.Text, "# uitoolkit Weekly") {
-		t.Fatalf("tab Markdown text %q", mt.md.text.Text)
 	}
 }

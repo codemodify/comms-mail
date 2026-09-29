@@ -275,13 +275,18 @@ Type the incoming/SMTP password (masked field); **Save account** writes `protoco
 
 ### Message view: text and HTML
 
-The preview pane has three tabs: **Message**, **Source** and **HTML**.
-Message (the default) is the `text/plain` body. HTML renders the message's
-HTML part when it has one — headings, lists, tables, colours and clickable
-links — in a read-only `RichText` through uitoolkit's HTML subset: no
-scripts, no external CSS, nothing executed. Most mail is
-`multipart/alternative` and carries both, so Message shows the text and HTML
-shows the render.
+The reading pane — and a message opened in a tab of its own, which is the
+same thing larger — shows the header (From, To, Cc, Date, tags,
+attachments, whether you replied or forwarded), the invitation card, a
+row of actions over the attachments, and three tabs: **Message** (the
+`text/plain` body, the default), **Source** (the raw RFC822, fetched when
+the tab is shown) and **Markdown** (the message rendered, below).
+
+Nothing of a message's HTML is drawn in the window. A message that has an
+HTML part has **Open HTML** in the action row, beside the attachments'
+Open / Save / Save All: it opens the part as it was sent in the browser
+(see *Message / Source / Markdown tabs* below). The row folds onto a
+second line in a narrow pane.
 
 Images: a `data:` image draws as it is, and an inline `cid:` image — a
 picture carried in the message itself, a logo or a chart — is read from its
@@ -296,7 +301,7 @@ address actually dialled — at most 100 images of 8 MB each and 48 MB in
 all, 15 s each, no cookies, no proxy, not while working offline. PNG, JPEG,
 GIF and WebP are drawn; pictures seen once are kept for the session.
 **Settings → Privacy** lists the senders trusted with Always and takes
-them back. A message opened in a tab has the same Message / HTML views.
+them back. A message opened in a tab has the same views.
 
 A link is followed on a click, after a confirmation showing the real target
 so link text cannot disguise where it goes; a `mailto:` opens a
@@ -313,7 +318,7 @@ window go after a day the same way.
 **Save As…** writes the message exactly as stored, as a `.eml`
 (`messages.getRaw`).
 
-**Ctrl+U** (also the message context menu) opens a read-only JetBrains Mono
+**Ctrl+U** opens a read-only JetBrains Mono
 window of the stored RFC822 (`messages.getSource`). The Source tab in the
 preview pane uses the same daemon bytes — not a reconstructed header dump.
 
@@ -796,10 +801,10 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
   Outlook (`.pst`) is not supported yet.
 - **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Settings. `passEnv` remains an optional fallback.
 - **Remove account** — File menu, Account Central, and Settings → Accounts. Confirm, then drop the account from `mail.json` and the local cache. The folder tree refreshes; if none remain, the first-run “add one?” prompt returns.
-- **Message / Source / HTML / Markdown tabs** — Message is the `text/plain` body (default) and Source the raw RFC822.
-  - **HTML** draws nothing of the HTML in the window. A message with an HTML part offers **Open in browser**: the part as it was sent (only its transfer encoding and charset undone — styles, layout and remote images kept; `mailcore.OriginalHTML`), its inline `cid:` images embedded, opened as a temporary page (removed after an hour) under a Content-Security-Policy that blocks scripts, plugins, frames and forms, since a local file could run them. Loading its remote images tells the sender you opened it; the tab says so. A message without HTML has no HTML tab (the view goes back to Message if it was showing).
-  - **Markdown** shows the message as Markdown (`mailcore.MessageMarkdown`), **Rendered** in the window's rich-text view — a clean reading view of HTML mail, and real formatting (headings, emphasis, lists, links, code) for mail written in Markdown — or as **Text**, the Markdown itself, to read with its formatting written out or copy into notes: the subject as a `#` title, From / To / Cc / Date, the body, and the attachments' names. HTML mail is converted — headings, **bold** / *italic*, `code`, links as `[text](url)`, images as `![alt](address)` (never fetched; a 1×1 tracking pixel is left out, an embedded `data:` image is named), lists, `>` quotes, fenced code, and data tables as Markdown tables, while the tables newsletters use for layout become plain blocks. The rendering draws inline images at once; remote ones wait for **Show Images** / **Always**, as before. Tables are drawn as tables (a bold header row, ruled columns), quotes with a rule down their side for each level, and `---` as a line. An image that is not drawn — a remote one not yet asked for — shows its alt text. Markdown written by others is read by comms-mail's own converter (`mailcore.MarkdownToHTML`: CommonMark's common ground and GitHub's tables); raw HTML in it stays text.
-  - A message opened in its own tab has Message, HTML and Markdown.
+- **Message / Source / Markdown tabs** — Message is the `text/plain` body (default) and Source the raw RFC822.
+  - **Open HTML** (in the action row, for a message with an HTML part; nothing of the HTML is drawn in the window) opens the part as it was sent (only its transfer encoding and charset undone — styles, layout and remote images kept; `mailcore.OriginalHTML`), its inline `cid:` images embedded, opened as a temporary page (removed after an hour) under a Content-Security-Policy that blocks scripts, plugins, frames and forms, since a local file could run them. Loading its remote images tells the sender you opened it; the button's tip says so. A message without HTML has no Open HTML.
+  - **Markdown** is the message's body rendered from Markdown (`mailcore.BodyMarkdown`) in the window's rich-text view — a clean reading view of HTML mail, and real formatting (headings, emphasis, lists, links, code) for mail written in Markdown. HTML mail is converted — headings, **bold** / *italic*, `code`, links as `[text](url)`, images as `![alt](address)` (never fetched; a 1×1 tracking pixel is left out, an embedded `data:` image is named), lists, `>` quotes, fenced code, and data tables as Markdown tables, while the tables newsletters use for layout become plain blocks. The rendering draws inline images at once; remote ones wait for **Show Images** / **Always**, as before. Tables are drawn as tables (a bold header row, ruled columns), quotes with a rule down their side for each level, and `---` as a line. An image that is not drawn — a remote one not yet asked for — shows its alt text. Markdown written by others is read by comms-mail's own converter (`mailcore.MarkdownToHTML`: CommonMark's common ground and GitHub's tables); raw HTML in it stays text.
+  - A message opened in its own tab has the same header, action row and tabs.
 - **3-pane splitters** — dragging folder|list or list|preview keeps exclusive pane bounds; preview chrome cannot paint over the thread list.
 - **Overflow scrollbars** — thread list, folder tree, and long message bodies show a vertical track/thumb; wheel/trackpad still scroll; offset clamps at the last row. The thread table clips rows under the sticky header (flush at the top; no paint-through while scrolling).
 - **Thread columns** — three columns of marks, headed by their icons: a star (amber on a starred message), a paperclip (attachments) and the status — an envelope while unread, then forward or reply once you have forwarded or answered it (IMAP `$Forwarded` / `\Answered`, from any client). Then Topic (a muted thread's topic starts with a muted bell), Who and When. No Size. Click a column header to sort; the status column puts unread first, then forwarded, then replied. Marks are icons from the look's icon set, never characters from the font. Unread rows are also bold.
@@ -841,6 +846,8 @@ Documented in [keyboard.md](https://github.com/codemodify/uitoolkit/blob/dev/doc
 | **Ctrl+Z** | Undo the last archive / junk / delete / move |
 | **c** | Compose |
 | **m** | Mark as read |
+| **s** | Star / unstar |
+| **j** | Junk (move to Junk; Ctrl+Z takes it back) |
 | **F5** | Fetch / sync |
 | **Ctrl+,** | Settings |
 

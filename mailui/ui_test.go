@@ -1599,12 +1599,12 @@ func TestAttachFileNameHelpers(t *testing.T) {
 	}
 }
 
-func findAttachChrome(root widget.Component) (hits []*attachHit, opens, saves []*widgets.Button, saveAll *widgets.Button) {
+func findAttachChrome(root widget.Component) (hits []*attachHit, opens, saves []*widgets.ToolButton, saveAll *widgets.ToolButton) {
 	widget.Walk(root, func(c widget.Component) {
 		switch v := c.(type) {
 		case *attachHit:
 			hits = append(hits, v)
-		case *widgets.Button:
+		case *widgets.ToolButton:
 			switch v.Text {
 			case "Open":
 				opens = append(opens, v)

@@ -23,21 +23,20 @@ func TestReadingPaneHasAMarkdownTab(t *testing.T) {
 	var tabs *widgets.TabView
 	widget.Walk(w.Content(), func(c widget.Component) {
 		if tv, ok := c.(*widgets.TabView); ok && tabs == nil {
-			if titles := tv.Bar().Titles; len(titles) == 4 && titles[3] == "Markdown" {
+			if titles := tv.Bar().Titles; len(titles) == 3 && titles[2] == "Markdown" {
 				tabs = tv
 			}
 		}
 	})
 	if tabs == nil {
-		t.Fatal("no Message / Source / HTML / Markdown tabs")
+		t.Fatal("no Message / Source / Markdown tabs")
 	}
-	tabs.Select(3)
+	tabs.Select(readerTabMarkdown)
 	a.PumpOnce()
-	got := s.markdown.Text
-	for _, want := range []string{"# uitoolkit Weekly", "**From:** uitoolkit Weekly", "**images in richtext**", "![banner](https://images.example/uitoolkit/banner.png)"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("Markdown tab lacks %q:\n%s", want, got)
-		}
+	// The tab is the rendering itself: no Markdown text beside it.
+	got := s.rd.md.rich.PlainText()
+	if !strings.Contains(got, "images in richtext") || strings.Contains(got, "**") {
+		t.Fatalf("Markdown tab:\n%s", got)
 	}
 	// Another message, with the tab in front: the tab follows.
 	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
@@ -45,7 +44,7 @@ func TestReadingPaneHasAMarkdownTab(t *testing.T) {
 	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
 	s.loadPreview()
 	s.waitIdle()
-	if !strings.Contains(s.markdown.Text, "# Invitation: Toolkit design review") {
-		t.Fatalf("after another message:\n%s", s.markdown.Text)
+	if after := s.rd.md.rich.PlainText(); after == "" || after == got {
+		t.Fatalf("after another message:\n%s", after)
 	}
 }

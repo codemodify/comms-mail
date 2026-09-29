@@ -447,7 +447,7 @@ Content-Type: multipart/alternative; boundary="alt"
 --alt
 Content-Type: text/plain; charset=utf-8
 
-This week: images in richtext. Read it in the HTML tab.
+This week: images in richtext. Open HTML shows it as it was sent.
 
 --alt
 Content-Type: multipart/related; boundary="rel"

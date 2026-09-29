@@ -57,7 +57,7 @@ func TestRemoteImagesAreFound(t *testing.T) {
 func TestMessageTabIsTextHTMLOpensAndMarkdownRenders(t *testing.T) {
 	s, a, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	if s.previewRich == nil || s.imgBar == nil {
+	if s.rd.md.rich == nil || s.rd.md.bar == nil {
 		t.Fatal("the preview pane has no HTML tab")
 	}
 	m := mailcore.Message{
@@ -70,36 +70,33 @@ func TestMessageTabIsTextHTMLOpensAndMarkdownRenders(t *testing.T) {
 	s.showBody(m)
 	a.PumpOnce()
 
-	if got := s.preview.Text; !strings.Contains(got, "Plain text version.") {
+	if got := s.rd.text.Text; !strings.Contains(got, "Plain text version.") {
 		t.Fatalf("Message tab = %q, want the text/plain part", got)
 	}
-	if !s.browser.open.Visible() || !strings.Contains(s.browser.note.Text, "has an HTML version") {
-		t.Fatalf("HTML tab: %q", s.browser.note.Text)
+	if !s.rd.htmlBtn.Visible() || !s.rd.actions.Visible() {
+		t.Fatal("an HTML message has no Open HTML button")
 	}
-	if got := s.previewRich.PlainText(); !strings.Contains(got, "Title") || !strings.Contains(got, "link") {
+	if got := s.rd.md.rich.PlainText(); !strings.Contains(got, "Title") || !strings.Contains(got, "link") {
 		t.Fatalf("Markdown render = %q", got)
 	}
-	if !s.imgBar.Visible() {
+	if !s.rd.md.bar.Visible() {
 		t.Fatal("a remote image should raise the blocked-images line")
-	}
-	if !strings.Contains(s.markdown.Text, "# Title") {
-		t.Fatalf("Markdown text = %q", s.markdown.Text)
 	}
 
 	// A plain-only message: text on Message, rendered on Markdown, nothing
 	// to open in the browser, no blocked-images line.
 	s.showBody(mailcore.Message{ID: "y", Subject: "hi", Body: "just plain"})
 	a.PumpOnce()
-	if s.preview.Text != "just plain" {
-		t.Fatalf("Message tab = %q", s.preview.Text)
+	if s.rd.text.Text != "just plain" {
+		t.Fatalf("Message tab = %q", s.rd.text.Text)
 	}
-	if s.previewRich.PlainText() != "just plain" {
-		t.Fatalf("Markdown render of a plain message = %q", s.previewRich.PlainText())
+	if s.rd.md.rich.PlainText() != "just plain" {
+		t.Fatalf("Markdown render of a plain message = %q", s.rd.md.rich.PlainText())
 	}
-	if s.browser.open.Visible() || !strings.Contains(s.browser.note.Text, "no HTML version") {
-		t.Fatalf("HTML tab for a plain message: %q", s.browser.note.Text)
+	if s.rd.htmlBtn.Visible() || s.rd.actions.Visible() {
+		t.Fatal("a plain message offers Open HTML")
 	}
-	if s.imgBar.Visible() {
+	if s.rd.md.bar.Visible() {
 		t.Fatal("plain mail has no images to block")
 	}
 }
@@ -159,16 +156,16 @@ func TestInlineImagesDrawAndRemoteWait(t *testing.T) {
 	if s.images[cidKey(m.ID, "logo@news.example")] == nil {
 		t.Fatal("the inline logo was not read from the message")
 	}
-	if got := s.previewRich.ResolveImageKind("cid:logo@news.example", richtext.ImageInline); got == nil || got.Bounds().Dx() != 96 {
+	if got := s.rd.md.rich.ResolveImageKind("cid:logo@news.example", richtext.ImageInline); got == nil || got.Bounds().Dx() != 96 {
 		t.Fatalf("the HTML view does not draw the logo: %v", got)
 	}
-	for _, im := range s.previewRich.Document().UnresolvedImages() {
+	for _, im := range s.rd.md.rich.Document().UnresolvedImages() {
 		if im.Kind() == richtext.ImageInline {
 			t.Fatalf("the logo is still a placeholder: %q", im.Src)
 		}
 	}
-	if !s.imgBar.Visible() || !strings.Contains(s.alwaysImgs.Tip, "weekly@news.example") {
-		t.Fatalf("the remote banner should wait behind the bar (%v %q)", s.imgBar.Visible(), s.alwaysImgs.Tip)
+	if !s.rd.md.bar.Visible() || !strings.Contains(s.rd.md.always.Tip, "weekly@news.example") {
+		t.Fatalf("the remote banner should wait behind the bar (%v %q)", s.rd.md.bar.Visible(), s.rd.md.always.Tip)
 	}
 	if s.images[mailcore.DemoNewsletterBanner] != nil {
 		t.Fatal("a remote image was loaded without asking")
@@ -176,16 +173,16 @@ func TestInlineImagesDrawAndRemoteWait(t *testing.T) {
 
 	// What was fetched is drawn: pretend the banner came back.
 	s.cacheImage(mailcore.DemoNewsletterBanner, decodeImage(onePixelPNG(t)))
-	s.html.rerender(s.html.gen)
-	if s.previewRich.ResolveImageKind(mailcore.DemoNewsletterBanner, richtext.ImageRemote) == nil {
+	s.rd.md.rerender(s.rd.md.gen)
+	if s.rd.md.rich.ResolveImageKind(mailcore.DemoNewsletterBanner, richtext.ImageRemote) == nil {
 		t.Fatal("a fetched remote image is not drawn")
 	}
-	if n := len(s.previewRich.Document().UnresolvedImages()); n != 0 {
+	if n := len(s.rd.md.rich.Document().UnresolvedImages()); n != 0 {
 		t.Fatalf("%d images still placeholders after the banner came back", n)
 	}
 
 	// Always from Sender is kept by the daemon.
-	s.html.alwaysShow()
+	s.rd.md.alwaysShow()
 	s.waitIdle()
 	senders, _ := s.cli.RemoteImageSenders()
 	if len(senders) != 1 || senders[0] != "weekly@news.example" || !s.imgSenders["weekly@news.example"] {
@@ -239,36 +236,47 @@ func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
 	}
 }
 
-// The reading pane's HTML tab is there only for a message with HTML, and
-// a message without it, shown while that tab is open, goes back to the
-// text rather than on to Markdown.
-func TestHTMLTabOnlyForHTMLMail(t *testing.T) {
+// The reading pane and a message's own tab have the same three tabs —
+// Message, Source, Markdown — and no HTML tab: HTML opens in the browser
+// from a button.
+func TestReaderTabsAreTheSameEverywhere(t *testing.T) {
 	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	var tabs *widgets.TabView
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		if tv, ok := c.(*widgets.TabView); ok && tabs == nil && len(tv.Bar().Titles) == 4 && tv.Bar().Titles[2] == "HTML" {
-			tabs = tv
-		}
-	})
-	if tabs == nil {
-		t.Fatal("no reading-pane tabs")
+	want := []string{"Message", "Source", "Markdown"}
+	titles := func() [][]string {
+		var out [][]string
+		widget.Walk(mailTree(w), func(c widget.Component) {
+			if tv, ok := c.(*widgets.TabView); ok && tv.Visible() {
+				out = append(out, tv.Bar().Titles)
+			}
+		})
+		return out
 	}
-	s.showBody(mailcore.Message{ID: "x", Subject: "hi", Body: "text", HTML: "<p>text</p>"})
-	a.PumpOnce()
-	if !tabs.TabVisible(2) {
-		t.Fatal("no HTML tab for an HTML message")
+	if got := titles(); len(got) != 1 || strings.Join(got[0], "|") != strings.Join(want, "|") {
+		t.Fatalf("reading pane tabs %q", got)
 	}
-	tabs.Select(2)
-	s.showBody(mailcore.Message{ID: "y", Subject: "hi", Body: "just plain"})
+	s.selected = []mailcore.MessageID{mailcore.DemoNewsletterID}
+	s.loadPreview()
+	s.waitIdle()
+	s.openInTab()
+	s.waitIdle()
 	a.PumpOnce()
-	if tabs.TabVisible(2) || tabs.Selected() != 0 {
-		t.Fatalf("plain message: HTML tab visible %v, showing tab %d", tabs.TabVisible(2), tabs.Selected())
+	mt, ok := s.activeTab()
+	if !ok {
+		t.Fatal("no message tab")
 	}
-	s.showBody(mailcore.Message{ID: "x", Subject: "hi", Body: "text", HTML: "<p>text</p>"})
-	a.PumpOnce()
-	if !tabs.TabVisible(2) {
-		t.Fatal("the HTML tab did not come back")
+	if got := mt.rd.tabs.Bar().Titles; strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("message tab tabs %q", got)
+	}
+	// The tab is the reading pane, larger: the header, the actions, the
+	// source when asked for.
+	if !mt.rd.htmlBtn.Visible() || mt.rd.subj.Text == "" || !strings.HasPrefix(mt.rd.from.Text, "From: ") {
+		t.Fatalf("tab header %q %q, Open HTML %v", mt.rd.subj.Text, mt.rd.from.Text, mt.rd.htmlBtn.Visible())
+	}
+	mt.rd.tabs.Select(readerTabSource)
+	s.waitIdle()
+	if !strings.Contains(mt.rd.source.Text, "Subject:") {
+		t.Fatalf("tab source %q", mt.rd.source.Text)
 	}
 }
 
@@ -280,7 +288,7 @@ func TestMarkdownRendersTablesQuotesAndRules(t *testing.T) {
 	s.showBody(mailcore.Message{ID: "t", Subject: "prices", Body: "| Item | Price |\n| --- | --- |\n| Tea | £3 |\n\n> said before\n\n---\n\nend"})
 	a.PumpOnce()
 	kinds := map[richtext.Kind]int{}
-	for _, b := range s.md.rendered.rich.Document().Blocks() {
+	for _, b := range s.rd.md.rich.Document().Blocks() {
 		kinds[b.Kind]++
 	}
 	if kinds[richtext.TableRow] != 2 || kinds[richtext.Quote] == 0 || kinds[richtext.Rule] != 1 {

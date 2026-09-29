@@ -17,19 +17,13 @@ import (
 // forward when it is already open. The keys that act on a message (R,
 // Shift+R, F, A, D, T, M, Delete) act on the tab's message while it shows.
 
-// messageTab is what a message tab holds.
+// messageTab is what a message tab holds: the message, in a reader of its
+// own — the reading pane, larger (reader.go).
 type messageTab struct {
 	msg  mailcore.Message
 	full bool // msg has its body
 	view widget.Component
-	body *widgets.TextArea
-	head *widgets.Label
-	// invite is the message's calendar invitation, when it has one.
-	invite *inviteCard
-	// html is the tab's HTML view and md its Markdown view, beside the text
-	// as in the reading pane (views.go).
-	html *browserPane
-	md   *mdPane
+	rd   *reader
 }
 
 // setupTabs makes the strip with the Mail tab showing main, and reopens the
@@ -162,24 +156,8 @@ func (s *session) openInTab() {
 // The body loads off the UI goroutine when m does not carry it.
 func (s *session) addMessageTab(m mailcore.Message) int {
 	mt := &messageTab{msg: m, full: hasBody(m)}
-	subj := widgets.NewTitle(m.Subject)
-	mt.head = widgets.NewLabel(messageHeaderText(m))
-	mt.body = widgets.NewTextView("", "Loading message…")
-	mt.body.MinRows = 8
-	mt.invite = newInviteCard(s)
-	mt.html = newBrowserPane(s)
-	mt.md = newMDPane(s)
-	// Text, HTML and Markdown, as in the reading pane.
-	views := widgets.NewTabView(
-		widgets.Tab{Title: "Message", Content: widgets.NewPad(8, mt.body)},
-		widgets.Tab{Title: "HTML", Content: widgets.NewPad(8, mt.html.view)},
-		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(4, mt.md.view)},
-	)
-	mt.html.onHas = func(has bool) { showHTMLTab(views, 1, has) }
-	head := newReserveBox(200, newHeaderScroll(widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10)))
-	col := widgets.NewColumn(head, widgets.NewSeparator(), views).WithGap(0)
-	col.AddFlex(views, 1)
-	mt.view = col
+	mt.rd = newReader(s)
+	mt.view = mt.rd.view
 	mt.view.SetVisible(false)
 	s.pages.Add(mt.view)
 
@@ -189,60 +167,43 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	}
 	s.tabs.AddTab(widgets.BrowserTab{Title: title, Tip: title + "\n" + m.From, Data: mt})
 
+	rd := mt.rd
+	rd.showHeaders(m)
+	rd.invite.show(m)
 	if mt.full {
-		// The text shows at once; the full message (a list row carries no
-		// HTML) is fetched for the HTML tab, as for the reading pane.
-		mt.body.SetText(mailcore.DisplayBody(m))
-		mt.invite.show(m)
-		mt.html.show(m)
-		mt.md.show(m)
-		if m.HTML != "" {
-			return s.tabs.Len() - 1
-		}
+		rd.showBody(m)
+	} else {
+		rd.showPlain("Loading message…", "")
 	}
-	id := m.ID
-	s.async(func() (any, error) {
-		return s.getMessage(id)
-	}, func(v any, err error) {
-		if err != nil {
-			if !mt.full {
-				mt.body.SetText("Couldn't load this message.\n\n" + err.Error())
+	// The full message (a list row carries no HTML and no parts' text) is
+	// fetched, as for the reading pane.
+	load := func() {
+		rd.retry.SetVisible(false)
+		id := mt.msg.ID
+		s.async(func() (any, error) {
+			return s.getMessage(id)
+		}, func(v any, err error) {
+			if err != nil {
+				if !mt.full {
+					rd.showPlain("", "Couldn't load this message.\n\n"+err.Error())
+					rd.retry.SetVisible(true)
+				}
+				return
 			}
-			return
-		}
-		full := v.(mailcore.Message)
-		// Flags and tags changed in the window since it opened stay.
-		full.Read, full.Starred, full.Tags = mt.msg.Read, mt.msg.Starred, mt.msg.Tags
-		mt.msg, mt.full = full, true
-		mt.head.SetText(messageHeaderText(full))
-		mt.body.SetText(mailcore.DisplayBody(full))
-		mt.invite.show(full)
-		mt.html.show(full)
-		mt.md.show(full)
-	})
+			full := v.(mailcore.Message)
+			// Flags and tags changed in the window since it opened stay.
+			full.Read, full.Starred, full.Tags = mt.msg.Read, mt.msg.Starred, mt.msg.Tags
+			mt.msg, mt.full = full, true
+			rd.showHeaders(full)
+			rd.showBody(full)
+			rd.invite.show(full)
+		})
+	}
+	rd.onRetry = load
+	if !mt.full || m.HTML == "" {
+		load()
+	}
 	return s.tabs.Len() - 1
-}
-
-// messageHeaderText is the From / To / Cc / Date / Tags block of a tab.
-func messageHeaderText(m mailcore.Message) string {
-	lines := []string{"From: " + m.From, "To: " + m.To}
-	if strings.TrimSpace(m.Cc) != "" {
-		lines = append(lines, "Cc: "+m.Cc)
-	}
-	lines = append(lines, "Date: "+m.Date.Format("Mon, 02 Jan 2006 15:04 MST"))
-	var tags []string
-	for _, t := range m.Tags {
-		if !mailcore.IsSystemTag(t) {
-			tags = append(tags, t)
-		}
-	}
-	if len(tags) > 0 {
-		lines = append(lines, "Tags: "+strings.Join(tags, ", "))
-	}
-	if len(m.Attachments) > 0 {
-		lines = append(lines, "Attachments: "+strings.Join(m.Attachments, ", "))
-	}
-	return strings.Join(lines, "\n")
 }
 
 // tabsFollow applies a flag or tag change to the tabs of those messages.
@@ -263,7 +224,7 @@ func (s *session) tabsFollow(want map[mailcore.MessageID]bool, patch mailcore.Fl
 		}
 		if patch.Tags != nil {
 			mt.msg.Tags = append([]string(nil), (*patch.Tags)...)
-			mt.head.SetText(messageHeaderText(mt.msg))
+			mt.rd.showHeaders(mt.msg)
 		}
 	}
 }
@@ -300,8 +261,8 @@ func (s *session) showTagMenu() {
 	var from widget.Component
 	var at paintengine2d.Point
 	if mt, ok := s.activeTab(); ok {
-		from = mt.body
-		r := widget.LocalToWindow(mt.body, mt.body.LocalBounds())
+		from = mt.rd.text
+		r := widget.LocalToWindow(mt.rd.text, mt.rd.text.LocalBounds())
 		at = paintengine2d.Pt(r.Min.X+8, r.Min.Y+8)
 	} else if i := s.primaryIndex(); i >= 0 && s.table != nil && s.table.Visible() {
 		from = s.table

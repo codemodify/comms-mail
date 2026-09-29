@@ -211,7 +211,7 @@ func writeInviteShot(cli *mailcore.Client, path string) error {
 	}
 	s := newSession(a, w, cli, AppOptions{ShowFilter: true})
 	w.SetContent(s.build())
-	s.invite.now = func() time.Time { return mailcore.DemoNow }
+	s.rd.invite.now = func() time.Time { return mailcore.DemoNow }
 	a.PumpOnce()
 	s.selectFolder(mailcore.FolderWorkInbox)
 	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}

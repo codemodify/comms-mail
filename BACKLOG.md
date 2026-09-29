@@ -23,6 +23,9 @@ new ones turn up.
   the calendar application.
 
 ## Compose
+- **Square recipient chips** — asked for; the toolkit draws chips as
+  capsules even in a square theme and has no option (uitoolkit-gaps.md
+  #26).
 - **Spell check.**
 - **Space under the Write form** — with recipients that fold onto more
   lines at the field's asked-for width than in the window, the form keeps
@@ -52,6 +55,13 @@ new ones turn up.
 - **Every message is held in memory** by the daemon, text included (the
   database is where it persists): fine for thousands, heavy for hundreds of
   thousands. Loading the text from `mail.db` on demand would fix it.
+
+## Icons
+- **Icons on every menu row and button** — asked for. Rows and buttons
+  with a fitting toolkit icon have one; Delete, Archive, Move to, Print,
+  VIP, Settings, Quit and the dialogs' buttons wait for more icons and an
+  icon on Button (uitoolkit-gaps.md #27). Tag and Junk use stand-ins (a
+  flag, a warning sign) until tag and junk icons exist.
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header

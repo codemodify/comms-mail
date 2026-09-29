@@ -16,6 +16,8 @@ import (
 //	f         forward
 //	c         compose
 //	m         mark read
+//	s         star / unstar
+//	j         junk
 //
 // Ctrl+N / Ctrl+R / Del / F5 / F7 / F8 stay as toolbar / key bindings.
 
@@ -92,6 +94,8 @@ const ShortcutHelp = `Thunderbird-like (thread list focused, not a text field)
   f         forward
   c         compose (Write)
   m         mark as read
+  s         star / unstar
+  j         junk (move to Junk)
 
 Menus
   F5        Fetch

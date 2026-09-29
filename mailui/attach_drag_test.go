@@ -26,7 +26,7 @@ func TestAttachmentDragPromisesItsFile(t *testing.T) {
 	defer done()
 	name := selectMessageWithAttachment(t, s)
 
-	d := s.dragAttachment(0)
+	d := s.rd.dragAttachment(0)
 	if d == nil {
 		t.Fatal("no drag for the first attachment")
 	}
@@ -108,10 +108,10 @@ func selectMessageWithAttachment(t *testing.T, s *session) string {
 		}
 		s.selected = []mailcore.MessageID{m.ID}
 		s.loadPreview()
-		if len(s.attNames) == 0 {
+		if len(s.rd.attNames) == 0 {
 			continue
 		}
-		return s.attNames[0]
+		return s.rd.attNames[0]
 	}
 	t.Skip("no message in the demo store has an attachment")
 	return ""

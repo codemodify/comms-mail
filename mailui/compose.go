@@ -388,7 +388,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	menubar := widgets.NewMenuBar(
 		widgets.NewMenu("&File",
 			widgets.ItemAccel("&Send Now", "Ctrl+Enter", send),
-			widgets.ItemAccel("Save as &Draft", "Ctrl+S", saveDraft),
+			iconItem(style.IconSave, "Save as &Draft", "Ctrl+S", saveDraft),
 			widgets.Sep(),
 			widgets.Item("Close", closeWin),
 		),
@@ -396,30 +396,30 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 			widgets.ItemAccel("Select &All", "Ctrl+A", func() {
 				body.SetSelection(0, len([]rune(body.Text)))
 			}),
-			&widgets.MenuItem{Text: "Undo", Shortcut: "Ctrl+Z", Disabled: true},
+			&widgets.MenuItem{Text: "Undo", Shortcut: "Ctrl+Z", Icon: style.IconUndo, Disabled: true},
 		),
 		widgets.NewMenu("&View",
 			widgets.Item("Body as plain text", func() { status.Set(0, "Plain text (demo)") }),
 		),
 		widgets.NewMenu("&Insert",
-			widgets.Item("File…", func() {
+			widgets.ItemIcon(style.IconAttach, "File…", func() {
 				widgets.Info(win.Content(), "Attach",
 					"FileDialog is a stub in v1. Mark HasAttach on a Store message later.", nil)
 			}),
 		),
 		widgets.NewMenu("&Help",
-			widgets.Item("About Write", func() {
+			widgets.ItemIcon(style.IconInfo, "About Write", func() {
 				widgets.Info(win.Content(), "Write",
 					"Compose window on uitoolkit.\nUI: Titillium Web.\nSend files to Sent in the demo Store.", nil)
 			}),
 		),
 	)
 
-	sendBtn := widgets.ToolIconBtn(style.IconNew, "Send", send)
+	sendBtn := widgets.ToolIconBtn(style.IconMail, "Send", send)
 	sendBtn.Tip = "Send Now (demo: file in Sent)"
 	draftBtn := widgets.ToolIconBtn(style.IconSave, "Save", saveDraft)
 	draftBtn.Tip = "Save as Draft"
-	attachBtn := widgets.ToolIconBtn(style.IconOpen, "Attach", func() {
+	attachBtn := widgets.ToolIconBtn(style.IconAttach, "Attach", func() {
 		widgets.ShowFileDialog(win.Content(), widgets.FileDialogOptions{
 			Title: "Attach file",
 			Path:  ".",

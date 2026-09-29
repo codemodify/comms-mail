@@ -93,21 +93,17 @@ type session struct {
 	cli  *mailcore.Client
 	opts AppOptions
 
-	folder       mailcore.FolderID
-	account      string
-	central      bool // Account Central instead of the thread list
-	selected     []mailcore.MessageID
-	filter       mailcore.Filter
-	sortCol      int
-	sortAsc      bool
-	online       bool
-	rows         []mailcore.Message
-	kind         mailcore.FolderKind
-	backend      string
-	attachSel    int
-	attNames     []string
-	attachClickI int
-	attachClickT time.Time
+	folder   mailcore.FolderID
+	account  string
+	central  bool // Account Central instead of the thread list
+	selected []mailcore.MessageID
+	filter   mailcore.Filter
+	sortCol  int
+	sortAsc  bool
+	online   bool
+	rows     []mailcore.Message
+	kind     mailcore.FolderKind
+	backend  string
 
 	chromePrefs ChromePrefs
 	cardView    bool
@@ -122,38 +118,24 @@ type session struct {
 	listStack  *widgets.Stack
 	tree       *widgets.TreeView
 	outboxTree *widgets.TreeView
-	preview    *widgets.TextArea
-	// html is the reading pane's HTML tab; previewRich, previewImg, imgBar
-	// and alwaysImgs are its parts.
-	html                                       *htmlPane
-	previewRich                                *widgets.RichText
-	previewImg                                 *widgets.Label
-	imgBar                                     *widgets.FlexBox
-	alwaysImgs                                 *widgets.Button
-	source                                     *widgets.TextArea
-	attachHits                                 []*attachHit
-	attachAll                                  *widgets.Button
-	attachBar                                  widget.Component
-	attachOpen, attachSave                     *widgets.Button
-	attachRows                                 *widgets.FlexBox
-	attachPane                                 *widgets.FlexBox
-	askedEmpty                                 bool
-	trayMu                                     sync.Mutex
-	tray                                       platform.StatusItem
-	notes                                      mailNotifier
-	mainBar                                    widget.Component
-	listBar                                    *widgets.ToolBar
-	hdrFrom, hdrSubj, hdrDate, hdrTo, hdrExtra *widgets.Label
-	status                                     *widgets.StatusBar
-	qf                                         *widgets.TextField
-	qfBtn                                      *widgets.ToolItem
-	allBtn                                     *widgets.ToolItem
-	searchAll                                  bool
-	acctPanel                                  widget.Component
-	acctTitle                                  *widgets.Label
-	acctBody                                   *widgets.Label
-	thread                                     widget.Component
-	center                                     *widgets.Stack
+	// rd is the reading pane (reader.go).
+	rd         *reader
+	askedEmpty bool
+	trayMu     sync.Mutex
+	tray       platform.StatusItem
+	notes      mailNotifier
+	mainBar    widget.Component
+	listBar    *widgets.ToolBar
+	status     *widgets.StatusBar
+	qf         *widgets.TextField
+	qfBtn      *widgets.ToolItem
+	allBtn     *widgets.ToolItem
+	searchAll  bool
+	acctPanel  widget.Component
+	acctTitle  *widgets.Label
+	acctBody   *widgets.Label
+	thread     widget.Component
+	center     *widgets.Stack
 
 	busy      sync.WaitGroup
 	refresher *refreshCoalescer
@@ -170,19 +152,8 @@ type session struct {
 	// A refresh that lands meanwhile (marking it read sends one) waits for
 	// that fetch rather than starting a second.
 	loadingID mailcore.MessageID
-	// sourceID is whose raw source s.source holds. The source is fetched
-	// only while its tab is showing.
-	sourceID   mailcore.MessageID
-	sourceOpen bool
-	// browser is the HTML tab, md the Markdown tab (views.go); markdown is
-	// md's Markdown text.
-	browser  *browserPane
-	md       *mdPane
-	markdown *widgets.TextArea
-	retryBar widget.Component
-	// invite is the calendar invitation card over the preview's body;
-	// inviteCompact folds every card's guest list and options away.
-	invite        *inviteCard
+	// inviteCompact folds every invitation card's guest list and options
+	// away.
 	inviteCompact bool
 	// images holds the pictures HTML mail showed (cid: parts by message,
 	// remote ones by URL) and the senders whose remote images load
@@ -219,7 +190,6 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	s := &session{
 		app: a, win: win, cli: cli, opts: opts,
 		sortCol: colWhen, sortAsc: false, online: true,
-		attachSel: -1, attachClickI: -1,
 	}
 	// Pages printed and attachments dragged out by an earlier run, once
 	// old (mailcore.RemoveOld).
@@ -312,17 +282,6 @@ func (s *session) build() widget.Component {
 	} else {
 		s.status = nil
 	}
-	s.hdrFrom = widgets.NewLabel("")
-	s.hdrSubj = widgets.NewTitle("")
-	s.hdrDate = widgets.NewLabel("")
-	s.hdrTo = widgets.NewLabel("")
-	s.hdrExtra = widgets.NewLabel("")
-	s.preview = widgets.NewTextView("", "Select a message (plain text)")
-	s.preview.MinRows = 8
-	s.source = widgets.NewMonoTextView("", "Raw source")
-	s.source.MinRows = 8
-	s.source.Wrap = false
-
 	s.table = widgets.NewTableView([]widgets.TableColumn{
 		colStar:   {Icon: style.IconStar, Width: 28, MinWidth: 24, Sortable: true},
 		colAttach: {Icon: style.IconAttach, Width: 28, MinWidth: 24, Sortable: true},
@@ -399,76 +358,13 @@ func (s *session) build() widget.Component {
 	s.qf.OnEscape = func() { s.showFilter(false) }
 	s.qf.SetVisible(s.opts.ShowFilter)
 
-	// The Message tab holds a plain-text view and an HTML view, one shown
-	// at a time (renderMessage), over a line that appears when the HTML has
-	// images the renderer will not fetch.
-	// Four tabs: Message is the text/plain body (the default), Source the
-	// raw RFC822, HTML offers to open the HTML part in the browser (views.go:
-	// nothing of it is drawn here; the tab is there only for a message with
-	// HTML), and Markdown is the message rendered from
-	// Markdown, with its Markdown text (mailcore.MessageMarkdown). The
-	// rendering is the rich-text view with the remote-images bar (htmlPane).
-	s.browser = newBrowserPane(s)
-	s.md = newMDPane(s)
-	s.html = s.md.rendered
-	s.markdown = s.md.text
-	s.previewRich, s.previewImg, s.imgBar, s.alwaysImgs = s.html.rich, s.html.notice, s.html.bar, s.html.always
+	// The reading pane: the message's header, invitation, actions and
+	// attachments over Message, Source and Markdown (reader.go).
+	s.rd = newReader(s)
+	s.rd.onRetry = s.loadPreview
 	s.loadImageSenders()
-	previewTab := widgets.NewPad(8, s.preview)
-	sourceTab := widgets.NewPad(8, s.source)
-	htmlTab := widgets.NewPad(8, s.browser.view)
-	markdownTab := widgets.NewPad(4, s.md.view)
-	tabs := widgets.NewTabView(
-		widgets.Tab{Title: "Message", Content: previewTab},
-		widgets.Tab{Title: "Source", Content: sourceTab},
-		widgets.Tab{Title: "HTML", Content: htmlTab},
-		widgets.Tab{Title: "Markdown", Content: markdownTab},
-	)
-	s.browser.onHas = func(has bool) { showHTMLTab(tabs, 2, has) }
-	s.sourceOpen = false
-	tabs.OnChange = func(i int) {
-		s.sourceOpen = i == 1
-		switch i {
-		case 1:
-			s.mark("Source  ·  JetBrains Mono")
-			s.loadSource()
-		case 2:
-			s.mark("HTML")
-		case 3:
-			s.mark("Markdown")
-		default:
-			s.mark("Message")
-		}
-	}
-	// Attachments: one bar of buttons acting on the selected attachment
-	// (double-click opens one, dragging one out hands it over), over a
-	// strip of fixed height — about three rows — that scrolls. However many
-	// a message carries, the strip stays the same size and the text below
-	// keeps its room.
-	s.attachAll = widgets.NewButton("Save All", s.saveAllAttachments)
-	s.attachAll.SetEnabled(false)
-	// Short labels: the bar fits the narrowest reading pane (the header line
-	// already says how many there are).
-	s.attachOpen = widgets.NewButton("Open", func() { s.openAttachment(s.attachSel) })
-	s.attachOpen.Tip = "Open the selected attachment"
-	s.attachSave = widgets.NewButton("Save", func() { s.saveAttachment(s.attachSel) })
-	s.attachSave.Tip = "Save the selected attachment as…"
-	s.attachBar = widgets.NewRow(s.attachOpen, s.attachSave, s.attachAll).WithGap(8)
-	s.attachBar.SetVisible(false)
-	s.attachRows = widgets.NewColumn().WithGap(2)
-	s.attachPane = widgets.NewColumn(s.attachBar, widgets.NewHeightBox(attachStripHeight, widgets.NewScrollView(s.attachRows))).WithGap(4)
-	s.attachPane.SetVisible(false)
 	s.applyRowMetrics()
-	s.retryBar = widgets.NewRow(widgets.NewButton("Retry", s.loadPreview))
-	s.retryBar.SetVisible(false)
-	s.invite = newInviteCard(s)
-	headCol := widgets.NewColumn(s.hdrSubj, s.hdrFrom, s.hdrTo, s.hdrDate, s.hdrExtra, s.invite.view, s.attachPane, s.retryBar).WithGap(3).WithPad(10)
-	// The header grows with what the message carries (an invitation,
-	// attachments) but always leaves the message body room for a few
-	// lines: past that it scrolls.
-	headBox := newReserveBox(200, newHeaderScroll(headCol))
-	previewCol := widgets.NewColumn(headBox, widgets.NewSeparator(), tabs).WithGap(0)
-	previewCol.AddFlex(tabs, 1)
+	previewCol := s.rd.view
 
 	s.table.SetVisible(!s.cardView)
 	s.cards.SetVisible(s.cardView)
@@ -667,30 +563,41 @@ func (s *session) tagPopup(from widget.Component, p paintengine2d.Point) {
 	widgets.ShowContextMenu(from, p, items...)
 }
 
+// messageMenu is the right-click menu on a message. Rows carry an icon
+// where the toolkit has one for what they do (uitoolkit-gaps.md #27 for
+// the rest).
 func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
+	star := "Star"
+	if m, ok := s.primary(); ok && m.Starred {
+		star = "Unstar"
+	}
 	widgets.ShowContextMenu(from, p,
-		widgets.ItemAccel("Open in New Tab", "E", s.openInTab),
+		iconItem(style.IconOpen, "Open in New Tab", "E", s.openInTab),
 		widgets.Sep(),
-		widgets.ItemAccel("Reply", "R", s.reply),
-		widgets.ItemAccel("Reply All", "Shift+R", s.replyAll),
-		widgets.ItemAccel("Forward", "F", s.forward),
+		iconItem(style.IconReply, "Reply", "R", s.reply),
+		iconItem(style.IconReply, "Reply All", "Shift+R", s.replyAll),
+		iconItem(style.IconForward, "Forward", "F", s.forward),
 		widgets.Sep(),
-		widgets.Item("Mark as Read", func() { s.setRead(true) }),
-		widgets.Item("Mark as Unread", func() { s.setRead(false) }),
-		widgets.Item("Star", s.toggleStar),
+		iconItem(style.IconCheck, "Mark as Read", "M", func() { s.setRead(true) }),
+		iconItem(style.IconMail, "Mark as Unread", "", func() { s.setRead(false) }),
+		iconItem(style.IconStar, star, "S", s.toggleStar),
 		widgets.Sep(),
-		&widgets.MenuItem{Text: "Tag", Shortcut: "T", Submenu: s.tagMenuItems()},
-		widgets.Item("Mute Thread", func() { s.muteThread(true) }),
+		&widgets.MenuItem{Text: "Tag", Shortcut: "T", Icon: style.IconFlag, Submenu: s.tagMenuItems()},
+		iconItem(style.IconMute, "Mute Thread", "", func() { s.muteThread(true) }),
 		widgets.Item("Add sender to VIP", s.addVIP),
 		widgets.ItemAccel("Archive", "A", s.archive),
 		&widgets.MenuItem{Text: "Move to", Submenu: s.moveMenu()},
-		widgets.Item("Junk", s.junk),
-		&widgets.MenuItem{Text: "Delete", Shortcut: "D", Icon: style.IconCut, OnClick: s.deleteSel},
+		iconItem(style.IconWarning, "Junk", "J", s.junk),
+		widgets.ItemAccel("Delete", "D", s.deleteSel),
 		widgets.Sep(),
 		widgets.ItemAccel("Print…", "Ctrl+P", s.printMessage),
-		widgets.Item("Save As…", s.saveMessageAs),
-		widgets.ItemIcon(style.IconInfo, "View Source", s.viewSource),
+		iconItem(style.IconSave, "Save As…", "", s.saveMessageAs),
 	)
+}
+
+// iconItem is a menu row with an icon and, when there is one, its key.
+func iconItem(icon style.ToolIcon, text, shortcut string, on func()) *widgets.MenuItem {
+	return &widgets.MenuItem{Icon: icon, Text: text, Shortcut: shortcut, OnClick: on}
 }
 
 // now is the clock the thread list formats against. The seeded demo store
@@ -1107,18 +1014,18 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 			}
 		}
 		items := []*widgets.MenuItem{
-			widgets.Item("Fetch", s.getMessages),
-			widgets.Item("New Folder…", s.newFolder),
+			iconItem(style.IconDownload, "Fetch", "", s.getMessages),
+			iconItem(style.IconNew, "New Folder…", "", s.newFolder),
 		}
 		if haveFolder && !folder.Virtual {
 			f := folder
 			if !f.NoSelect {
-				items = append(items, widgets.Item("Mark Folder Read", func() { s.markFolderRead(f.ID) }))
+				items = append(items, iconItem(style.IconCheck, "Mark Folder Read", "", func() { s.markFolderRead(f.ID) }))
 			}
-			items = append(items, widgets.Item("New Subfolder…", func() { s.newSubfolder(f) }))
+			items = append(items, iconItem(style.IconNew, "New Subfolder…", "", func() { s.newSubfolder(f) }))
 			if folder.Kind == mailcore.FolderCustom {
 				items = append(items,
-					widgets.Item("Rename Folder…", func() { s.renameFolder(f) }),
+					iconItem(style.IconPen, "Rename Folder…", "", func() { s.renameFolder(f) }),
 					&widgets.MenuItem{Text: "Move Folder To", Submenu: s.folderMoveMenu(f)},
 					widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
 			}
@@ -1440,34 +1347,15 @@ func (s *session) loadPreview() {
 	gen := s.previewGen
 	s.loadingID = ""
 	s.shownOK = false
-	s.sourceID = ""
-	if s.source != nil {
-		s.source.SetText("")
-	}
-	if s.retryBar != nil {
-		s.retryBar.SetVisible(false)
-	}
+	rd := s.rd
+	rd.retry.SetVisible(false)
 	m, ok := s.listPrimary()
 	if !ok {
-		s.showPreviewPlain("Select a message (plain text)", "")
-		if s.hdrSubj != nil {
-			s.hdrSubj.SetText("No message selected")
-			s.hdrFrom.SetText("")
-			s.hdrTo.SetText("")
-			s.hdrDate.SetText("")
-			s.hdrExtra.SetText("")
-		}
-		s.attNames = nil
-		s.syncAttachPane()
-		if s.invite != nil {
-			s.invite.clear()
-		}
+		rd.clear()
 		return
 	}
 	s.showHeaders(m)
-	if s.invite != nil {
-		s.invite.show(m)
-	}
+	rd.invite.show(m)
 	// A list row carries no text (a large folder's list stays small), so
 	// the message is fetched: fast and local for a cached one, a download
 	// for one not yet fetched. A message read before in this window shows
@@ -1481,12 +1369,11 @@ func (s *session) loadPreview() {
 	if hadBody {
 		s.showBody(m)
 	} else {
-		s.showPreviewPlain("", "")
+		rd.showPlain("", "")
 		time.AfterFunc(loadingNoteDelay, func() {
 			s.post(func() {
-				if gen == s.previewGen && s.loadingID == id && s.preview != nil {
-					s.preview.Placeholder = "Loading message…"
-					s.preview.SetText("")
+				if gen == s.previewGen && s.loadingID == id {
+					rd.showPlain("Loading message…", "")
 				}
 			})
 		})
@@ -1501,121 +1388,26 @@ func (s *session) loadPreview() {
 		s.loadingID = ""
 		if err != nil {
 			if !hadBody {
-				s.showPreviewPlain("", "Couldn't load this message.\n\n"+err.Error())
-				if s.retryBar != nil {
-					s.retryBar.SetVisible(true)
-				}
+				rd.showPlain("", "Couldn't load this message.\n\n"+err.Error())
+				rd.retry.SetVisible(true)
 			}
 			return
 		}
 		full := v.(mailcore.Message)
 		s.showHeaders(full)
 		s.showBody(full)
-		if s.invite != nil {
-			s.invite.show(full)
-		}
+		rd.invite.show(full)
 	})
 }
 
-func (s *session) showHeaders(m mailcore.Message) {
-	if s.hdrSubj != nil {
-		s.hdrSubj.SetText(m.Subject)
-		s.hdrFrom.SetText("From: " + m.From)
-		s.hdrTo.SetText("To: " + m.To)
-		s.hdrDate.SetText("Date: " + m.Date.Format("Mon, 02 Jan 2006 15:04 MST"))
-		extra := ""
-		if len(m.Tags) > 0 {
-			extra = "Tags: " + strings.Join(m.Tags, ", ")
-		}
-		if m.HasAttach && extra != "" {
-			extra += "  ·  "
-		}
-		if m.HasAttach {
-			extra += fmt.Sprintf("%d attachment(s)", len(m.Attachments))
-		}
-		if did := repliedForwarded(m); did != "" {
-			if extra != "" {
-				extra += "  ·  "
-			}
-			extra += did
-		}
-		s.hdrExtra.SetText(extra)
-	}
-	s.attNames = append([]string(nil), m.Attachments...)
-	s.syncAttachPane()
-}
+// showHeaders shows m's header in the reading pane.
+func (s *session) showHeaders(m mailcore.Message) { s.rd.showHeaders(m) }
 
-// showBody puts a loaded message in the preview and makes it the one the
-// window acts on.
+// showBody puts a loaded message in the reading pane and makes it the one
+// the window acts on.
 func (s *session) showBody(m mailcore.Message) {
 	s.shown, s.shownOK = m, true
-	if s.preview != nil {
-		s.preview.Placeholder = "This message has no text"
-		s.preview.SetText(mailcore.DisplayBody(m))
-	}
-	s.renderHTMLView(m)
-	if s.sourceOpen {
-		s.loadSource()
-	}
-}
-
-// renderHTMLView fills the HTML tab (whether the message has HTML to open
-// in the browser) and the Markdown tab (the message rendered from Markdown,
-// and its Markdown text). The rendering makes no network request; the
-// blocked-images line shows when it wants images it will not fetch.
-func (s *session) renderHTMLView(m mailcore.Message) {
-	if s.browser != nil {
-		s.browser.show(m)
-	}
-	if s.md != nil {
-		s.md.show(m)
-	}
-}
-
-// showPreviewPlain shows text in the Message tab and clears the HTML tab:
-// for loading, errors and no selection, none of which is HTML.
-func (s *session) showPreviewPlain(placeholder, text string) {
-	if s.preview != nil {
-		s.preview.Placeholder = placeholder
-		s.preview.SetText(text)
-	}
-	if s.browser != nil {
-		s.browser.clear()
-	}
-	if s.md != nil {
-		s.md.clear()
-	}
-}
-
-// loadSource fills the Source tab for the primary message, off the UI
-// goroutine. It runs when the tab is shown, not on every click.
-func (s *session) loadSource() {
-	if s.source == nil {
-		return
-	}
-	m, ok := s.listPrimary()
-	if !ok || s.sourceID == m.ID {
-		return
-	}
-	s.sourceID = m.ID
-	gen := s.previewGen
-	s.source.Placeholder = "Loading source…"
-	s.source.SetText("")
-	id := m.ID
-	s.async(func() (any, error) {
-		return s.cli.GetSource(id)
-	}, func(v any, err error) {
-		if gen != s.previewGen {
-			return
-		}
-		if err != nil {
-			s.sourceID = ""
-			s.source.SetText("Couldn't load the source.\n\n" + err.Error())
-			return
-		}
-		s.source.Placeholder = "Raw source"
-		s.source.SetText(v.(string))
-	})
+	s.rd.showBody(m)
 }
 
 // setFlagsLater shows a flag change in the list at once and tells the
@@ -2823,238 +2615,6 @@ func (s *session) tagNames() []string {
 	return out
 }
 
-const attachActivateWindow = 400 * time.Millisecond
-
-// attachStripHeight is the attachment list's height (1x pixels): about
-// three rows, whatever the message carries; more scroll.
-const attachStripHeight = 92
-
-func (s *session) syncAttachPane() {
-	has := len(s.attNames) > 0
-	s.attachSel = -1
-	if has {
-		s.attachSel = 0 // Open and Save As act on the first until another is picked
-	}
-	s.attachClickI = -1
-	s.attachClickT = time.Time{}
-	s.rebuildAttachRows()
-	for _, b := range []*widgets.Button{s.attachOpen, s.attachSave} {
-		if b != nil {
-			b.SetEnabled(has)
-		}
-	}
-	if s.attachPane != nil {
-		s.attachPane.SetVisible(has)
-	}
-	if s.attachBar != nil {
-		s.attachBar.SetVisible(has)
-	}
-	if s.attachAll != nil {
-		s.attachAll.SetEnabled(has)
-	}
-	s.paintAttachSelection()
-	if s.win != nil {
-		s.win.RequestLayout()
-	}
-}
-
-func (s *session) rebuildAttachRows() {
-	if s.attachRows == nil {
-		return
-	}
-	s.attachRows.ClearChildren()
-	s.attachHits = s.attachHits[:0]
-	for i, name := range s.attNames {
-		i, name := i, name
-		hit := newAttachHit(name, func() { s.selectAttachment(i) })
-		hit.Drag = func() *widget.Drag { return s.dragAttachment(i) }
-		s.attachRows.Add(hit)
-		s.attachHits = append(s.attachHits, hit)
-	}
-}
-
-func (s *session) paintAttachSelection() {
-	for i, h := range s.attachHits {
-		sel := i == s.attachSel
-		if h.Selected != sel {
-			h.Selected = sel
-			h.Invalidate()
-		}
-	}
-}
-
-func (s *session) selectAttachment(i int) {
-	now := time.Now()
-	activate := i >= 0 && i == s.attachClickI && !s.attachClickT.IsZero() && now.Sub(s.attachClickT) < attachActivateWindow
-	s.attachSel = i
-	s.attachClickI = i
-	s.attachClickT = now
-	s.paintAttachSelection()
-	if activate {
-		s.openAttachment(i)
-		return
-	}
-	if i >= 0 && i < len(s.attNames) {
-		s.mark("Attachment: " + s.attNames[i])
-	}
-}
-
-// attachmentParts is the subset of m.Parts that the attachment rows show,
-// in the same order as m.Attachments.
-func attachmentParts(m mailcore.Message) []mailcore.Part {
-	var out []mailcore.Part
-	for _, p := range m.Parts {
-		if strings.TrimSpace(p.Filename) != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// attachPartID maps attachment row i to its MIME section id.
-//
-// Row i indexes m.Attachments (filenames); m.Parts also holds the text
-// parts, so indexing Parts directly used to fetch the message body for
-// "Save As report.pdf". Match by filename first, then by position among the
-// parts that actually have a filename.
-func (s *session) attachPartID(m mailcore.Message, i int) string {
-	if i < 0 || i >= len(s.attNames) {
-		return ""
-	}
-	want := s.attNames[i]
-	parts := attachmentParts(m)
-	for _, p := range parts {
-		if p.Filename == want && p.ID != "" {
-			return p.ID
-		}
-	}
-	if i < len(parts) && parts[i].ID != "" {
-		return parts[i].ID
-	}
-	// MemoryStore / demo messages have no BODYSTRUCTURE parts.
-	return fmt.Sprintf("att-%d", i+1)
-}
-func (s *session) openAttachment(i int) {
-	m, ok := s.primary()
-	if !ok || i < 0 || i >= len(s.attNames) {
-		return
-	}
-	pid := s.attachPartID(m, i)
-	s.mark("Opening " + s.attNames[i] + "…")
-	s.async(func() (any, error) {
-		return s.cli.OpenPart(m.ID, pid)
-	}, func(v any, err error) {
-		if err != nil {
-			s.mark("Open: " + err.Error())
-			return
-		}
-		p := v.(mailcore.PartData)
-		if p.Path != "" {
-			s.mark("Opened " + p.Path)
-			return
-		}
-		s.mark("Attachment: " + s.attNames[i])
-	})
-}
-func (s *session) saveAttachment(i int) {
-	m, ok := s.primary()
-	if !ok || i < 0 || i >= len(s.attNames) || s.win == nil {
-		return
-	}
-	name := mailcore.AttachFileName(s.attNames[i])
-	s.async(func() (any, error) {
-		return s.attachmentBytes(m, i)
-	}, func(v any, err error) {
-		if err != nil {
-			s.mark("Save As: " + err.Error())
-			return
-		}
-		data := v.([]byte)
-		widgets.ShowFileDialog(s.win.Content(), widgets.FileDialogOptions{
-			Title:      "Save As",
-			Mode:       widgets.FileSave,
-			Path:       os.TempDir(),
-			Name:       name,
-			OnNavigate: mailDirEntries,
-			OnPick: func(path string) {
-				if path == "" {
-					return
-				}
-				if st, err := os.Stat(path); err == nil && st.IsDir() {
-					path = filepath.Join(path, name)
-				}
-				if err := mailcore.WriteFileAtomic(path, data, 0o600); err != nil {
-					s.mark("Save As: " + err.Error())
-					return
-				}
-				s.mark("Saved " + path)
-			},
-		})
-	})
-}
-
-// saveAllAttachments picks one folder (a path that is a file uses its
-// parent; a missing one with no extension is created) then writes every
-// attachment for the current message there (0600).
-func (s *session) saveAllAttachments() {
-	m, ok := s.primary()
-	if !ok || len(s.attNames) == 0 || s.win == nil {
-		return
-	}
-	names := append([]string(nil), s.attNames...)
-	s.mark("Collecting attachments…")
-	s.async(func() (any, error) {
-		items := make([]attachBlob, 0, len(names))
-		for i := range names {
-			data, err := s.attachmentBytes(m, i)
-			if err != nil {
-				return nil, err
-			}
-			items = append(items, attachBlob{Name: mailcore.AttachFileName(names[i]), Data: data})
-		}
-		return items, nil
-	}, func(v any, err error) {
-		if err != nil {
-			s.mark("Save All: " + err.Error())
-			return
-		}
-		items := v.([]attachBlob)
-		widgets.ShowFileDialog(s.win.Content(), widgets.FileDialogOptions{
-			Title:      "Save all attachments in",
-			Mode:       widgets.FileOpenFolder,
-			Path:       os.TempDir(),
-			OnNavigate: mailDirEntries,
-			OnPick: func(path string) {
-				dir, err := saveAllDir(path)
-				if err != nil {
-					s.mark("Save All: " + err.Error())
-					return
-				}
-				used := map[string]int{}
-				for _, it := range items {
-					dest := filepath.Join(dir, uniqueFileName(it.Name, used))
-					if err := mailcore.WriteFileAtomic(dest, it.Data, 0o600); err != nil {
-						s.mark("Save All: " + err.Error())
-						return
-					}
-				}
-				s.mark(fmt.Sprintf("Saved %d attachment(s) to %s", len(items), dir))
-			},
-		})
-	})
-}
-func (s *session) attachmentBytes(m mailcore.Message, i int) ([]byte, error) {
-	pid := s.attachPartID(m, i)
-	if pid == "" {
-		return nil, fmt.Errorf("no such attachment")
-	}
-	name := ""
-	if i >= 0 && i < len(s.attNames) {
-		name = s.attNames[i]
-	}
-	return s.partBytes(m.ID, pid, name)
-}
-
 // partBytes reads one part's bytes: what comms-maild hands back, or the
 // file it points at for a part it has already spilled to disk.
 //
@@ -3482,6 +3042,12 @@ func (s *session) handleKey(e widget.KeyEvent) bool {
 		return true
 	case platform.KeyM:
 		s.setRead(true)
+		return true
+	case platform.KeyS:
+		s.toggleStar()
+		return true
+	case platform.KeyJ:
+		s.junk()
 		return true
 	}
 	return false

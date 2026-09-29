@@ -112,6 +112,47 @@ guidelines.
 error under the field (asynchronous would be better still: the check is a
 server round trip), and an accept label.
 
+### 26. A chip is always a capsule, even in a square-cornered theme
+`Token.Paint` takes half the chip's height as its radius and uses the
+look's radius only when it is smaller **and above zero**
+(`if m := lk.Metrics().Radius; m > 0 && m < rad`). A square-cornered
+theme — Metal, which comms-mail's owner uses, has `Radius` 0, as does any
+look with `corners: square` — therefore gets round capsules, the opposite
+of what the comment above that line says it intends ("a square-cornered
+era gets square chips"). There is also no way for an application to ask
+for square chips in a rounded theme. The owner asked for square chips in
+the Write window; comms-mail cannot draw them without redrawing the chip.
+**Fix:** `m >= 0` (zero radius is square); and a `ChipRadius` (or shape)
+on TokenField / Token for an application that wants its own.
+
+### 27. Too few icons to put on menus and buttons, and Button has none
+`ToolIcon` has 23 ids. A mail client's menus need more, and most of them
+are already PNGs in the five shipped sets (ShippedIconStems) with no id
+to name them by: **trash** (Delete), **archive**, **junk**, **tag**,
+**folder** (Move to), **reply-all**, **settings**, **external-link**
+(Open HTML, open in browser), **eye** (Show Images), **user** (VIP),
+**bell** (Notify), **send**. **print** is not shipped at all. There is no
+way to draw a stem by name either (`ToolIconByName` knows the 23), so an
+application cannot use the PNGs that are there. And `widgets.Button` has
+no `Icon` — only ToolButton and MenuItem do — so a dialog's buttons cannot
+carry one (KDE puts icons on OK, Cancel, Apply, Save).
+comms-mail uses the ids that fit (open, reply, forward, check, mail, star,
+mute, save, attach, download, new, pen, undo, info) and two stand-ins
+(tag → flag, junk → warning); Delete, Archive, Move to, Print, VIP,
+Settings and Quit have no icon, and the action row under a message uses
+ToolButtons to get icons at all.
+**Fix:** ids for the stems above (and a print icon), `IconByStem(name)`
+for the rest, and `Button.Icon`.
+
+### 28. Nothing lays controls out in a row that wraps
+There are rows, columns, grids and a form, but no flow layout: a row of
+buttons in a pane that can be narrow — the actions under a message: Open,
+Save, Save All, Open HTML — runs off the edge instead of folding onto a
+second line. comms-mail has its own small `flowRow`.
+**Fix:** a `FlowBox` (Qt's flow layout example, GTK's `GtkFlowBox`): place
+children at their natural size, wrap at the width given, measure the
+height for that width.
+
 ## Resolved
 
 Closed in 0.22, and how comms-mail uses each.

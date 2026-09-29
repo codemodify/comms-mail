@@ -406,7 +406,7 @@ func listRows(msgs []Message) []Message {
 }
 
 // fullMessage is a single message for the preview: the text body for the
-// Message tab, and the HTML part kept for the HTML tab (plainMessage drops
+// Message tab, and the HTML part kept for Open HTML (plainMessage drops
 // it, which is right for a list row but leaves the HTML pane empty for the
 // message the user is reading).
 func fullMessage(m Message) Message {

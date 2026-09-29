@@ -7,6 +7,7 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
+	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
@@ -45,7 +46,7 @@ func MessageSourceApp(win *app.Window, msg mailcore.Message, rfc822 string) widg
 			}),
 		),
 		widgets.NewMenu("&Help",
-			widgets.Item("About Message Source", func() {
+			widgets.ItemIcon(style.IconInfo, "About Message Source", func() {
 				widgets.Info(win.Content(), "Message Source",
 					"Raw RFC822 as stored by comms-maild (IMAP FETCH / .eml).\n"+
 						"JetBrains Mono, read-only, selectable.",

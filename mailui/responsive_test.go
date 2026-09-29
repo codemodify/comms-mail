@@ -119,8 +119,8 @@ func TestClickDoesNotWaitForTheBody(t *testing.T) {
 		start := time.Now()
 		s.clickRow(unread, false)
 		took = time.Since(start)
-		subj = s.hdrSubj.Text
-		placeholder = s.preview.Placeholder
+		subj = s.rd.subj.Text
+		placeholder = s.rd.text.Placeholder
 		read = s.rows[unread].Read
 		if subj != s.rows[unread].Subject {
 			t.Errorf("headers show %q, want the row's %q", subj, s.rows[unread].Subject)
@@ -133,7 +133,7 @@ func TestClickDoesNotWaitForTheBody(t *testing.T) {
 	// at once: a local fetch would only flash it).
 	for wait := time.Now().Add(2 * time.Second); placeholder != "Loading message…" && time.Now().Before(wait); {
 		time.Sleep(20 * time.Millisecond)
-		onUI(func() { placeholder = s.preview.Placeholder })
+		onUI(func() { placeholder = s.rd.text.Placeholder })
 	}
 	if placeholder != "Loading message…" {
 		t.Fatalf("preview placeholder %q while loading", placeholder)
@@ -166,7 +166,7 @@ func TestClickDoesNotWaitForTheBody(t *testing.T) {
 		var shown mailcore.MessageID
 		var ok bool
 		var text string
-		onUI(func() { shown, ok, text = s.shown.ID, s.shownOK, s.preview.Text })
+		onUI(func() { shown, ok, text = s.shown.ID, s.shownOK, s.rd.text.Text })
 		if ok {
 			if shown != second {
 				t.Fatalf("preview shows %s, want the last click %s", shown, second)

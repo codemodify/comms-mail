@@ -35,8 +35,8 @@ func TestAttachmentStripKeepsItsSize(t *testing.T) {
 				tabsTop = widget.LocalToWindow(tv, tv.LocalBounds()).Min.Y
 			}
 		})
-		if s.attachPane.Visible() {
-			paneH = s.attachPane.LocalBounds().Dy()
+		if s.rd.attStrip.Visible() {
+			paneH = s.rd.attStrip.LocalBounds().Dy()
 		}
 		return
 	}

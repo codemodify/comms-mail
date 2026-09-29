@@ -15,12 +15,12 @@ import (
 func TestInviteCardInPreview(t *testing.T) {
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	s.invite.now = func() time.Time { return mailcore.DemoNow }
+	s.rd.invite.now = func() time.Time { return mailcore.DemoNow }
 	s.selectFolder(mailcore.FolderWorkInbox)
 	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
 	s.loadPreview()
 
-	c := s.invite
+	c := s.rd.invite
 	if !c.view.Visible() || c.id != mailcore.DemoInviteID {
 		t.Fatalf("card visible=%v for %q", c.view.Visible(), c.id)
 	}
@@ -39,7 +39,7 @@ func TestInviteCardInPreview(t *testing.T) {
 		t.Fatalf("state %q buttons %v", c.state.Text, c.btns.Visible())
 	}
 	// The calendar part is not the body.
-	if strings.Contains(s.preview.Text, "BEGIN:VCALENDAR") {
+	if strings.Contains(s.rd.text.Text, "BEGIN:VCALENDAR") {
 		t.Fatal("the calendar object shows as the body")
 	}
 
@@ -60,10 +60,10 @@ func TestInviteCardInPreview(t *testing.T) {
 	// updates the preview's card too.
 	press(s, platform.KeyE, 0)
 	mt, ok := s.activeTab()
-	if !ok || !mt.invite.view.Visible() || mt.invite.inv.Answer != mailcore.PartStatAccepted {
+	if !ok || !mt.rd.invite.view.Visible() || mt.rd.invite.inv.Answer != mailcore.PartStatAccepted {
 		t.Fatalf("tab card: %v", mt)
 	}
-	mt.invite.decline.OnClick()
+	mt.rd.invite.decline.OnClick()
 	s.waitIdle()
 	if c.inv.Answer != mailcore.PartStatDeclined || !strings.HasPrefix(c.state.Text, "You declined.") {
 		t.Fatalf("preview card after declining in the tab: %q", c.state.Text)
@@ -136,11 +136,11 @@ func TestInviteCardOptions(t *testing.T) {
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	s.invite.now = func() time.Time { return mailcore.DemoNow }
+	s.rd.invite.now = func() time.Time { return mailcore.DemoNow }
 	s.selectFolder(mailcore.FolderWorkInbox)
 	s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
 	s.loadPreview()
-	c := s.invite
+	c := s.rd.invite
 	if !c.opts.Visible() || !c.tell.Checked || !c.openCal.Visible() || c.as.Visible() {
 		t.Fatalf("options %v tell %v cal %v as %v", c.opts.Visible(), c.tell.Checked, c.openCal.Visible(), c.as.Visible())
 	}
@@ -186,7 +186,7 @@ func TestInviteCardOptions(t *testing.T) {
 func TestInviteCardIdentityAndCounter(t *testing.T) {
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	c := s.invite
+	c := s.rd.invite
 	c.idents = []mailcore.Identity{{ID: "a", Address: "a@example.com"}, {ID: "b", Name: "B", Address: "b@example.com"}}
 	start := mailcore.DemoNow.Add(48 * time.Hour)
 	c.set(mailcore.Invite{Method: "REQUEST", UID: "u", Summary: "All hands", Start: start, End: start.Add(time.Hour),

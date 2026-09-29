@@ -148,8 +148,8 @@ func TestAttachPartIDMapsRowToItsOwnPart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &session{attNames: append([]string(nil), m.Attachments...)}
-	id := s.attachPartID(m, 0)
+	r := &reader{attNames: append([]string(nil), m.Attachments...)}
+	id := r.attachPartID(m, 0)
 	var mime string
 	for _, p := range m.Parts {
 		if p.ID == id {

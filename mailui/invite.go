@@ -264,11 +264,14 @@ func (s *session) inviteLayoutChanged() {
 }
 
 func (s *session) inviteCards() []*inviteCard {
-	cards := []*inviteCard{s.invite}
+	var cards []*inviteCard
+	if s.rd != nil {
+		cards = append(cards, s.rd.invite)
+	}
 	if s.tabs != nil {
 		for i := 1; i < s.tabs.Len(); i++ {
 			if mt, ok := s.tabs.Tab(i).Data.(*messageTab); ok {
-				cards = append(cards, mt.invite)
+				cards = append(cards, mt.rd.invite)
 			}
 		}
 	}
