@@ -47,10 +47,8 @@ func main() {
 	// from Settings › Appearance. uitoolkit only draws the themes whose
 	// engines are in the build: `make` builds with all of them.
 	for _, name := range []string{style.LoadAppearance().Name, mailui.OwnTheme()} {
-		if name != "" {
-			if _, ok := style.LoadTheme(name); !ok {
-				log.Printf("comms-mail: theme %q is not in this build, showing the default; build with `make` (-tags theme_engine_all)", name)
-			}
+		if note := style.MissingThemeNote(name); note != "" {
+			log.Printf("comms-mail: %s; build comms-mail with `make` (-tags theme_engine_all)", note)
 		}
 	}
 	look := mailui.PreferredLook()

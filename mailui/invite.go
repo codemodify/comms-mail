@@ -384,7 +384,7 @@ func inviteWho(inv mailcore.Invite) string {
 }
 
 // partStatMark is an attendee's answer after their name. Words, not
-// check marks: the toolkit's font has no ✓ / ✗ (uitoolkit-gaps.md #2).
+// check marks: marks are icons, and this is a line of text.
 func partStatMark(ps string) string {
 	switch ps {
 	case mailcore.PartStatAccepted:

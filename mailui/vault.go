@@ -84,6 +84,9 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 	title := "Where should comms-mail keep your passwords?"
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: title, Width: 620, Height: 800, MinWidth: 460, MinHeight: 420,
+		// A question the desktop puts in front, in the middle, as it does
+		// any dialog, rather than where a new window happens to land.
+		Role: platform.RoleDialog, Center: true,
 	})
 	if err != nil {
 		return nil
@@ -204,6 +207,7 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, don
 	height := map[passMode]int{passUnlock: 330, passChange: 380}[mode]
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: title, Width: 560, Height: height, MinWidth: 440, MinHeight: 300,
+		Role: platform.RoleDialog, Center: true,
 	})
 	if err != nil {
 		return nil
