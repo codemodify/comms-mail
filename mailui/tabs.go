@@ -26,10 +26,10 @@ type messageTab struct {
 	head *widgets.Label
 	// invite is the message's calendar invitation, when it has one.
 	invite *inviteCard
-	// html is the tab's HTML view, beside the text as in the reading pane.
-	html *htmlPane
-	// md is the tab's Markdown view (mailcore.MessageMarkdown).
-	md *widgets.TextArea
+	// html is the tab's HTML view and md its Markdown view, beside the text
+	// as in the reading pane (views.go).
+	html *browserPane
+	md   *mdPane
 }
 
 // setupTabs makes the strip with the Mail tab showing main, and reopens the
@@ -167,14 +167,13 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	mt.body = widgets.NewTextView("", "Loading message…")
 	mt.body.MinRows = 8
 	mt.invite = newInviteCard(s)
-	mt.html = newHTMLPane(s)
-	mt.md = widgets.NewMonoTextView("", "Loading message…")
-	mt.md.MinRows = 8
+	mt.html = newBrowserPane(s)
+	mt.md = newMDPane(s)
 	// Text, HTML and Markdown, as in the reading pane.
 	views := widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: widgets.NewPad(8, mt.body)},
 		widgets.Tab{Title: "HTML", Content: widgets.NewPad(8, mt.html.view)},
-		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(8, mt.md)},
+		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(4, mt.md.view)},
 	)
 	head := newReserveBox(200, widgets.NewScrollView(widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10)))
 	col := widgets.NewColumn(head, widgets.NewSeparator(), views).WithGap(0)
@@ -193,10 +192,10 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		// The text shows at once; the full message (a list row carries no
 		// HTML) is fetched for the HTML tab, as for the reading pane.
 		mt.body.SetText(mailcore.DisplayBody(m))
-		mt.md.SetText(mailcore.MessageMarkdown(m))
 		mt.invite.show(m)
+		mt.html.show(m)
+		mt.md.show(m)
 		if m.HTML != "" {
-			mt.html.show(m)
 			return s.tabs.Len() - 1
 		}
 	}
@@ -216,9 +215,9 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		mt.msg, mt.full = full, true
 		mt.head.SetText(messageHeaderText(full))
 		mt.body.SetText(mailcore.DisplayBody(full))
-		mt.md.SetText(mailcore.MessageMarkdown(full))
 		mt.invite.show(full)
 		mt.html.show(full)
+		mt.md.show(full)
 	})
 	return s.tabs.Len() - 1
 }

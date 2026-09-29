@@ -124,8 +124,10 @@ func containsTag(tags []string, want string) bool {
 	return false
 }
 
-// A message opened in a tab has its HTML there too, inline images and all.
-func TestMessageTabShowsHTML(t *testing.T) {
+// A message opened in a tab has its views there too: HTML to open in the
+// browser, and the Markdown rendering with the inline images drawn and the
+// remote ones offered.
+func TestMessageTabShowsHTMLAndMarkdown(t *testing.T) {
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
 	rows, _ := s.cli.ListMessages(mailcore.FolderAdaInbox, mailcore.Filter{})
@@ -141,10 +143,17 @@ func TestMessageTabShowsHTML(t *testing.T) {
 	i := s.addMessageTab(row)
 	s.waitIdle()
 	mt := s.tabs.Tab(i).Data.(*messageTab)
-	if got := mt.html.rich.PlainText(); !strings.Contains(got, "images in richtext") {
-		t.Fatalf("tab HTML %q", got)
+	if !mt.html.open.Visible() || !strings.Contains(mt.html.note.Text, "has an HTML version") {
+		t.Fatalf("tab HTML view: %q, open shown %v", mt.html.note.Text, mt.html.open.Visible())
 	}
-	if !mt.html.bar.Visible() || mt.html.rich.ResolveImage("cid:logo@news.example") == nil {
+	r := mt.md.rendered
+	if got := r.rich.PlainText(); !strings.Contains(got, "images in richtext") {
+		t.Fatalf("tab Markdown %q", got)
+	}
+	if !r.bar.Visible() || r.rich.ResolveImage("cid:logo@news.example") == nil {
 		t.Fatal("the tab should draw the inline logo and offer the remote banner")
+	}
+	if !strings.Contains(mt.md.text.Text, "# uitoolkit Weekly") {
+		t.Fatalf("tab Markdown text %q", mt.md.text.Text)
 	}
 }

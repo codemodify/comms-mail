@@ -39,15 +39,7 @@ func MessageMarkdown(m Message) string {
 		field("Date", m.Date.Format("Mon, 2 Jan 2006 15:04 MST"))
 	}
 	b.WriteString("\n---\n\n")
-	body := ""
-	if strings.TrimSpace(m.HTML) != "" {
-		body = HTMLToMarkdown(m.HTML)
-	} else if m.Body != "" && looksLikeHTML(m.Body) {
-		body = HTMLToMarkdown(m.Body)
-	} else {
-		body = strings.TrimSpace(strings.ReplaceAll(m.Body, "\r\n", "\n"))
-	}
-	b.WriteString(body)
+	b.WriteString(BodyMarkdown(m))
 	if len(m.Attachments) > 0 {
 		names := make([]string, len(m.Attachments))
 		for i, a := range m.Attachments {
@@ -56,6 +48,18 @@ func MessageMarkdown(m Message) string {
 		b.WriteString("\n\n---\n\n**Attachments:** " + strings.Join(names, ", "))
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
+}
+
+// BodyMarkdown is m's text as Markdown: its HTML converted, or its text as
+// it is.
+func BodyMarkdown(m Message) string {
+	switch {
+	case strings.TrimSpace(m.HTML) != "":
+		return HTMLToMarkdown(m.HTML)
+	case m.Body != "" && looksLikeHTML(m.Body):
+		return HTMLToMarkdown(m.Body)
+	}
+	return strings.TrimSpace(strings.ReplaceAll(m.Body, "\r\n", "\n"))
 }
 
 // HTMLToMarkdown converts an HTML document or fragment to Markdown.

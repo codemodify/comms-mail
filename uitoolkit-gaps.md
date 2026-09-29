@@ -161,3 +161,11 @@ style.ToolIcon` (with a colour), a `TreeNode.Icon`, and ToolIcons for
 paperclip, star (filled / outline), reply, forward, check, mute and a dot.
 comms-mail waits for these (the owner's call): the replied / forwarded
 marks come with them, and ★ 📎 🔇 ● and the thread mark move to them.
+
+### 17. Rich text has no tables and no quote styling
+`richtext` reads `<table>` for its text alone and `<blockquote>` as plain
+paragraphs, and has no `<hr>`. comms-mail's Markdown view renders the
+message through it: a table is shown as its aligned Markdown lines in the
+monospace face, and a quote is not set off from the text around it.
+**Fix:** table blocks (rows and cells, a header row), a quote block
+(indented, with a rule down its side), and a horizontal rule.

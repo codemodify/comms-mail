@@ -39,12 +39,12 @@ func TestHTMLHasRemoteImages(t *testing.T) {
 	}
 }
 
-// The Message tab stays text; the HTML tab renders the HTML part formatted,
-// with the blocked-images line for remote images. A message with both parts
-// (multipart/alternative, the common case) shows text on Message and the
-// render on HTML — the earlier build showed only the text and never the
-// render.
-func TestMessageTabIsTextAndHTMLTabRenders(t *testing.T) {
+// The Message tab stays text. The HTML tab draws nothing of the HTML: it
+// offers to open it in the browser. The Markdown tab renders the message
+// (its HTML, through Markdown), with the blocked-images line for remote
+// images; a plain message renders there as its text, and has no HTML to
+// open.
+func TestMessageTabIsTextHTMLOpensAndMarkdownRenders(t *testing.T) {
 	s, a, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
 	if s.previewRich == nil || s.imgBar == nil {
@@ -63,22 +63,31 @@ func TestMessageTabIsTextAndHTMLTabRenders(t *testing.T) {
 	if got := s.preview.Text; !strings.Contains(got, "Plain text version.") {
 		t.Fatalf("Message tab = %q, want the text/plain part", got)
 	}
+	if !s.browser.open.Visible() || !strings.Contains(s.browser.note.Text, "has an HTML version") {
+		t.Fatalf("HTML tab: %q", s.browser.note.Text)
+	}
 	if got := s.previewRich.PlainText(); !strings.Contains(got, "Title") || !strings.Contains(got, "link") {
-		t.Fatalf("HTML tab render = %q", got)
+		t.Fatalf("Markdown render = %q", got)
 	}
 	if !s.imgBar.Visible() {
 		t.Fatal("a remote image should raise the blocked-images line")
 	}
+	if !strings.Contains(s.markdown.Text, "# Title") {
+		t.Fatalf("Markdown text = %q", s.markdown.Text)
+	}
 
-	// A plain-only message: text on Message, HTML tab empty with its
-	// placeholder, no blocked-images line.
+	// A plain-only message: text on Message, rendered on Markdown, nothing
+	// to open in the browser, no blocked-images line.
 	s.showBody(mailcore.Message{ID: "y", Subject: "hi", Body: "just plain"})
 	a.PumpOnce()
 	if s.preview.Text != "just plain" {
 		t.Fatalf("Message tab = %q", s.preview.Text)
 	}
-	if s.previewRich.PlainText() != "" {
-		t.Fatalf("HTML tab should be empty for a plain message, got %q", s.previewRich.PlainText())
+	if s.previewRich.PlainText() != "just plain" {
+		t.Fatalf("Markdown render of a plain message = %q", s.previewRich.PlainText())
+	}
+	if s.browser.open.Visible() || !strings.Contains(s.browser.note.Text, "no HTML version") {
+		t.Fatalf("HTML tab for a plain message: %q", s.browser.note.Text)
 	}
 	if s.imgBar.Visible() {
 		t.Fatal("plain mail has no images to block")

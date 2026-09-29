@@ -174,10 +174,12 @@ type session struct {
 	// only while its tab is showing.
 	sourceID   mailcore.MessageID
 	sourceOpen bool
-	// markdown is the Markdown tab's text, filled while the tab shows.
-	markdown     *widgets.TextArea
-	markdownOpen bool
-	retryBar     widget.Component
+	// browser is the HTML tab, md the Markdown tab (views.go); markdown is
+	// md's Markdown text.
+	browser  *browserPane
+	md       *mdPane
+	markdown *widgets.TextArea
+	retryBar widget.Component
 	// invite is the calendar invitation card over the preview's body;
 	// inviteCompact folds every card's guest list and options away.
 	invite        *inviteCard
@@ -320,8 +322,6 @@ func (s *session) build() widget.Component {
 	s.source = widgets.NewMonoTextView("", "Raw source")
 	s.source.MinRows = 8
 	s.source.Wrap = false
-	s.markdown = widgets.NewMonoTextView("", "Select a message")
-	s.markdown.MinRows = 8
 
 	s.table = widgets.NewTableView([]widgets.TableColumn{
 		{Title: "★", Width: 28, MinWidth: 24, Sortable: true},
@@ -400,24 +400,29 @@ func (s *session) build() widget.Component {
 	// at a time (renderMessage), over a line that appears when the HTML has
 	// images the renderer will not fetch.
 	// Four tabs: Message is the text/plain body (the default), Source the
-	// raw RFC822, HTML the rendered HTML part when the message has one, and
-	// Markdown the message as Markdown text (mailcore.MessageMarkdown).
-	s.html = newHTMLPane(s)
+	// raw RFC822, HTML offers to open the HTML part in the browser (views.go:
+	// nothing of it is drawn here), and Markdown is the message rendered from
+	// Markdown, with its Markdown text (mailcore.MessageMarkdown). The
+	// rendering is the rich-text view with the remote-images bar (htmlPane).
+	s.browser = newBrowserPane(s)
+	s.md = newMDPane(s)
+	s.html = s.md.rendered
+	s.markdown = s.md.text
 	s.previewRich, s.previewImg, s.imgBar, s.alwaysImgs = s.html.rich, s.html.notice, s.html.bar, s.html.always
 	s.loadImageSenders()
 	previewTab := widgets.NewPad(8, s.preview)
 	sourceTab := widgets.NewPad(8, s.source)
-	htmlTab := widgets.NewPad(8, s.html.view)
-	markdownTab := widgets.NewPad(8, s.markdown)
+	htmlTab := widgets.NewPad(8, s.browser.view)
+	markdownTab := widgets.NewPad(4, s.md.view)
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: previewTab},
 		widgets.Tab{Title: "Source", Content: sourceTab},
 		widgets.Tab{Title: "HTML", Content: htmlTab},
 		widgets.Tab{Title: "Markdown", Content: markdownTab},
 	)
-	s.sourceOpen, s.markdownOpen = false, false
+	s.sourceOpen = false
 	tabs.OnChange = func(i int) {
-		s.sourceOpen, s.markdownOpen = i == 1, i == 3
+		s.sourceOpen = i == 1
 		switch i {
 		case 1:
 			s.mark("Source  ·  JetBrains Mono")
@@ -426,7 +431,6 @@ func (s *session) build() widget.Component {
 			s.mark("HTML")
 		case 3:
 			s.mark("Markdown")
-			s.loadMarkdown()
 		default:
 			s.mark("Message")
 		}
@@ -1504,32 +1508,18 @@ func (s *session) showBody(m mailcore.Message) {
 	if s.sourceOpen {
 		s.loadSource()
 	}
-	if s.markdownOpen {
-		s.loadMarkdown()
-	}
 }
 
-// loadMarkdown fills the Markdown tab with the message shown, converted
-// here from the text and HTML the reading pane already has. It runs when
-// the tab is shown, not on every click.
-func (s *session) loadMarkdown() {
-	if s.markdown == nil {
-		return
-	}
-	if !s.shownOK {
-		s.markdown.SetText("")
-		return
-	}
-	s.markdown.SetText(mailcore.MessageMarkdown(s.shown))
-}
-
-// renderHTMLView fills the HTML tab with m's HTML part, or leaves its
-// placeholder for a message that has none. The renderer makes no network
-// request; the blocked-images line shows when the HTML wants images it
-// will not fetch.
+// renderHTMLView fills the HTML tab (whether the message has HTML to open
+// in the browser) and the Markdown tab (the message rendered from Markdown,
+// and its Markdown text). The rendering makes no network request; the
+// blocked-images line shows when it wants images it will not fetch.
 func (s *session) renderHTMLView(m mailcore.Message) {
-	if s.html != nil {
-		s.html.show(m)
+	if s.browser != nil {
+		s.browser.show(m)
+	}
+	if s.md != nil {
+		s.md.show(m)
 	}
 }
 
@@ -1540,8 +1530,11 @@ func (s *session) showPreviewPlain(placeholder, text string) {
 		s.preview.Placeholder = placeholder
 		s.preview.SetText(text)
 	}
-	if s.html != nil {
-		s.html.clear()
+	if s.browser != nil {
+		s.browser.clear()
+	}
+	if s.md != nil {
+		s.md.clear()
 	}
 }
 
