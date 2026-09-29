@@ -76,24 +76,29 @@ func TestMailWatchLookAppliesSettingsPack(t *testing.T) {
 	}
 }
 
-func TestMailViewLightWritesPaletteOnly(t *testing.T) {
+// View Light picks comms-mail's own theme; the theme every uitoolkit app
+// shares (look.json) is not touched.
+func TestMailViewLightKeepsItsOwnTheme(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	start := style.Appearance{Theme: style.ThemeDark, Corners: style.CornersSquare, Icons: style.IconSetSharp}
 	if err := style.SaveAppearance(start); err != nil {
 		t.Fatal(err)
 	}
+	before := style.LoadAppearance()
 	s, a, _, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{ShowFilter: true})
 	defer stop()
 
 	s.setPalette(true)
 	a.PumpOnce()
-	got := style.LoadAppearance()
-	if got.Name != "light" || got.Theme != style.ThemeLight || got.Corners != style.CornersSquare || got.Icons != style.IconSetSharp {
-		t.Fatalf("View Light should SaveAppearance(WithPalette): %+v", got)
+	if got := style.LoadAppearance(); got != before {
+		t.Fatalf("look.json changed: %+v, was %+v", got, before)
+	}
+	if ownTheme() != "light" {
+		t.Fatalf("own theme %q", ownTheme())
 	}
 	live := style.LookAppearance(a.Look())
-	if live != got {
-		t.Fatalf("live %+v prefs %+v", live, got)
+	if live.Name != "light" || live.Theme != style.ThemeLight || live.Corners != style.CornersSquare || live.Icons != style.IconSetSharp {
+		t.Fatalf("live %+v", live)
 	}
 }
 

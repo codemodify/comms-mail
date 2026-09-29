@@ -22,6 +22,9 @@ type ChromePrefs struct {
 	ShowFilter bool   `json:"showFilter,omitempty"`
 	// InviteLess folds invitation cards (Less / More).
 	InviteLess bool `json:"inviteLess,omitempty"`
+	// Theme is comms-mail's own theme (Settings › Appearance), over the
+	// one every uitoolkit app shares in look.json; "" follows look.json.
+	Theme string `json:"theme,omitempty"`
 }
 
 // chromePrefsPath is mailui.json, beside mail.json in ConfigDir, so the

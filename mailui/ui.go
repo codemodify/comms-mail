@@ -76,6 +76,9 @@ func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOpt
 	root := s.build()
 	s.attachTray()
 	s.checkVault()
+	if a.WatchingLook() {
+		keepOwnTheme(a)
+	}
 	return root
 }
 
@@ -260,13 +263,16 @@ func (s *session) persistChrome() {
 	}
 	s.chromePrefs.Light = s.opts.Light
 	s.chromePrefs.InviteLess = s.inviteCompact
+	// The theme is Settings › Appearance's, which writes the file itself:
+	// the session's copy may be older.
+	s.chromePrefs.Theme = ownTheme()
 	saveChromePrefs(s.chromePrefs)
 	// Density / layout live in mailui.json only. look.json is Settings’
 	// file; persist must not SaveAppearance or rewrite theme packs.
 }
 
 func (s *session) applyLook() {
-	ap := style.LoadAppearance()
+	ap := effectiveAppearance()
 	if s.app != nil && !s.app.WatchingLook() && s.app.Look() != nil {
 		// Screenshot / DarkLook fixtures stay static. WatchLook Mail
 		// follows look.json (PreferredLook), never opts.Light.
@@ -276,18 +282,17 @@ func (s *session) applyLook() {
 	s.app.SetLook(style.WithDensity(ap.Look(), s.density))
 }
 
-// setPalette is View → Dark / Light: flip the starter pack palette,
-// keep corners/icons/iconSize, and write look.json only on this explicit toggle.
+// setPalette makes comms-mail's own theme the plain light or dark one
+// (look.json, shared with every uitoolkit app, is not touched).
 func (s *session) setPalette(light bool) {
-	ap := style.LoadAppearance()
+	theme := style.ThemeDark
 	if light {
-		ap = ap.WithPalette(style.ThemeLight)
-	} else {
-		ap = ap.WithPalette(style.ThemeDark)
+		theme = style.ThemeLight
 	}
-	// Picking dark or light by hand stops following the desktop.
-	ap.FollowDesktop = false
-	_ = style.SaveAppearance(ap)
+	p := loadChromePrefs()
+	p.Theme = style.StarterName(theme)
+	saveChromePrefs(p)
+	s.chromePrefs.Theme = p.Theme
 	s.opts.Light = light
 	s.rebuild()
 }

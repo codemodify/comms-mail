@@ -2076,11 +2076,12 @@ func TestMailSettingsTabs(t *testing.T) {
 	}
 	got := append([]string(nil), bar.Titles...)
 	// Filters came back when importing other clients' filters needed a
-	// place to see and manage them.
-	if strings.Join(got, ",") != "Accounts,Signatures,Tags,Filters,Privacy" {
-		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Filters, Privacy", got)
+	// place to see and manage them; Appearance when comms-mail got a theme
+	// of its own, over the one every uitoolkit app shares.
+	if strings.Join(got, ",") != "Accounts,Signatures,Tags,Filters,Privacy,Appearance" {
+		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Filters, Privacy, Appearance", got)
 	}
-	for _, name := range []string{"Appearance", "Notify", "VIP", "Identities"} {
+	for _, name := range []string{"Notify", "VIP", "Identities"} {
 		if containsLabel(got, name) {
 			t.Fatalf("removed Settings tab still present: %q %v", name, got)
 		}

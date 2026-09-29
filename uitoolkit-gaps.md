@@ -131,3 +131,17 @@ its cap for every message.
 **Fix:** a `MaxHeight` (or `ShrinkToContent`) option: measure to the
 content's height, capped, and scroll past it.
 
+
+### 15. A theme whose engine is not in the build turns dark, silently
+Engines are opt-in at build time (docs/engines.md), which is fine; but
+when look.json names a pack whose engine the app was built without,
+`LoadAppearance` keeps the name and reports the theme as **dark** (it
+parses the unknown name), and the app paints the default dark palette. A
+light pack like `metal-steel` then shows as dark, with nothing to say why
+— comms-mail's owner saw it as "the theme is wrong". Verified on v0.21.0:
+`LoadTheme("metal-steel")` is false in a default build and true with
+`-tags theme_engine_metal`. comms-mail now builds with
+`theme_engine_all` and logs a line when the theme is missing.
+**Fix:** expose "this pack is not in the build" (a flag on Appearance, or
+`LoadTheme` reporting why), and fall back to the pack's own family (the
+light starter for a light pack) rather than dark.

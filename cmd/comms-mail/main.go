@@ -43,7 +43,17 @@ func main() {
 	}
 	defer cli.Close()
 
-	look := style.PreferredLook()
+	// The theme every uitoolkit app shares (look.json), or comms-mail's own
+	// from Settings › Appearance. uitoolkit only draws the themes whose
+	// engines are in the build: `make` builds with all of them.
+	for _, name := range []string{style.LoadAppearance().Name, mailui.OwnTheme()} {
+		if name != "" {
+			if _, ok := style.LoadTheme(name); !ok {
+				log.Printf("comms-mail: theme %q is not in this build, showing the default; build with `make` (-tags theme_engine_all)", name)
+			}
+		}
+	}
+	look := mailui.PreferredLook()
 	if *light {
 		look = style.WithTheme(look, style.ThemeLight)
 	}

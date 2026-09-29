@@ -39,6 +39,7 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 	sigTab := prefsSignatures(win, cli)
 	privacyTab := prefsPrivacy(a, win, cli, onChange)
 	filtersTab := prefsFilters(a, win, cli)
+	appearanceTab := prefsAppearance(a)
 
 	tabs := widgets.NewTabView(
 		widgets.Tab{Title: "Accounts", Content: widgets.NewPad(10, accountsTab)},
@@ -46,10 +47,11 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 		widgets.Tab{Title: "Tags", Content: widgets.NewPad(10, tagsTab)},
 		widgets.Tab{Title: "Filters", Content: widgets.NewPad(10, filtersTab)},
 		widgets.Tab{Title: "Privacy", Content: widgets.NewPad(10, privacyTab)},
+		widgets.Tab{Title: "Appearance", Content: widgets.NewPad(10, appearanceTab)},
 	)
 	closeBtn := widgets.NewButton("Close", func() { win.Close() })
 	tools := widgets.NewRow(widgets.NewSpacer(), closeBtn).WithGap(8)
-	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · filters · privacy · v"+uitoolkit.Version)
+	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · filters · privacy · appearance · v"+uitoolkit.Version)
 	root := widgets.NewColumn(chrome, tabs, tools, status).WithGap(0)
 	root.AddFlex(tabs, 1)
 	return root

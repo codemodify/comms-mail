@@ -45,8 +45,16 @@ Go 1.25 or newer. No cgo is required: the cache is SQLite through the pure-Go `m
 ```bash
 git clone https://github.com/codemodify/comms-mail
 cd comms-mail
-go build ./...
+make            # bin/comms-maild, bin/comms-mail, bin/comms-mail-demo
 ```
+
+`make` builds the window with every uitoolkit theme engine
+(`-tags theme_engine_all`). uitoolkit only draws a theme whose engine is in
+the build ([its docs/engines.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/engines.md)),
+and comms-mail shows whichever theme you chose for all uitoolkit apps
+(`~/.config/uitoolkit/look.json`) or its own (Settings › Appearance). A
+plain `go build` has only the default engine: a theme it lacks is drawn as
+the default, and comms-mail says so when it starts.
 
 Try it without an account, in one process:
 
@@ -73,8 +81,10 @@ Accounts live in `~/.config/comms-mail/mail.json`, mode `0600`; the cache is `~/
 To install the binaries:
 
 ```bash
+make install
+# or, without a checkout:
 go install github.com/codemodify/comms-mail/cmd/comms-maild@latest
-go install github.com/codemodify/comms-mail/cmd/comms-mail@latest
+go install -tags theme_engine_all github.com/codemodify/comms-mail/cmd/comms-mail@latest
 ```
 
 ### Useful flags and variables
