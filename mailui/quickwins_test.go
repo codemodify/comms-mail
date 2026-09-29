@@ -65,6 +65,30 @@ func composeFields(t *testing.T, cli *mailcore.Client, opts ComposeOptions) (map
 	return fields, from, body
 }
 
+// composeRecipients opens a Write window and returns its To, Cc and Bcc
+// fields by name.
+func composeRecipients(t *testing.T, cli *mailcore.Client, opts ComposeOptions) map[string]*recipientField {
+	t.Helper()
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Write", Width: 760, Height: 640, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.Close)
+	w.SetContent(ComposeApp(a, w, cli, opts))
+	a.PumpOnce()
+	out := map[string]*recipientField{}
+	widget.Walk(w.Content(), func(c widget.Component) {
+		if rf, ok := c.(*recipientField); ok {
+			out[rf.chips.Editor().Placeholder] = rf
+		}
+	})
+	if out["To"] == nil || out["Cc"] == nil || out["Bcc"] == nil {
+		t.Fatalf("compose is missing a recipient field: %v", out)
+	}
+	return out
+}
+
 func TestReplyAndReplyAllRecipients(t *testing.T) {
 	cli := demoClient(t)
 	m := mailcore.Message{
@@ -74,19 +98,19 @@ func TestReplyAndReplyAllRecipients(t *testing.T) {
 		Subject: "plans",
 		Body:    "see you",
 	}
-	f, _, _ := composeFields(t, cli, ComposeOptions{ReplyTo: &m})
-	if got := f["To"].Text; !strings.Contains(got, "bob@example.org") || strings.Contains(got, "carol") {
+	f := composeRecipients(t, cli, ComposeOptions{ReplyTo: &m})
+	if got := f["To"].Text(); !strings.Contains(got, "bob@example.org") || strings.Contains(got, "carol") {
 		t.Errorf("Reply To = %q, want only the sender", got)
 	}
-	if got := f["Cc"].Text; got != "" {
+	if got := f["Cc"].Text(); got != "" {
 		t.Errorf("Reply Cc = %q, want empty", got)
 	}
 
-	f, _, _ = composeFields(t, cli, ComposeOptions{ReplyTo: &m, ReplyAll: true})
-	if got, want := f["To"].Text, "Bob <bob@example.org>, Carol <carol@example.org>"; got != want {
+	f = composeRecipients(t, cli, ComposeOptions{ReplyTo: &m, ReplyAll: true})
+	if got, want := f["To"].Text(), "Bob <bob@example.org>, Carol <carol@example.org>"; got != want {
 		t.Errorf("Reply All To = %q, want %q", got, want)
 	}
-	if got, want := f["Cc"].Text, "dave@example.org"; got != want {
+	if got, want := f["Cc"].Text(), "dave@example.org"; got != want {
 		t.Errorf("Reply All Cc = %q, want %q (both of Ada's addresses left out)", got, want)
 	}
 }

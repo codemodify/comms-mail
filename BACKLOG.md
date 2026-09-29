@@ -22,8 +22,6 @@ new ones turn up.
   the calendar application.
 
 ## Compose
-- **Chip/pill recipient fields** — removable recipient pills (uitoolkit
-  gap #5); today they are comma-separated text.
 - **Spell check.**
 - **Drag files into the body to attach** — files dropped anywhere else on
   the Write window are attached; on the body the text area takes the
