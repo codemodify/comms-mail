@@ -387,7 +387,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 
 	menubar := widgets.NewMenuBar(
 		widgets.NewMenu("&File",
-			widgets.ItemAccel("&Send Now", "Ctrl+Enter", send),
+			iconItem(style.IconMail, "&Send Now", "Ctrl+Enter", send),
 			iconItem(style.IconSave, "Save as &Draft", "Ctrl+S", saveDraft),
 			widgets.Sep(),
 			widgets.Item("Close", closeWin),

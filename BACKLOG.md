@@ -57,11 +57,14 @@ new ones turn up.
   thousands. Loading the text from `mail.db` on demand would fix it.
 
 ## Icons
-- **Icons on every menu row and button** — asked for. Rows and buttons
-  with a fitting toolkit icon have one; Delete, Archive, Move to, Print,
-  VIP, Settings, Quit and the dialogs' buttons wait for more icons and an
-  icon on Button (uitoolkit-gaps.md #27). Tag and Junk use stand-ins (a
-  flag, a warning sign) until tag and junk icons exist.
+- **Icons on every menu row and button** — asked for. Every tool bar
+  button has one, and so does every menu row that a toolkit icon fits.
+  Waiting for more icons and an icon on Button (uitoolkit-gaps.md #27):
+  Delete, Delete Folder…, Empty Trash (trash); Archive; Print; Add sender
+  to VIP (user); Settings; Quit, Close, Close Window, Close Tab, Close
+  Other Tabs (close / x); Notify (bell); Remove Account…, Compact Folder,
+  Select All, the View submenu; and every dialog's buttons. Tag and Junk
+  use stand-ins (a flag, a warning sign) until tag and junk icons exist.
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header

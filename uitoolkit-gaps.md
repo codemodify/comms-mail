@@ -136,7 +136,8 @@ are already PNGs in the five shipped sets (ShippedIconStems) with no id
 to name them by: **trash** (Delete), **archive**, **junk**, **tag**,
 **folder** (Move to), **reply-all**, **settings**, **external-link**
 (Open HTML, open in browser), **eye** (Show Images), **user** (VIP),
-**bell** (Notify), **send**. **print** is not shipped at all. There is no
+**bell** (Notify), **send**, **close** / **x** (Close, Close Tab, Close
+Window), **quit**. **print** is not shipped at all. There is no
 way to draw a stem by name either (`ToolIconByName` knows the 23), so an
 application cannot use the PNGs that are there. And `widgets.Button` has
 no `Icon` — only ToolButton and MenuItem do — so a dialog's buttons cannot

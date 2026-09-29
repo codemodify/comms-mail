@@ -100,7 +100,26 @@ func TestMessageMenu(t *testing.T) {
 	if d := byText["Delete"]; d == nil || d.Icon == style.IconCut {
 		t.Fatal("Delete is shown with scissors")
 	}
-	if icons < 8 {
+	if icons < 10 {
 		t.Fatalf("only %d rows have icons", icons)
+	}
+	if mv := byText["Move to"]; mv == nil || mv.Icon != style.IconOpen || len(mv.Submenu) == 0 || mv.Submenu[0].Icon != style.IconOpen {
+		t.Fatal("Move to and its folders should carry the folder icon")
+	}
+}
+
+// Every button on the title bar's tool bars carries an icon.
+func TestToolbarButtonsHaveIcons(t *testing.T) {
+	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	for _, it := range []*widgets.ToolItem{s.qfBtn, s.allBtn, s.srv.btn} {
+		if it.Icon == style.IconNone {
+			t.Errorf("%q has no icon", it.Text)
+		}
+	}
+	for _, it := range s.composeBar().Items() {
+		if it != nil && !it.Sep && it.Icon == style.IconNone {
+			t.Errorf("%q has no icon", it.Text)
+		}
 	}
 }

@@ -497,8 +497,10 @@ func (s *session) toolBar() *widgets.ToolBar {
 	s.qfBtn.Toggle = true
 	s.qfBtn.Down = s.opts.ShowFilter
 	s.allBtn = widgets.ToolToggle("All folders", s.searchAll, s.toggleSearchAll)
+	s.allBtn.Icon = style.IconOpen
 	s.allBtn.Tip = "Search every folder, not just this one"
 	s.srv.btn = widgets.ToolToggle("On server", s.srv.on, s.toggleServerSearch)
+	s.srv.btn.Icon = style.IconMail
 	s.srv.btn.Tip = "Ask the mail server too — finds words in mail not downloaded yet"
 	return widgets.NewToolBar(s.qfBtn, s.allBtn, s.srv.btn)
 }
@@ -586,7 +588,7 @@ func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
 		iconItem(style.IconMute, "Mute Thread", "", func() { s.muteThread(true) }),
 		widgets.Item("Add sender to VIP", s.addVIP),
 		widgets.ItemAccel("Archive", "A", s.archive),
-		&widgets.MenuItem{Text: "Move to", Submenu: s.moveMenu()},
+		&widgets.MenuItem{Text: "Move to", Icon: style.IconOpen, Submenu: s.moveMenu()},
 		iconItem(style.IconWarning, "Junk", "J", s.junk),
 		widgets.ItemAccel("Delete", "D", s.deleteSel),
 		widgets.Sep(),
@@ -1026,7 +1028,7 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 			if folder.Kind == mailcore.FolderCustom {
 				items = append(items,
 					iconItem(style.IconPen, "Rename Folder…", "", func() { s.renameFolder(f) }),
-					&widgets.MenuItem{Text: "Move Folder To", Submenu: s.folderMoveMenu(f)},
+					&widgets.MenuItem{Text: "Move Folder To", Icon: style.IconOpen, Submenu: s.folderMoveMenu(f)},
 					widgets.Item("Delete Folder…", func() { s.confirmDeleteFolder(f) }))
 			}
 			if !f.NoSelect {
@@ -2015,7 +2017,7 @@ func (s *session) moveMenu() []*widgets.MenuItem {
 	walk = func(parent mailcore.FolderID, depth int) {
 		for _, f := range orderFolderChildren(byParent[parent]) {
 			f := f
-			it := widgets.Item(strings.Repeat("    ", depth)+f.Name, func() { s.moveTo(s.ids(), f) })
+			it := iconItem(style.IconOpen, strings.Repeat("    ", depth)+f.Name, "", func() { s.moveTo(s.ids(), f) })
 			it.Disabled = f.ID == s.folder
 			items = append(items, it)
 			walk(f.ID, depth+1)
@@ -2038,7 +2040,7 @@ func (s *session) folderMoveMenu(f mailcore.Folder) []*widgets.MenuItem {
 			byParent[x.Parent] = append(byParent[x.Parent], x)
 		}
 	}
-	top := widgets.Item("Top Level", func() { s.moveFolder(f, "") })
+	top := iconItem(style.IconOpen, "Top Level", "", func() { s.moveFolder(f, "") })
 	top.Disabled = f.Parent == ""
 	items := []*widgets.MenuItem{top, widgets.Sep()}
 	var walk func(parent mailcore.FolderID, depth int)
@@ -2048,7 +2050,7 @@ func (s *session) folderMoveMenu(f mailcore.Folder) []*widgets.MenuItem {
 				continue // not into itself, nor anything inside it
 			}
 			x := x
-			it := widgets.Item(strings.Repeat("    ", depth)+x.Name, func() { s.moveFolder(f, x.ID) })
+			it := iconItem(style.IconOpen, strings.Repeat("    ", depth)+x.Name, "", func() { s.moveFolder(f, x.ID) })
 			it.Disabled = x.ID == f.Parent
 			items = append(items, it)
 			walk(x.ID, depth+1)
