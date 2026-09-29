@@ -164,13 +164,12 @@ func GroupThreaded(msgs []Message, kind FolderKind, col int, asc bool) []Message
 			id = ThreadIDOf(h)
 		}
 		g := by[id]
-		SortMessages(g.msgs, 4, true, kind) // oldest first inside thread
+		SortMessages(g.msgs, SortDate, true, kind) // oldest first inside thread
 		for i, m := range g.msgs {
 			if i > 0 {
 				// A reply is indented under the first message. Not a
-				// glyph: marks are icons, and the list's cells take text
-				// only until uitoolkit gives them icons (uitoolkit-gaps.md
-				// #16); spaces are layout, not a symbol.
+				// glyph: marks are icons, and the reply icon already says
+				// "answered" in the status column; spaces are layout.
 				m.Subject = threadIndent + strings.TrimLeft(m.Subject, " ")
 			} else if len(g.msgs) > 1 {
 				m.Subject = m.Subject + "  (" + itoa(len(g.msgs)) + ")"

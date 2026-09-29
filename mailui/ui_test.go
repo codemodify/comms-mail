@@ -50,7 +50,7 @@ func TestMailAppPaints(t *testing.T) {
 	})
 	widget.Walk(mailTree(w), func(c widget.Component) {
 		if tv, ok := c.(*widgets.TableView); ok && tv.CellText != nil && tv.RowCount > 0 {
-			subj := tv.CellText(0, 2)
+			subj := tv.CellText(0, colTopic)
 			t.Logf("row0 subject %q selected=%d rows=%d", subj, tv.Selected, tv.RowCount)
 			if subj == "" {
 				t.Error("empty first subject")
@@ -149,10 +149,10 @@ func TestMailSubjectColumnFillsThreadPane(t *testing.T) {
 		t.Fatal("thread table")
 	}
 	ws := table.ColumnWidths()
-	if len(ws) != 5 {
+	if len(ws) != colWhen+1 {
 		t.Fatalf("cols %v", ws)
 	}
-	subj := ws[2]
+	subj := ws[colTopic]
 	if subj < 200 {
 		t.Fatalf("topic column too narrow at 1280: %v (all %v) table=%v", subj, ws, table.LocalBounds().Dx())
 	}
@@ -171,8 +171,8 @@ func TestMailSubjectColumnFillsThreadPane(t *testing.T) {
 	w.Inject(platform.Event{Kind: platform.EventResize, Width: 1100, Height: 720})
 	a.PumpOnce()
 	ws = table.ColumnWidths()
-	if ws[2] < 160 {
-		t.Fatalf("topic after resize %v (all %v)", ws[2], ws)
+	if ws[colTopic] < 160 {
+		t.Fatalf("topic after resize %v (all %v)", ws[colTopic], ws)
 	}
 	w.Close()
 }
@@ -1377,13 +1377,18 @@ func TestMailColumnsTopicWhoWhen(t *testing.T) {
 	if table == nil {
 		t.Fatal("thread table")
 	}
-	want := []string{"★", "📎", "Topic", "Who", "When"}
+	// The mark columns are headed by icons, not characters.
+	want := []string{"", "", "", "Topic", "Who", "When"}
+	icons := []style.ToolIcon{style.IconStar, style.IconAttach, style.IconMail}
 	if len(table.Columns) != len(want) {
 		t.Fatalf("columns %d %v", len(table.Columns), titlesOf(table))
 	}
 	for i, title := range want {
 		if table.Columns[i].Title != title {
 			t.Fatalf("col %d %q want %q", i, table.Columns[i].Title, title)
+		}
+		if i < len(icons) && table.Columns[i].Icon != icons[i] {
+			t.Fatalf("col %d icon %v want %v", i, table.Columns[i].Icon, icons[i])
 		}
 	}
 	w.Close()
@@ -1413,12 +1418,16 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 			table = tv
 		}
 	})
-	if table == nil || table.CellText == nil || table.RowCount < 1 {
+	if table == nil || table.CellIcon == nil || table.RowCount < 1 {
 		t.Fatal("thread table")
+	}
+	starOf := func(row int) style.ToolIcon {
+		icon, _ := table.CellIcon(row, colStar)
+		return icon
 	}
 	row := -1
 	for i := 0; i < table.RowCount; i++ {
-		if table.CellText(i, 0) == "" {
+		if starOf(i) == style.IconNone {
 			row = i
 			break
 		}
@@ -1450,19 +1459,23 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 	}
 	star()
 	a.PumpOnce()
-	if got := table.CellText(row, 0); got != "★" {
-		t.Fatalf("after star CellText=%q", got)
+	if got := starOf(row); got != style.IconStar {
+		t.Fatalf("after star the cell's icon is %v", got)
+	}
+	if got := table.CellText(row, colStar); got != "" {
+		t.Fatalf("the star is text %q, not an icon", got)
 	}
 	img := paintengine2d.NewImage(32, 28)
 	ctx := paintengine2d.NewContext(img)
-	table.Look().DrawTableCell(ctx, paintengine2d.XYWH(0, 0, 28, 28), style.StateChecked, "★", style.AlignStart, table.Look().Font())
+	lk := table.Look()
+	style.DrawToolIcon(ctx, paintengine2d.XYWH(4, 4, 20, 20), style.IconStar, starColor, style.IconSetOf(lk))
 	if ink := cellInk(img, 0, 26); ink < 8 {
-		t.Fatalf("star glyph missing in 28px cell, ink=%d", ink)
+		t.Fatalf("star icon missing in 28px cell, ink=%d", ink)
 	}
 	star()
 	a.PumpOnce()
-	if got := table.CellText(row, 0); got != "" {
-		t.Fatalf("after unstar CellText=%q", got)
+	if got := starOf(row); got != style.IconNone {
+		t.Fatalf("after unstar the cell's icon is %v", got)
 	}
 	w.Close()
 }

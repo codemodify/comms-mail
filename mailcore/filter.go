@@ -75,22 +75,49 @@ func containsFold(s, q string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(q))
 }
 
+// What a message list sorts by: SortMessages's col.
+const (
+	SortStarred = 0
+	SortAttach  = 1
+	SortSubject = 2
+	SortWho     = 3
+	SortDate    = 4
+	// SortStatus puts unread first, then forwarded, then replied.
+	SortStatus = 5
+)
+
+// statusRank orders the status column: what still needs reading, then
+// what was passed on, then what was answered.
+func statusRank(m Message) int {
+	switch {
+	case !m.Read:
+		return 3
+	case m.Forwarded:
+		return 2
+	case m.Answered:
+		return 1
+	}
+	return 0
+}
+
 // SortMessages orders msgs by the given column and direction.
 func SortMessages(msgs []Message, col int, asc bool, kind FolderKind) {
 	less := func(i, j int) bool {
 		a, b := msgs[i], msgs[j]
 		var ok bool
 		switch col {
-		case 0:
+		case SortStarred:
 			ok = boolLess(a.Starred, b.Starred)
-		case 1:
+		case SortAttach:
 			ok = boolLess(a.HasAttach, b.HasAttach)
-		case 2:
+		case SortSubject:
 			ok = strings.ToLower(a.Subject) < strings.ToLower(b.Subject)
-		case 3:
+		case SortWho:
 			ok = strings.ToLower(a.Correspondent(kind)) < strings.ToLower(b.Correspondent(kind))
-		case 4:
+		case SortDate:
 			ok = a.Date.Before(b.Date)
+		case SortStatus:
+			ok = statusRank(a) < statusRank(b)
 		default:
 			ok = a.Date.Before(b.Date)
 		}
@@ -111,16 +138,18 @@ func boolLess(a, b bool) bool { return !a && b }
 
 func equalCol(a, b Message, col int, kind FolderKind) bool {
 	switch col {
-	case 0:
+	case SortStarred:
 		return a.Starred == b.Starred
-	case 1:
+	case SortAttach:
 		return a.HasAttach == b.HasAttach
-	case 2:
+	case SortSubject:
 		return a.Subject == b.Subject
-	case 3:
+	case SortWho:
 		return a.Correspondent(kind) == b.Correspondent(kind)
-	case 4:
+	case SortDate:
 		return a.Date.Equal(b.Date)
+	case SortStatus:
+		return statusRank(a) == statusRank(b)
 	default:
 		return a.Date.Equal(b.Date)
 	}

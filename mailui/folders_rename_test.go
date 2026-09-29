@@ -101,14 +101,14 @@ func TestMixedListsNameTheFolder(t *testing.T) {
 	if len(s.rows) == 0 {
 		t.Fatal("no search results")
 	}
-	if s.table.Columns[3].Title != "Who · Folder" || !strings.Contains(s.cellText(0, 3), "  ·  Inbox") {
-		t.Fatalf("column %q cell %q", s.table.Columns[3].Title, s.cellText(0, 3))
+	if s.table.Columns[colWho].Title != "Who · Folder" || !strings.Contains(s.cellText(0, colWho), "  ·  Inbox") {
+		t.Fatalf("column %q cell %q", s.table.Columns[colWho].Title, s.cellText(0, colWho))
 	}
 	s.searchAll = false
 	s.filter.Query = ""
 	s.refreshList()
-	if s.table.Columns[3].Title != "Who" || strings.Contains(s.cellText(0, 3), "·") {
-		t.Fatalf("a single folder: %q %q", s.table.Columns[3].Title, s.cellText(0, 3))
+	if s.table.Columns[colWho].Title != "Who" || strings.Contains(s.cellText(0, colWho), "·") {
+		t.Fatalf("a single folder: %q %q", s.table.Columns[colWho].Title, s.cellText(0, colWho))
 	}
 }
 

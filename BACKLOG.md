@@ -36,11 +36,6 @@ new ones turn up.
 - **Import: Apple Mail accounts on 10.11+ are best-effort** — read from
   `Accounts4.sqlite` by the published layout, not yet tried on a real Mac
   (which property holds the port, how Google / iCloud accounts nest).
-- **Replied / forwarded in the message list** — both are tracked and the
-  reading pane says so. Marks are icons, never font glyphs (the owner's
-  rule); the list's cells take no icons yet, so this waits for
-  uitoolkit-gaps.md #16 — and then ★ 📎 🔇 ● and the thread mark move to
-  icons too.
 - **Import: KMail filters with Akonadi on MySQL — untried on a real
   Akonadi** — read over its socket with go-sql-driver/mysql; the socket
   lookup and the shared queries are tested (the queries through SQLite),

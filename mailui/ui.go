@@ -218,7 +218,7 @@ type session struct {
 func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOptions) *session {
 	s := &session{
 		app: a, win: win, cli: cli, opts: opts,
-		sortCol: 4, sortAsc: false, online: true,
+		sortCol: colWhen, sortAsc: false, online: true,
 		attachSel: -1, attachClickI: -1,
 	}
 	// Pages printed and attachments dragged out by an earlier run, once
@@ -324,12 +324,14 @@ func (s *session) build() widget.Component {
 	s.source.Wrap = false
 
 	s.table = widgets.NewTableView([]widgets.TableColumn{
-		{Title: "★", Width: 28, MinWidth: 24, Sortable: true},
-		{Title: "📎", Width: 28, MinWidth: 24, Sortable: true},
-		{Title: "Topic", MinWidth: 180, Sortable: true},
-		{Title: "Who", Width: 148, MinWidth: 110, Sortable: true},
-		{Title: "When", Width: 108, MinWidth: 88, Sortable: true},
+		colStar:   {Icon: style.IconStar, Width: 28, MinWidth: 24, Sortable: true},
+		colAttach: {Icon: style.IconAttach, Width: 28, MinWidth: 24, Sortable: true},
+		colStatus: {Icon: style.IconMail, Width: 28, MinWidth: 24, Sortable: true},
+		colTopic:  {Title: "Topic", MinWidth: 180, Sortable: true},
+		colWho:    {Title: "Who", Width: 148, MinWidth: 110, Sortable: true},
+		colWhen:   {Title: "When", Width: 108, MinWidth: 88, Sortable: true},
 	}, 0, s.cellText, nil)
+	s.table.CellIcon = s.cellIcon
 	// Mail-client selection: Ctrl toggles, Shift extends, Ctrl+A selects the
 	// folder; bulk actions then act on every selected message.
 	s.table.Mode = widgets.SelectExtended
@@ -709,35 +711,42 @@ func (s *session) mixedFolders() bool {
 	return mailcore.IsVirtual(s.folder)
 }
 
+// The message list's columns. The first three are marks — icons, with no
+// text — and colSort is what each one sorts by.
+const (
+	colStar = iota
+	colAttach
+	colStatus
+	colTopic
+	colWho
+	colWhen
+)
+
+var colSort = [...]int{
+	colStar:   mailcore.SortStarred,
+	colAttach: mailcore.SortAttach,
+	colStatus: mailcore.SortStatus,
+	colTopic:  mailcore.SortSubject,
+	colWho:    mailcore.SortWho,
+	colWhen:   mailcore.SortDate,
+}
+
+// starColor is a starred message's star.
+var starColor = paintengine2d.RGB(0.95, 0.68, 0.1)
+
 func (s *session) cellText(row, col int) string {
 	if row < 0 || row >= len(s.rows) {
 		return ""
 	}
 	m := s.rows[row]
 	switch col {
-	case 0:
-		if m.Starred {
-			return "★"
-		}
-		return ""
-	case 1:
-		if m.HasAttach {
-			return "📎"
-		}
-		return ""
-	case 2:
+	case colTopic:
 		sub := m.Subject
 		if strings.TrimSpace(sub) == "" {
 			sub = "(no subject)"
 		}
-		if m.ThreadID != "" && s.muted[m.ThreadID] {
-			sub = "🔇 " + sub
-		}
-		if !m.Read {
-			return "● " + sub
-		}
 		return sub
-	case 3:
+	case colWho:
 		who := m.Correspondent(s.kind)
 		if s.mixedFolders() {
 			if name := s.folderNames[m.Folder]; name != "" {
@@ -745,11 +754,46 @@ func (s *session) cellText(row, col int) string {
 			}
 		}
 		return who
-	case 4:
+	case colWhen:
 		return mailcore.FormatDate(m.Date, s.now())
 	default:
 		return ""
 	}
+}
+
+// cellIcon is a row's marks: the star, the paperclip, the status (unread,
+// forwarded or replied, in that order) and the muted bell before the
+// topic. Unread is also the row in bold.
+func (s *session) cellIcon(row, col int) (style.ToolIcon, paintengine2d.Color) {
+	var none paintengine2d.Color
+	if row < 0 || row >= len(s.rows) {
+		return style.IconNone, none
+	}
+	m := s.rows[row]
+	switch col {
+	case colStar:
+		if m.Starred {
+			return style.IconStar, starColor
+		}
+	case colAttach:
+		if m.HasAttach {
+			return style.IconAttach, none
+		}
+	case colStatus:
+		switch {
+		case !m.Read:
+			return style.IconMail, none
+		case m.Forwarded:
+			return style.IconForward, none
+		case m.Answered:
+			return style.IconReply, none
+		}
+	case colTopic:
+		if m.ThreadID != "" && s.muted[m.ThreadID] {
+			return style.IconMute, none
+		}
+	}
+	return style.IconNone, none
 }
 
 func (s *session) visible() []mailcore.Message {
@@ -811,9 +855,9 @@ func (s *session) loadVisible() ([]mailcore.Message, error) {
 		all = keep
 	}
 	if s.threaded && !searching {
-		return mailcore.GroupThreaded(all, kind, s.sortCol, s.sortAsc), nil
+		return mailcore.GroupThreaded(all, kind, colSort[s.sortCol], s.sortAsc), nil
 	}
-	mailcore.SortMessages(all, s.sortCol, s.sortAsc, kind)
+	mailcore.SortMessages(all, colSort[s.sortCol], s.sortAsc, kind)
 	return all, nil
 }
 
@@ -846,10 +890,10 @@ func (s *session) refreshList() {
 	}
 	if s.table != nil {
 		s.table.RowCount = len(s.rows)
-		if len(s.table.Columns) > 3 {
-			s.table.Columns[3].Title = "Who"
+		if len(s.table.Columns) > colWho {
+			s.table.Columns[colWho].Title = "Who"
 			if s.mixedFolders() {
-				s.table.Columns[3].Title = "Who · Folder"
+				s.table.Columns[colWho].Title = "Who · Folder"
 			}
 		}
 		s.table.SortCol = s.sortCol
@@ -951,9 +995,11 @@ func (s *session) rebuildTree() {
 			case pinAttachment:
 				on = s.filter.Attachment
 			}
-			n := widgets.NewTreeNode(filterPinLabel(t.Name, on))
+			n := widgets.NewTreeNode(t.Name)
 			n.Data = pin
-			n.Bold = on
+			if on {
+				n.Icon = style.IconCheck
+			}
 			n.Color = mailcore.ParseHexColor(t.Color)
 			filtersNode.Children = append(filtersNode.Children, n)
 			continue
@@ -2631,11 +2677,6 @@ func (s *session) toggleFilterPin(p filterPin) {
 	s.refreshList()
 }
 
-// filterPinLabel is a pin's label. A pin that is on is shown bold (its
-// node's Bold), not with a mark: marks are icons, and tree nodes take none
-// until uitoolkit gives them icons (uitoolkit-gaps.md #16).
-func filterPinLabel(name string, on bool) string { return name }
-
 func (s *session) about() {
 	widgets.Info(s.win.Content(), "About Mail",
 		"Mail — Thunderbird chrome on uitoolkit "+uitoolkit.Version+".\n"+
@@ -2823,7 +2864,7 @@ func (s *session) rebuildAttachRows() {
 	s.attachHits = s.attachHits[:0]
 	for i, name := range s.attNames {
 		i, name := i, name
-		hit := newAttachHit("📎  "+name, func() { s.selectAttachment(i) })
+		hit := newAttachHit(name, func() { s.selectAttachment(i) })
 		hit.Drag = func() *widget.Drag { return s.dragAttachment(i) }
 		s.attachRows.Add(hit)
 		s.attachHits = append(s.attachHits, hit)
@@ -3037,17 +3078,39 @@ func newAttachHit(text string, on func()) *attachHit {
 }
 
 func (h *attachHit) Measure(c layout.Constraints) paintengine2d.Point {
-	f := h.Look().Font()
+	lk := h.Look()
+	f := lk.Font()
 	sz := f.Measure(h.Text)
-	sz.X += 12
+	sz.X += 3*style.Dip(lk, 6) + f.Height()
 	sz.Y += 6
 	return c.Constrain(sz)
 }
 
 func (h *attachHit) Arrange(r paintengine2d.Rect) { h.SetBounds(r) }
 
+// Paint is the look's list row with a paperclip icon before the name.
 func (h *attachHit) Paint(ctx *paintengine2d.Context) {
-	h.Look().DrawListRow(ctx, h.LocalBounds(), style.RowState(h.Selected, h.Hovered()), h.Text)
+	lk := h.Look()
+	b := h.LocalBounds()
+	st := style.RowState(h.Selected, h.Hovered())
+	lk.DrawListRow(ctx, b, st, "")
+	fg := lk.Palette().Text
+	if st.Checked() {
+		if on := lk.Palette().TextOnAccent; on != (paintengine2d.Color{}) {
+			fg = on
+		}
+	}
+	f := lk.Font()
+	pad := style.Dip(lk, 6)
+	sz := f.Height()
+	y := b.Min.Y + (b.Dy()-sz)*0.5
+	style.DrawToolIcon(ctx, paintengine2d.XYWH(b.Min.X+pad, y, sz, sz), style.IconAttach, fg, style.IconSetOf(lk))
+	x := b.Min.X + 2*pad + sz
+	text := h.Text
+	if room := b.Max.X - pad - x; f.Advance(text) > room {
+		text = f.Fit(text, room)
+	}
+	f.Draw(ctx, text, paintengine2d.Pt(x, b.Min.Y+(b.Dy()-f.Height())*0.5), fg)
 }
 
 func (h *attachHit) MousePress(widget.MouseEvent) bool {
