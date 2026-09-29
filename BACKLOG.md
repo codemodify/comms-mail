@@ -23,9 +23,6 @@ new ones turn up.
 
 ## Compose
 - **Spell check.**
-- **Drag files into the body to attach** — files dropped anywhere else on
-  the Write window are attached; on the body the text area takes the
-  paths as text first (uitoolkit-gaps.md #13).
 - **HTML compose** — the editor is plain text only; replying to HTML loses
   its formatting.
 
