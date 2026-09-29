@@ -93,13 +93,18 @@ would either treat a tracker as a local file or never offer to load a
 real remote image. comms-mail counts `//` as remote itself.
 **Fix:** `//` → `ImageRemote`.
 
-### 24. Rich-text table cells are plain text
-Inline formatting in a `<td>` is dropped: bold, italics, code, and links —
-a newsletter's table of links loses its links, and a Markdown table's
-`**bold**` cell is plain. There is also no space after a table before the
-block that follows it (a quote's rule starts right under the last row).
-**Fix:** keep the cell's spans (Cells as spans, not strings); the usual
-paragraph spacing after the last row of a run.
+### 24. Rich-text table cells are drawn as plain text, on one line
+The model keeps each cell's spans (`Block.Cells [][]Span`), but
+`RichText.layoutTableRow` draws a cell as `CellText(j)` — its plain text —
+in one face, fitted to one line with "…". So bold, italics, code and links
+in a `<td>` are lost on screen (a newsletter's table of links loses its
+links; a Markdown table's `**bold**` cell is plain), and a long cell is cut
+rather than wrapped. Separately, `spacing` gives a TableRow no space after
+it, so the block that follows a table (a quote's rule) starts right under
+its last row.
+**Fix:** lay a cell's spans out like a paragraph's, wrapped to the column's
+width (the row as tall as its tallest cell); paragraph spacing after the
+last row of a run.
 
 ### 25. Prompt closes before the caller can refuse the value, and its button is always OK
 `Prompt` dismisses on OK and then reports the value, so a name the
@@ -144,14 +149,10 @@ ToolButtons to get icons at all.
 **Fix:** ids for the stems above (and a print icon), `IconByStem(name)`
 for the rest, and `Button.Icon`.
 
-### 28. Nothing lays controls out in a row that wraps
-There are rows, columns, grids and a form, but no flow layout: a row of
-buttons in a pane that can be narrow — the actions under a message: Open,
-Save, Save All, Open HTML — runs off the edge instead of folding onto a
-second line. comms-mail has its own small `flowRow`.
-**Fix:** a `FlowBox` (Qt's flow layout example, GTK's `GtkFlowBox`): place
-children at their natural size, wrap at the width given, measure the
-height for that width.
+### 28. Withdrawn
+Filed as "nothing lays controls out in a row that wraps". Wrong:
+`widgets.Wrap` does exactly that and has since v0.20.0
+(docs/widgets.md, Layout and structure). comms-mail uses it.
 
 ## Resolved
 

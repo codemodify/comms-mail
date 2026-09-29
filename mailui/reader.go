@@ -34,7 +34,7 @@ type reader struct {
 	retry   *widgets.FlexBox
 	onRetry func()
 
-	actions                  *flowRow
+	actions                  *widgets.Wrap
 	attOpen, attSave, attAll *widgets.ToolButton
 	htmlBtn                  *widgets.ToolButton
 	attStrip                 widget.Component
@@ -96,7 +96,9 @@ func newReader(s *session) *reader {
 	r.htmlBtn = widgets.NewToolButton("Open HTML", style.IconOpen, r.openHTML)
 	r.htmlBtn.Tip = "Open the message as it was sent, in your browser. Its remote images load there, " +
 		"which tells the sender you opened it; scripts are blocked."
-	r.actions = newFlowRow(4, r.attOpen, r.attSave, r.attAll, r.htmlBtn)
+	// It folds onto a second line in a narrow pane.
+	r.actions = widgets.NewWrap(r.attOpen, r.attSave, r.attAll, r.htmlBtn)
+	r.actions.Gap = 4
 	// The attachments are a strip of fixed height — about three rows —
 	// that scrolls: however many a message carries, the text below keeps
 	// its room.
