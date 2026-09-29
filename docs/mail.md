@@ -555,7 +555,9 @@ code against a fake Secret Service on a private D-Bus.
 ## Folders
 
 Right-click a folder for **New Folder…** / **New Subfolder…** (each asks
-for a name), **Rename Folder…**, **Move Folder To** (another folder, or the
+for a name, over the window; OK stays grey until there is one, and a
+name the server refuses is explained and then asked for again),
+**Rename Folder…**, **Move Folder To** (another folder, or the
 top level), **Delete Folder…**, **Mark Folder Read** and **Compact Folder**
 (removes from the server what another client deleted by marking it). Only
 folders you made can be renamed, moved or deleted; Inbox, Sent, Drafts,
@@ -618,7 +620,7 @@ Message view stays **text-only**. Each attachment row shows its name plus inline
 `messages.openPart` refuses to hand the desktop opener anything it would
 execute or render as markup (`.desktop`, `.sh`, `.js`, `.html`, `.svg`, …) —
 save it and inspect it instead. The cache file is written under the data dir
-with the attachment's **base** name, so a `filename="../../…"` cannot escape. The attachment toolbar (where the shared Open used to sit) has **Save All**: one folder pick via the same file dialog (the confirmed path is treated as a directory — an existing file uses its parent; a missing path with no extension is created), then every attachment on the current message is written there (`0600`; `name-2.ext` on collisions).
+with the attachment's **base** name, so a `filename="../../…"` cannot escape. The attachment toolbar (where the shared Open used to sit) has **Save All**: a folder dialog picks where (a path typed in it that names a file uses its folder; a missing one with no extension is created), then every attachment on the current message is written there (`0600`; `name-2.ext` on collisions).
 
 ## Outgoing mail
 
@@ -787,7 +789,7 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
   | Geary (also Flatpak) | `geary.ini` | — (IMAP cache only) |
   | mutt / neomutt | `muttrc` (`folder`, `spoolfile`, `smtp_url`, `from`, `source`) | local `folder`, spool, `mailboxes` |
   | Apple Mail | `MailData/Accounts.plist` (to OS X 10.10), else Internet Accounts (`~/Library/Accounts/Accounts4.sqlite`, best-effort) | "On My Mac" `.mbox` (`.emlx`) |
-  | Any folder | — | **Add a folder or mailbox file…**: mbox, maildir, MH, `.eml`, `.emlx`, or a tree of them |
+  | Any folder | — | **Add a folder…** (a folder dialog: maildir, MH, `.eml` / `.emlx`, or a tree of them) or **Add a mailbox file…** (mbox) |
 
   Other clients' databases (Thunderbird's address books, Akonadi, Contacts, Internet Accounts) are opened read-only, or a copy of them is, so a client left running is neither locked nor changed. macOS Contacts is `AddressBook-v22.abcddb` in `~/Library/Application Support/AddressBook` and each account's copy under `Sources/`. Property lists are read in XML or binary form, NSKeyedArchiver archives included.
 

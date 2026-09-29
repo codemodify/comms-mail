@@ -11,46 +11,65 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// fillAndSubmit types text into the prompt window's field and presses its
-// primary button.
-func fillAndSubmit(t *testing.T, a *app.Application, w *app.Window, text string) {
-	t.Helper()
-	var field *widgets.TextField
-	var ok *widgets.Button
-	widget.Walk(w.Content(), func(c widget.Component) {
-		switch v := c.(type) {
-		case *widgets.TextField:
-			field = v
-		case *widgets.Button:
-			if v.Primary {
-				ok = v
+// promptField is the text field of the prompt on w's overlay layer, or
+// nil when there is no overlay or it has no field (a warning).
+func promptField(w *app.Window) *widgets.TextField {
+	var f *widgets.TextField
+	if o := w.Overlay(); o != nil {
+		widget.Walk(o, func(c widget.Component) {
+			if v, ok := c.(*widgets.TextField); ok {
+				f = v
 			}
+		})
+	}
+	return f
+}
+
+// pressPrimary presses the default button of what is on w's overlay.
+func pressPrimary(t *testing.T, a *app.Application, w *app.Window) {
+	t.Helper()
+	var ok *widgets.Button
+	widget.Walk(w.Overlay(), func(c widget.Component) {
+		if b, isB := c.(*widgets.Button); isB && b.Primary {
+			ok = b
 		}
 	})
-	if field == nil || ok == nil {
-		t.Fatal("the prompt has no field or no OK button")
+	if ok == nil {
+		t.Fatal("the overlay has no default button")
 	}
-	field.SetText(text)
 	ok.OnClick()
+	for i := 0; i < 5; i++ {
+		a.PumpOnce()
+	}
+}
+
+// fillAndSubmit opens the prompt, types text into it and presses OK.
+func fillAndSubmit(t *testing.T, a *app.Application, w *app.Window, open func(), text string) {
+	t.Helper()
+	open()
 	a.PumpOnce()
+	f := promptField(w)
+	if f == nil {
+		t.Fatal("no prompt with a field over the window")
+	}
+	f.SetText(text)
+	pressPrimary(t, a, w)
 }
 
 // Rename Folder… asks for the name and renames the folder in place; New
 // Subfolder… makes one inside the folder it was chosen on.
 func TestRenameAndSubfolderFromTheFolderMenu(t *testing.T) {
-	s, a, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
 	proj := mailcore.Folder{ID: mailcore.FolderAdaProjects, AccountID: mailcore.AcctAda, Name: "Projects", Kind: mailcore.FolderCustom}
 
-	w := askNameWindow(t, a, func() { s.renameFolder(proj) })
-	fillAndSubmit(t, a, w, "Clients 2026")
+	fillAndSubmit(t, a, w, func() { s.renameFolder(proj) }, "Clients 2026")
 	f, ok, _ := s.cli.GetFolder(mailcore.FolderAdaProjects)
-	if !ok || f.Name != "Clients 2026" || !w.Closed() {
-		t.Fatalf("after rename: %+v closed=%v", f, w.Closed())
+	if !ok || f.Name != "Clients 2026" || w.Overlay() != nil {
+		t.Fatalf("after rename: %+v overlay=%v", f, w.Overlay())
 	}
 
-	w = askNameWindow(t, a, func() { s.newSubfolder(f) })
-	fillAndSubmit(t, a, w, "Acme")
+	fillAndSubmit(t, a, w, func() { s.newSubfolder(f) }, "Acme")
 	folders, _ := s.cli.ListFolders(mailcore.AcctAda)
 	found := false
 	for _, x := range folders {
@@ -62,33 +81,44 @@ func TestRenameAndSubfolderFromTheFolderMenu(t *testing.T) {
 		t.Fatalf("no subfolder Acme under %s (now showing %s)", f.ID, s.folder)
 	}
 
-	// A name that is taken is refused and the prompt stays up.
-	w = askNameWindow(t, a, func() { s.renameFolder(f) })
-	fillAndSubmit(t, a, w, "Archives")
+	// A name that is taken is refused: a warning says why, and then the
+	// prompt comes back with what was typed.
+	fillAndSubmit(t, a, w, func() { s.renameFolder(f) }, "Archives")
 	if f2, _, _ := s.cli.GetFolder(f.ID); f2.Name != "Clients 2026" {
 		t.Fatalf("a taken name was accepted: %q", f2.Name)
 	}
-	if w.Closed() || w.Overlay() == nil {
-		t.Fatal("the prompt should stay up and say why")
+	if w.Overlay() == nil || promptField(w) != nil {
+		t.Fatal("no warning saying why")
+	}
+	pressPrimary(t, a, w)
+	if again := promptField(w); again == nil || again.Text != "Archives" {
+		t.Fatal("the prompt did not come back with the name")
 	}
 }
 
-// askNameWindow runs open and returns the window it made.
-func askNameWindow(t *testing.T, a *app.Application, open func()) *app.Window {
-	t.Helper()
-	before := map[*app.Window]bool{}
-	for _, w := range a.Windows() {
-		before[w] = true
-	}
-	open()
+// An empty name cannot be accepted.
+func TestNamePromptNeedsAName(t *testing.T) {
+	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	s.newFolder()
 	a.PumpOnce()
-	for _, w := range a.Windows() {
-		if !before[w] {
-			return w
-		}
+	field := promptField(w)
+	if field == nil {
+		t.Fatal("no prompt")
 	}
-	t.Fatal("no prompt window opened")
-	return nil
+	var ok *widgets.Button
+	widget.Walk(w.Overlay(), func(c widget.Component) {
+		if b, isB := c.(*widgets.Button); isB && b.Primary {
+			ok = b
+		}
+	})
+	if ok == nil || ok.Enabled() {
+		t.Fatal("OK is enabled with no name")
+	}
+	field.SetText("x")
+	if !ok.Enabled() {
+		t.Fatal("OK stayed grey with a name")
+	}
 }
 
 // A list that mixes folders says where each message is.

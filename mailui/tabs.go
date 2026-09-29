@@ -175,7 +175,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 		widgets.Tab{Title: "HTML", Content: widgets.NewPad(8, mt.html.view)},
 		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(4, mt.md.view)},
 	)
-	head := newReserveBox(200, widgets.NewScrollView(widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10)))
+	head := newReserveBox(200, newHeaderScroll(widgets.NewColumn(subj, mt.head, mt.invite.view).WithGap(4).WithPad(10)))
 	col := widgets.NewColumn(head, widgets.NewSeparator(), views).WithGap(0)
 	col.AddFlex(views, 1)
 	mt.view = col

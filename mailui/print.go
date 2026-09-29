@@ -133,11 +133,10 @@ func (s *session) saveMessageAs() {
 	}
 	home, _ := os.UserHomeDir()
 	widgets.ShowFileDialog(s.win.Content(), widgets.FileDialogOptions{
-		Title: "Save message as",
-		Mode:  widgets.FileSave,
-		// The suggested name rides in Path: the dialog has no field for
-		// one (uitoolkit-gaps.md #12).
-		Path:       filepath.Join(home, emlFileName(m)),
+		Title:      "Save message as",
+		Mode:       widgets.FileSave,
+		Path:       home,
+		Name:       emlFileName(m),
 		OnNavigate: mailDirEntries,
 		OnPick: func(path string) {
 			if strings.TrimSpace(path) == "" {

@@ -126,11 +126,13 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 	}
 
 	status := widgets.NewLabel("")
-	addFolder := widgets.NewButton("Add a folder or mailbox file…", func() {
+	// A mail folder (Maildir, MH, a folder of .eml files) or a mailbox
+	// file (mbox): the dialog picks one kind or the other.
+	addFrom := func(title string, mode widgets.FileDialogMode) {
 		home, _ := os.UserHomeDir()
 		widgets.ShowFileDialog(win.Content(), widgets.FileDialogOptions{
-			Title:      "Choose a mailbox file, or open a mail folder and press Open",
-			Mode:       widgets.FileOpen,
+			Title:      title,
+			Mode:       mode,
 			Path:       home,
 			OnNavigate: mailDirEntries,
 			OnPick: func(path string) {
@@ -155,7 +157,15 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 				})
 			},
 		})
+	}
+	addFolder := widgets.NewButton("Add a folder…", func() {
+		addFrom("Choose a mail folder", widgets.FileOpenFolder)
 	})
+	addFolder.Tip = "A Maildir, an MH folder or a folder of .eml files"
+	addFile := widgets.NewButton("Add a mailbox file…", func() {
+		addFrom("Choose a mailbox file", widgets.FileOpen)
+	})
+	addFile.Tip = "An mbox file"
 
 	var imp *widgets.Button
 	imp = widgets.NewButton("Import", func() {
@@ -235,8 +245,8 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 	body := widgets.NewColumn(
 		scroll,
 		status,
-		widgets.NewRow(addFolder, widgets.NewSpacer(),
-			widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(imp, widgets.RoleAccept)).WithGap(8),
+		widgets.NewRow(addFolder, addFile).WithGap(8),
+		widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(imp, widgets.RoleAccept),
 	).WithGap(10)
 	body.AddFlex(scroll, 1)
 	win.SetContent(widgets.NewPad(12, body))

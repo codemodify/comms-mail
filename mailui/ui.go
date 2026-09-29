@@ -464,7 +464,7 @@ func (s *session) build() widget.Component {
 	// The header grows with what the message carries (an invitation,
 	// attachments) but always leaves the message body room for a few
 	// lines: past that it scrolls.
-	headBox := newReserveBox(200, widgets.NewScrollView(headCol))
+	headBox := newReserveBox(200, newHeaderScroll(headCol))
 	previewCol := widgets.NewColumn(headBox, widgets.NewSeparator(), tabs).WithGap(0)
 	previewCol.AddFlex(tabs, 1)
 
@@ -2559,7 +2559,7 @@ func (s *session) newSubfolder(parent mailcore.Folder) {
 
 func (s *session) createFolderNamed(acct string, parent mailcore.FolderID, title string) {
 	var made mailcore.Folder
-	askName(s.app, title, "Folder name", "", "Create", func(name string) error {
+	askName(s.win.Content(), s.app, title, "Folder name", "", func(name string) error {
 		f, err := s.cli.CreateFolder(acct, name, parent)
 		made = f
 		return err
@@ -2575,7 +2575,7 @@ func (s *session) createFolderNamed(acct string, parent mailcore.FolderID, title
 // renameFolder asks for a folder's new name. The folder keeps its messages,
 // its place in the tree, and — when it is the one showing — the view.
 func (s *session) renameFolder(f mailcore.Folder) {
-	askName(s.app, "Rename Folder", "New name for “"+f.Name+"”", f.Name, "Rename", func(name string) error {
+	askName(s.win.Content(), s.app, "Rename Folder", "New name for “"+f.Name+"”", f.Name, func(name string) error {
 		if name == f.Name {
 			return nil
 		}
@@ -2971,7 +2971,8 @@ func (s *session) saveAttachment(i int) {
 		widgets.ShowFileDialog(s.win.Content(), widgets.FileDialogOptions{
 			Title:      "Save As",
 			Mode:       widgets.FileSave,
-			Path:       filepath.Join(os.TempDir(), name),
+			Path:       os.TempDir(),
+			Name:       name,
 			OnNavigate: mailDirEntries,
 			OnPick: func(path string) {
 				if path == "" {
@@ -2990,9 +2991,9 @@ func (s *session) saveAttachment(i int) {
 	})
 }
 
-// saveAllAttachments picks one folder (FileDialog path treated as a directory:
-// an existing file uses its parent; a missing path with no extension is
-// created) then writes every attachment for the current message there (0600).
+// saveAllAttachments picks one folder (a path that is a file uses its
+// parent; a missing one with no extension is created) then writes every
+// attachment for the current message there (0600).
 func (s *session) saveAllAttachments() {
 	m, ok := s.primary()
 	if !ok || len(s.attNames) == 0 || s.win == nil {
@@ -3017,8 +3018,8 @@ func (s *session) saveAllAttachments() {
 		}
 		items := v.([]attachBlob)
 		widgets.ShowFileDialog(s.win.Content(), widgets.FileDialogOptions{
-			Title:      "Save All",
-			Mode:       widgets.FileSave,
+			Title:      "Save all attachments in",
+			Mode:       widgets.FileOpenFolder,
 			Path:       os.TempDir(),
 			OnNavigate: mailDirEntries,
 			OnPick: func(path string) {

@@ -12,9 +12,9 @@ import (
 // reserve (1x pixels) of the height its parent offers for what comes
 // after it: a header that grows with what it shows (an invitation,
 // attachments) without pushing the message body out of a short window. Put
-// a scroll view inside it, so what does not fit scrolls. (uitoolkit's
-// HeightBox is a fixed height with a cap; this is the child's height with
-// a cap.)
+// a scroll view inside it (newHeaderScroll), so what does not fit scrolls.
+// (A scroll view's MaxHeight is a fixed cap; this one moves with the
+// window.)
 type reserveBox struct {
 	widget.Base
 	reserve float32
@@ -37,17 +37,19 @@ func (b *reserveBox) Measure(c layout.Constraints) paintengine2d.Point {
 		cc.MaxH = max(c.MaxH-style.Dip(b.Look(), b.reserve), c.MaxH/3)
 	}
 	p := kids[0].Measure(cc)
-	// A scroll view asks for all the height it is offered; the box wants
-	// what is in it. (Taking the scroll view's word made the reading
-	// pane's header as tall as the cap for every message, the body squeezed
-	// under it — uitoolkit-gaps.md #14.)
-	if sv, ok := kids[0].(*widgets.ScrollView); ok && sv.ContentHeight() < p.Y {
-		p.Y = sv.ContentHeight()
-	}
 	if c.HasMaxH() && p.Y > cc.MaxH {
 		p.Y = cc.MaxH
 	}
 	return c.Constrain(p)
+}
+
+// newHeaderScroll is the scroll view a reserveBox holds: as tall as what
+// is in it, not as tall as it is offered, which would make every
+// message's header as tall as the cap and squeeze the body under it.
+func newHeaderScroll(content widget.Component) *widgets.ScrollView {
+	sv := widgets.NewScrollView(content)
+	sv.ShrinkToContent = true
+	return sv
 }
 
 func (b *reserveBox) Arrange(r paintengine2d.Rect) {

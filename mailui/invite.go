@@ -42,9 +42,7 @@ type inviteCard struct {
 
 func newInviteCard(s *session) *inviteCard {
 	c := &inviteCard{s: s, now: time.Now}
-	// The title has a line of its own: a wrapping label that flexes in a
-	// row beside buttons is measured one line high and its wrapped lines
-	// are clipped (uitoolkit-gaps.md #11).
+	// The title has a line of its own, above the details and the answers.
 	c.what = wrapLabel("")
 	c.what.Title = true
 	c.when = wrapLabel("")

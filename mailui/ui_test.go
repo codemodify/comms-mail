@@ -1632,13 +1632,13 @@ func confirmFileDialog(t *testing.T, w *app.Window, path string) error {
 				pathField = v
 			}
 		case *widgets.Button:
-			if v.Text == "Save" {
+			if v.Text == "Save" || v.Text == "Choose" {
 				confirm = v
 			}
 		}
 	})
 	if pathField == nil || confirm == nil || confirm.OnClick == nil {
-		return fmt.Errorf("dialog path/Save")
+		return fmt.Errorf("dialog path/Save or Choose")
 	}
 	pathField.SetText(path)
 	confirm.OnClick()

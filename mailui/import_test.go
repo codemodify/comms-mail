@@ -102,14 +102,40 @@ func TestImportWindowEmptyOffersFolder(t *testing.T) {
 	w := openImportWindow(a, cli, nil, nil, nil)
 	defer w.Close()
 	a.PumpOnce()
-	found := false
+	var addFolder, addFile *widgets.Button
 	widget.Walk(w.Content(), func(c widget.Component) {
-		if b, ok := c.(*widgets.Button); ok && strings.HasPrefix(b.Text, "Add a folder") {
-			found = true
+		if b, ok := c.(*widgets.Button); ok {
+			switch b.Text {
+			case "Add a folder…":
+				addFolder = b
+			case "Add a mailbox file…":
+				addFile = b
+			}
 		}
 	})
-	if !found {
-		t.Fatal("no Add a folder button")
+	if addFolder == nil || addFile == nil {
+		t.Fatal("no Add a folder… or Add a mailbox file… button")
+	}
+	// A folder is chosen with a folder dialog, a file with a file one.
+	for _, c := range []struct {
+		b    *widgets.Button
+		verb string
+	}{{addFolder, "Choose"}, {addFile, "Open"}} {
+		c.b.OnClick()
+		a.PumpOnce()
+		verb := ""
+		if o := w.Overlay(); o != nil {
+			widget.Walk(o, func(x widget.Component) {
+				if b, ok := x.(*widgets.Button); ok && (b.Text == "Choose" || b.Text == "Open") {
+					verb = b.Text
+				}
+			})
+		}
+		if verb != c.verb {
+			t.Fatalf("%s opened a dialog that says %q, want %q", c.b.Text, verb, c.verb)
+		}
+		widget.DismissOverlay(w.Content())
+		a.PumpOnce()
 	}
 	if len(windowChecks(w)) != 0 {
 		t.Fatal("an empty scan should offer no checkboxes")

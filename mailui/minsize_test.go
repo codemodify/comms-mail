@@ -154,10 +154,6 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 			{"Import", 500, 440, func() {
 				openImportWindow(a, cli, []mailcore.ImportSource{sampleImportSource()}, map[string]bool{}, nil)
 			}},
-			{"Name prompt", 300, 150, func() {
-				askName(a, "Rename Folder", "New name for “Projects”", "Projects", "Rename",
-					func(string) error { return nil }, nil)
-			}},
 			{"Message source", 480, 320, func() { _, _ = OpenMessageSource(a, inbox[0], "From: a\r\n\r\nbody") }},
 			{"Rule editor", 520, 420, func() { openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil) }},
 			{"Where passwords are kept", 460, 420, func() {
