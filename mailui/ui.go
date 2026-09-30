@@ -123,12 +123,12 @@ type session struct {
 	trayMu     sync.Mutex
 	tray       platform.StatusItem
 	notes      mailNotifier
-	// The title bar: titleGap, the empty part over the folder pane, then
-	// the app menu's button and Fetch / Write / Search, then the tabs
-	// (titlebar.go).
-	titleGap                      *titleGap
-	appBtn                        *widgets.Button
-	fetchBtn, writeBtn, searchBtn *widgets.Button
+	// The title bar (titlebar.go): empty over the folder pane (its
+	// StartWidth, from where the pages land), then the app menu's button
+	// and Fetch / Write / Search, then the tabs.
+	head                          *widgets.HeaderBar
+	appBtn                        *widgets.MenuButton
+	fetchBtn, writeBtn, searchBtn *widgets.IconButton
 	status                        *widgets.StatusBar
 	searchAll                     bool
 	acctPanel                     widget.Component
@@ -396,11 +396,11 @@ func (s *session) build() widget.Component {
 	var right widget.Component
 	sideRatio := float32(0.17)
 	if s.opts.Layout == LayoutClassic {
-		r := widgets.NewSplitter(widgets.SplitRows, s.center, previewCol)
+		r := widgets.NewSplitter(widgets.SplitRows, newStackMin(s.center), previewCol)
 		r.Ratio = 0.46
 		right, sideRatio = r, 0.18
 	} else {
-		m := widgets.NewSplitter(widgets.SplitColumns, s.center, previewCol)
+		m := widgets.NewSplitter(widgets.SplitColumns, newStackMin(s.center), previewCol)
 		m.Ratio = 0.58
 		right = m
 	}
@@ -418,8 +418,8 @@ func (s *session) build() widget.Component {
 	// It is the caption of the frame uitoolkit draws (caption buttons at
 	// the desktop's sides, free space — the empty part included — moves
 	// the window), or the first row under the desktop's own frame.
-	s.titleGap = newTitleGap()
-	head := widgets.NewHeaderBar([]widget.Component{s.titleGap, s.titleButtons()}, s.tabs, nil)
+	head := widgets.NewHeaderBar([]widget.Component{s.titleButtons()}, s.tabs, nil)
+	s.head = head
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
@@ -2821,7 +2821,7 @@ func (s *session) buildAccountCentral() widget.Component {
 	})
 	remove := newButton("Remove account…", s.removeCurrentAccount)
 	return widgets.NewColumn(s.acctTitle, s.acctBody, widgets.NewSeparator(),
-		widgets.NewRow(get, write, inbox, prefs, remove).WithGap(8),
+		foldRow(get, write, inbox, prefs, remove),
 	).WithGap(10).WithPad(16)
 }
 
@@ -2920,12 +2920,8 @@ func (s *session) handleKey(e widget.KeyEvent) bool {
 		s.openSearch()
 		return true
 	}
-	// The app menu's keys: the toolkit ran them for the menu bar the
-	// menu used to be in, and a button has none.
-	if e.Mods.Ctrl() && !e.Mods.Shift() && e.Key == platform.KeyQ {
-		s.quit()
-		return true
-	}
+	// F10 is the app menu, as it was for the menu bar it used to be in
+	// (its button carries its items' own keys, Ctrl+Q and Ctrl+,).
 	if e.Key == platform.KeyF10 && !e.Mods.Ctrl() && !e.Mods.Alt() {
 		s.openAppMenu()
 		return true

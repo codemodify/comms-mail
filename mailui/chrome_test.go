@@ -66,13 +66,13 @@ func TestMailTitleBarChrome(t *testing.T) {
 	if !ok || head.Center() != widget.Component(s.tabs) {
 		t.Fatal("the tabs are not in the title bar")
 	}
-	for _, c := range []widget.Component{s.titleGap, s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
+	for _, c := range []widget.Component{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
 		if !widget.Contains(head, c) {
 			t.Fatalf("%T is not in the title bar", c)
 		}
 	}
-	if len(s.titleGap.Children()) != 0 || !s.titleGap.CaptionAt(paintengine2d.Pt(1, 1)) {
-		t.Fatal("the title bar over the folder pane should be empty caption")
+	if head.StartWidth <= 0 {
+		t.Fatal("the title bar over the folder pane should be left empty")
 	}
 	mx, bx, tx := widget.DeviceOrigin(s.appBtn).X, widget.DeviceOrigin(s.fetchBtn).X, widget.DeviceOrigin(s.tabs).X
 	if !(mx < bx && bx < tx) {
@@ -90,9 +90,31 @@ func TestMailTitleBarChrome(t *testing.T) {
 	if d := mx - widget.DeviceOrigin(pages).X; d > 2 || d < -2 {
 		t.Fatalf("the menu button starts at %v, the pages at %v", mx, widget.DeviceOrigin(pages).X)
 	}
+	// It follows the divider, in the layout that moves it.
+	var split *widgets.Splitter
+	walkAll(w.Content(), func(c widget.Component) {
+		if sp, ok := c.(*widgets.Splitter); ok && widget.Contains(sp, pages) && split == nil {
+			split = sp
+		}
+	})
+	if split == nil {
+		t.Fatal("no splitter beside the folder pane")
+	}
+	split.SetRatio(0.3)
+	a.PumpOnce()
+	if px, bx := widget.DeviceOrigin(pages).X, widget.DeviceOrigin(s.appBtn).X; px <= mx+50 || bx-px > 2 || bx-px < -2 {
+		t.Fatalf("after moving the divider: the pages at %v (were %v), the menu button at %v", px, mx, bx)
+	}
+	split.SetRatio(0.17)
+	a.PumpOnce()
+	mx = widget.DeviceOrigin(s.appBtn).X
 	// Real buttons — the look's push-button face — with an icon alone
 	// and a name for the tip and the screen reader.
-	for _, b := range []*widgets.Button{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
+	buttons := []*widgets.Button{&s.appBtn.Button, &s.fetchBtn.Button, &s.writeBtn.Button, &s.searchBtn.Button}
+	if s.appBtn.Icon != style.IconMenu {
+		t.Fatal("the app menu's button should show the menu icon")
+	}
+	for _, b := range buttons {
 		if b.Text != "" || b.Content == nil || b.Tip == "" || b.AccessibleName() == "" {
 			t.Fatalf("button %q: text %q, tip %q — want an icon alone with a name", b.AccessibleName(), b.Text, b.Tip)
 		}
@@ -100,7 +122,7 @@ func TestMailTitleBarChrome(t *testing.T) {
 			t.Fatalf("button %q is %v", b.AccessibleName(), sz)
 		}
 	}
-	for _, b := range []*widgets.Button{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
+	for _, b := range buttons {
 		img := paintengine2d.NewImage(int(b.Bounds().Dx()), int(b.Bounds().Dy()))
 		b.Paint(paintengine2d.NewContext(img))
 		if ink := cellInk(img, 0, img.Width); ink < 20 {
@@ -233,11 +255,11 @@ func TestMessageTabKeepsFolderPane(t *testing.T) {
 var _ = uitoolkit.Version
 
 // appMenuButton is the app menu's button in the title bar.
-func appMenuButton(t *testing.T, w *app.Window) *widgets.Button {
+func appMenuButton(t *testing.T, w *app.Window) *widgets.MenuButton {
 	t.Helper()
-	var btn *widgets.Button
+	var btn *widgets.MenuButton
 	walkAll(mailTree(w), func(c widget.Component) {
-		if b, ok := c.(*widgets.Button); ok && b.AccessibleName() == "Menu" {
+		if b, ok := c.(*widgets.MenuButton); ok && b.AccessibleName() == "Menu" {
 			btn = b
 		}
 	})
@@ -247,11 +269,13 @@ func appMenuButton(t *testing.T, w *app.Window) *widgets.Button {
 	return btn
 }
 
-// openAppMenu presses the app menu's button and returns the menu it
-// dropped, which stays open.
+// openAppMenu opens the app menu from its button and returns it; it stays
+// open.
 func openAppMenu(t *testing.T, a *app.Application, w *app.Window) *widgets.PopupMenu {
 	t.Helper()
-	appMenuButton(t, w).OnClick()
+	if !appMenuButton(t, w).Open() {
+		t.Fatal("the app menu did not open")
+	}
 	a.PumpOnce()
 	pop, ok := w.Popup().(*widgets.PopupMenu)
 	if !ok || pop == nil {

@@ -44,10 +44,8 @@ func TestMailAppPaints(t *testing.T) {
 			areas++
 		case *widgets.StatusBar:
 			bars++
-		case *widgets.Button:
-			if c.(*widgets.Button).AccessibleName() == "Menu" {
-				menus++
-			}
+		case *widgets.MenuButton:
+			menus++
 		}
 	})
 	widget.Walk(mailTree(w), func(c widget.Component) {

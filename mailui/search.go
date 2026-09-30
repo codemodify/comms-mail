@@ -81,21 +81,22 @@ func (s *session) setSearch(query string, all, server bool) {
 	}
 }
 
-// syncSearchBtn marks the Search button while a search narrows the list
-// (a dot on it, titlebar.go) and says what the search is in its tip.
+// syncSearchBtn keeps the Search button down while a search narrows the
+// list, and says what the search is in its tip.
 func (s *session) syncSearchBtn() {
 	b := s.searchBtn
 	if b == nil {
 		return
 	}
 	q := strings.TrimSpace(s.filter.Query)
+	b.Checked = q != ""
 	switch {
 	case q == "":
-		b.Tip = "Search (Ctrl+F)"
+		b.SetAction("Search (Ctrl+F)")
 	case s.searchAll:
-		b.Tip = "Searching all folders for “" + q + "” — click to change or clear"
+		b.SetAction("Searching all folders for “" + q + "” — click to change or clear")
 	default:
-		b.Tip = "Searching for “" + q + "” — click to change or clear"
+		b.SetAction("Searching for “" + q + "” — click to change or clear")
 	}
 	b.Invalidate()
 }

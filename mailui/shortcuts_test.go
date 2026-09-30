@@ -112,18 +112,26 @@ func TestMessageMenu(t *testing.T) {
 }
 
 // The title bar's buttons are real push buttons, each with an icon; F10
-// opens the app menu and Ctrl+Q is its Quit.
+// opens the app menu, and its button carries the menu's keys: Ctrl+Q
+// quits.
 func TestTitleBarButtonsAndKeys(t *testing.T) {
 	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	for _, b := range []*widgets.Button{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
-		if b == nil || b.Content == nil || b.Tip == "" {
-			t.Fatal("a title bar button without its icon or tip")
+	for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
+		if b == nil || b.Icon == style.IconNone || b.Action == "" {
+			t.Fatal("a title bar button without its icon or name")
 		}
 	}
 	press(s, platform.KeyF10, 0)
 	a.PumpOnce()
-	if _, ok := w.Popup().(*widgets.PopupMenu); !ok {
+	if _, ok := w.Popup().(*widgets.PopupMenu); !ok || !s.appBtn.IsOpen() {
 		t.Fatal("F10 did not open the app menu")
+	}
+	w.DismissPopup()
+	a.PumpOnce()
+	w.Inject(platform.Event{Kind: platform.EventKeyDown, Key: platform.KeyQ, Mods: platform.ModCtrl})
+	a.PumpOnce()
+	if !a.Quitting() {
+		t.Fatal("Ctrl+Q did not quit")
 	}
 }

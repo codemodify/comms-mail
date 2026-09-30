@@ -2,7 +2,6 @@ package mailui
 
 import (
 	"math"
-	"strings"
 
 	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit/layout"
@@ -12,139 +11,48 @@ import (
 )
 
 // The title bar holds the menu, Fetch / Write / Search and the tabs, and
-// nothing over the folder pane: its left end is empty caption as wide as
-// the pane, so the menu starts where the list does. The title bar is one
-// row across the window (uitoolkit has no title bar split beside a pane,
-// uitoolkit-gaps.md #37), so the empty part is sized after each layout of
-// the panes, to where they put the pages.
+// nothing over the folder pane: its start is left empty (HeaderBar's
+// StartWidth) as wide as the pane, so the menu starts where the list does.
+// Every layout that moves the pages — the first, a window resize, a drag of
+// the divider — sets it from where they landed (alignTitle).
 
 // titleButtons is the app menu's button, then Fetch, Write and Search:
-// push buttons with the look's own face and an icon alone on it — their
-// names are their tips and what a screen reader says. (uitoolkit's
-// icon-only button is the flat tool face, uitoolkit-gaps.md #39.)
+// push buttons with the look's own face and an icon alone on it, named
+// for the tip and the screen reader.
 func (s *session) titleButtons() widget.Component {
-	lk := s.app.Look()
-	if s.win != nil {
-		lk = s.win.Look()
-	}
-	s.appBtn = newIconButton(appMenuIcon(lk), "Menu", s.openAppMenu)
-	s.appBtn.Tip = "Menu (F10)"
-	s.fetchBtn = newIconButton(style.IconDownload, "Fetch new messages for this account", s.getMessages)
-	s.writeBtn = newIconButton(style.IconPen, "Write a new message", s.write)
-	s.searchBtn = newIconButton(style.IconSearch, "Search", s.openSearch)
-	s.searchBtn.SetAccessibleName("Search")
-	// A search narrowing the list shows as a dot on the button: a push
-	// button has no pressed state to keep.
-	draw := s.searchBtn.Content
-	s.searchBtn.Content = func(ctx *paintengine2d.Context, r paintengine2d.Rect, st style.ControlState) {
-		draw(ctx, r, st)
-		if strings.TrimSpace(s.filter.Query) == "" {
-			return
-		}
-		lk := s.searchBtn.Look()
-		d := style.Dip(lk, 7)
-		dot := paintengine2d.XYWH(r.Max.X-d-style.Dip(lk, 4), r.Min.Y+style.Dip(lk, 4), d, d)
-		ctx.DrawRoundRect(dot, d/2, d/2, paintengine2d.Fill(lk.Palette().Accent))
-	}
+	s.appBtn = widgets.NewMenuButton(style.IconMenu, "Menu")
+	s.appBtn.Build = s.appMenuItems
+	s.fetchBtn = widgets.NewIconButton(style.IconDownload, "Fetch new messages for this account", s.getMessages)
+	s.writeBtn = widgets.NewIconButton(style.IconPen, "Write a new message", s.write)
+	s.searchBtn = widgets.NewIconButton(style.IconSearch, "Search", s.openSearch)
+	s.searchBtn.Toggle = true // down while a search narrows the list
 	s.syncSearchBtn()
 	return widgets.NewRow(s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn).WithGap(4).WithAlign(layout.AlignCenter)
 }
 
-// newIconButton is a push button that is its icon: the look's button face
-// with the icon drawn on it, in the label's colour. what is its tip and its
-// accessible name.
-func newIconButton(icon style.ToolIcon, what string, on func()) *widgets.Button {
-	b := widgets.NewButton("", on)
-	b.Tip = what
-	b.SetAccessibleName(what)
-	b.Content = func(ctx *paintengine2d.Context, r paintengine2d.Rect, st style.ControlState) {
-		lk := b.Look()
-		sz := min(r.Dy()-style.Dip(lk, 10), style.Dip(lk, 20))
-		if sz <= 0 {
-			return
-		}
-		col := lk.Palette().Text
-		if st.Disabled() {
-			col = lk.Palette().TextMuted
-		}
-		box := paintengine2d.XYWH(r.Min.X+(r.Dx()-sz)/2, r.Min.Y+(r.Dy()-sz)/2, sz, sz)
-		style.DrawToolIcon(ctx, box, icon, col, style.IconSetOf(lk))
-	}
-	return b
-}
-
-// appMenuIcon is the app menu button's icon: "more" (the dots every
-// program's overflow menu has) where the look draws from an icon pack,
-// and the cog where it draws its own set, which has no "more" — a stem it
-// has no vector for would be the no-icon mark (uitoolkit-gaps.md #38).
-func appMenuIcon(lk style.LookAndFeel) style.ToolIcon {
-	if lk != nil && style.IsFileIconSet(style.IconSetOf(lk)) {
-		if icon, ok := style.IconByStem("more"); ok {
-			return icon
-		}
-	}
-	return style.IconSettings
-}
-
-// openAppMenu drops the app menu under its button.
+// openAppMenu drops the app menu under its button (F10).
 func (s *session) openAppMenu() {
-	if s.appBtn == nil {
-		return
+	if s.appBtn != nil {
+		s.appBtn.Open()
 	}
-	r := widget.LocalToWindow(s.appBtn, s.appBtn.LocalBounds())
-	widgets.ShowContextMenu(s.appBtn, paintengine2d.Pt(r.Min.X, r.Max.Y), s.appMenuItems()...)
 }
 
-// titleGap is the empty caption at the title bar's left end. It is caption
-// space: pressing it moves the window, as the rest of the free space does.
-type titleGap struct {
-	widget.Base
-	want  float32 // device pixels
-	tries int     // adjustments in a row that have not settled
-}
-
-func newTitleGap() *titleGap {
-	g := &titleGap{}
-	g.Init(g)
-	return g
-}
-
-func (g *titleGap) Measure(c layout.Constraints) paintengine2d.Point {
-	return c.Constrain(paintengine2d.Pt(g.want, 0))
-}
-
-func (g *titleGap) Arrange(r paintengine2d.Rect) { g.SetBounds(r) }
-
-// CaptionAt: all of it moves the window (widget.CaptionHitTester).
-func (g *titleGap) CaptionAt(paintengine2d.Point) bool { return true }
-
-// alignTitle sizes the empty part so that the menu starts where the pages
-// do: pages is the right-hand side of the window, just laid out. It
-// measures where the menu landed rather than adding up the header bar's
-// gaps and padding, and the next layout takes the change up.
+// alignTitle starts the title bar's items where pages — the right-hand
+// side, just laid out — landed. The window lays the title bar out before
+// its content, so a change re-arranges the bar in the same pass rather
+// than a frame later (uitoolkit-gaps.md #37).
 func (s *session) alignTitle(pages widget.Component) {
-	g := s.titleGap
-	if g == nil || s.appBtn == nil || g.Host() == nil || s.appBtn.Host() == nil || pages.Host() == nil {
+	h := s.head
+	if h == nil || h.Host() == nil || pages.Host() == nil {
 		return
 	}
-	off := widget.DeviceOrigin(pages).X - widget.DeviceOrigin(s.appBtn).X
-	if math.Abs(float64(off)) < 1 {
-		g.tries = 0
+	want := max(widget.DeviceOrigin(pages).X-widget.DeviceOrigin(h).X, 0)
+	if math.Abs(float64(want-h.StartWidth)) < 1 {
 		return
 	}
-	// A layout that cannot settle is left as it is rather than laid out
-	// again and again.
-	if g.tries++; g.tries > 4 {
-		return
-	}
-	g.want = max(g.Bounds().Dx()+off, 0)
-	g.Invalidate()
-	// The layout this runs in is over; the next one takes it up.
-	s.post(func() {
-		if s.win != nil {
-			s.win.RequestLayout()
-		}
-	})
+	h.StartWidth = want
+	h.Arrange(h.Bounds())
+	h.Invalidate()
 }
 
 // edgeWatch lays its one child out in its own box and then calls
@@ -172,3 +80,31 @@ func (e *edgeWatch) Arrange(r paintengine2d.Rect) {
 		e.arranged(e)
 	}
 }
+
+// stackMin gives a stack the minimum width of the pages it shows, which
+// is what a splitter keeps a pane at (uitoolkit 0.22.5). The toolkit's
+// Stack has no minimum of its own, and the probe standing in for it takes
+// the widest page's natural width whenever another page — a message list —
+// is taller than anything that folds (uitoolkit-gaps.md #41).
+type stackMin struct {
+	widget.Base
+	stack *widgets.Stack
+}
+
+func newStackMin(stack *widgets.Stack) *stackMin {
+	m := &stackMin{stack: stack}
+	m.Init(m)
+	m.Add(stack)
+	return m
+}
+
+func (m *stackMin) Measure(c layout.Constraints) paintengine2d.Point { return m.stack.Measure(c) }
+
+func (m *stackMin) Arrange(r paintengine2d.Rect) {
+	m.SetBounds(r)
+	m.stack.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+}
+
+// MinWidth is the widest minimum among the pages showing
+// (widget.MinWidther).
+func (m *stackMin) MinWidth() float32 { return widget.MinWidthOfChildren(m.stack.Children()) }
