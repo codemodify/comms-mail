@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
+	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
@@ -50,33 +51,47 @@ func runSearch(t *testing.T, a *app.Application, w *app.Window, query string, al
 	}
 }
 
-// The folder pane runs the window's full height with nothing over it.
-// Right of it, one row holds the M menu, then Fetch, Write and Search as
-// icons alone, then the tabs; the pages are under that row. The window's
-// title bar is its own (title and caption buttons). No quick filter, no
-// All folders or On server buttons: they are in the search dialog.
+// The title bar holds the M menu, then Fetch, Write and Search as icons
+// alone, then the tabs — starting where the pages do; over the folder pane
+// it is empty caption. The folder pane runs from the title bar to the
+// bottom. No quick filter, no All folders or On server buttons: they are
+// in the search dialog.
 func TestMailTitleBarChrome(t *testing.T) {
 	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	a.PumpOnce()
-	if w.TitleBar() != nil {
-		t.Fatal("the window's title bar should be its own, with nothing of the app's in it")
+	for i := 0; i < 4; i++ {
+		a.PumpOnce()
 	}
-	var menu *widgets.MenuBar
-	widget.Walk(s.topRow, func(c widget.Component) {
-		if m, ok := c.(*widgets.MenuBar); ok {
-			menu = m
+	head, ok := w.TitleBar().(*widgets.HeaderBar)
+	if !ok || head.Center() != widget.Component(s.tabs) {
+		t.Fatal("the tabs are not in the title bar")
+	}
+	for _, c := range []widget.Component{s.titleGap, s.menu, s.mainBar} {
+		if !widget.Contains(head, c) {
+			t.Fatalf("%T is not in the title bar", c)
+		}
+	}
+	if len(s.titleGap.Children()) != 0 || !s.titleGap.CaptionAt(paintengine2d.Pt(1, 1)) {
+		t.Fatal("the title bar over the folder pane should be empty caption")
+	}
+	if len(s.menu.Menus()) != 1 || s.menu.Menus()[0].Title != "M" {
+		t.Fatal("the M menu is not in the title bar")
+	}
+	mx, bx, tx := widget.DeviceOrigin(s.menu).X, widget.DeviceOrigin(s.mainBar).X, widget.DeviceOrigin(s.tabs).X
+	if !(mx < bx && bx < tx) {
+		t.Fatalf("order: M at %v, buttons at %v, tabs at %v", mx, bx, tx)
+	}
+	var pages *edgeWatch
+	walkAll(w.Content(), func(c widget.Component) {
+		if e, ok := c.(*edgeWatch); ok {
+			pages = e
 		}
 	})
-	if menu == nil || len(menu.Menus()) != 1 || menu.Menus()[0].Title != "M" {
-		t.Fatal("the M menu is not in the row")
+	if pages == nil {
+		t.Fatal("no pages pane")
 	}
-	if !widget.Contains(s.topRow, s.mainBar) || !widget.Contains(s.topRow, s.tabs) {
-		t.Fatal("the buttons and the tabs are not in the row")
-	}
-	mx, bx, tx := widget.DeviceOrigin(menu).X, widget.DeviceOrigin(s.mainBar).X, widget.DeviceOrigin(s.tabs).X
-	if !(mx < bx && bx < tx) {
-		t.Fatalf("order in the row: M at %v, buttons at %v, tabs at %v", mx, bx, tx)
+	if d := mx - widget.DeviceOrigin(pages).X; d > 2 || d < -2 {
+		t.Fatalf("M starts at %v, the pages at %v", mx, widget.DeviceOrigin(pages).X)
 	}
 	want := []style.ToolIcon{style.IconDownload, style.IconPen, style.IconSearch}
 	items := s.mainBar.Items()
@@ -96,26 +111,22 @@ func TestMailTitleBarChrome(t *testing.T) {
 				t.Fatal("the quick filter is still in the window")
 			}
 		case *widgets.ToolBar:
-			if v != s.mainBar {
-				for _, it := range v.Items() {
-					if it.Text == "All folders" || it.Text == "On server" {
-						t.Fatalf("%q is still on a tool bar", it.Text)
-					}
+			for _, it := range v.Items() {
+				if it.Text == "All folders" || it.Text == "On server" {
+					t.Fatalf("%q is still on a tool bar", it.Text)
 				}
 			}
+		case *widgets.MenuBar:
+			t.Fatal("a menu bar in the window's content")
 		}
 	})
 
-	// The folder pane: from the top of the window's content to its
-	// bottom, with the row beside it rather than over it.
+	// The folder pane: from the top of the content to its bottom.
 	tree := widget.DeviceBounds(s.tree)
 	outbox := widget.DeviceBounds(s.outboxTree)
 	content := widget.DeviceBounds(w.Content())
 	if tree.Min.Y > content.Min.Y+12 || outbox.Max.Y < content.Max.Y-12 {
 		t.Fatalf("folder pane %v…%v inside %v: not the full height", tree, outbox, content)
-	}
-	if row := widget.DeviceBounds(s.topRow); row.Min.X < tree.Max.X {
-		t.Fatalf("the row %v reaches over the folder pane %v", row, tree)
 	}
 	assertTagsTree(t, s.tree)
 }

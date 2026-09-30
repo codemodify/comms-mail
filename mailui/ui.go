@@ -124,9 +124,11 @@ type session struct {
 	tray       platform.StatusItem
 	notes      mailNotifier
 	mainBar    *widgets.ToolBar
-	// topRow is the menu, Fetch / Write / Search and the tabs, over the
-	// pages; searchBtn is its Search (search.go).
-	topRow    *widgets.FlexBox
+	// menu, mainBar (Fetch / Write / Search; searchBtn is Search) and the
+	// tabs are in the title bar after titleGap, the empty part over the
+	// folder pane (titlebar.go).
+	menu      *widgets.MenuBar
+	titleGap  *titleGap
 	searchBtn *widgets.ToolItem
 	status    *widgets.StatusBar
 	searchAll bool
@@ -389,11 +391,9 @@ func (s *session) build() widget.Component {
 	sidebar.AddFlex(s.tree, 1)
 
 	// The folder pane runs the window's height on the left, with nothing
-	// over it. Right of it: a row with the menu, Fetch, Write, Search and
-	// the tabs, over the pages the tabs switch between — Mail, the list
-	// and the reading pane, and a page per message opened in a tab
-	// (tabs.go). The window's own title bar (its title and caption
-	// buttons, drawn by uitoolkit or by the desktop) is above it all.
+	// over it. Right of it are the pages the tabs switch between — Mail,
+	// the list and the reading pane, and a page per message opened in a
+	// tab (tabs.go).
 	var right widget.Component
 	sideRatio := float32(0.17)
 	if s.opts.Layout == LayoutClassic {
@@ -406,21 +406,31 @@ func (s *session) build() widget.Component {
 		right = m
 	}
 	s.setupTabs(right)
-	s.mainBar = s.composeBar()
-	s.topRow = widgets.NewRow(s.menuBar(), s.mainBar, s.tabs).WithGap(8).WithAlign(layout.AlignCenter).WithPad(2)
-	s.topRow.AddFlex(s.tabs, 1)
-	pages := widgets.NewColumn(s.topRow, s.pages).WithGap(0)
+	pages := widgets.NewColumn(s.pages).WithGap(0)
 	pages.AddFlex(s.pages, 1)
 	if s.status != nil {
 		pages.Add(s.status)
 	}
-	split := widgets.NewSplitter(widgets.SplitColumns, sidebar, pages)
+	split := widgets.NewSplitter(widgets.SplitColumns, sidebar, newEdgeWatch(pages, s.alignTitle))
 	split.Ratio = sideRatio
+
+	// The window's title bar: empty over the folder pane, then the menu,
+	// Fetch, Write and Search and the tabs, starting where the pages do.
+	// It is the caption of the frame uitoolkit draws (caption buttons at
+	// the desktop's sides, free space — the empty part included — moves
+	// the window), or the first row under the desktop's own frame.
+	s.mainBar = s.composeBar()
+	s.menu = s.menuBar()
+	s.titleGap = newTitleGap()
+	head := widgets.NewHeaderBar([]widget.Component{s.titleGap, s.menu, s.mainBar}, s.tabs, nil)
+	var chrome []widget.Component
 	if s.win != nil {
-		// A build before this one may have put its own row there.
-		s.win.SetTitleBar(nil)
+		s.win.SetTitleBar(head)
+	} else {
+		chrome = append(chrome, head)
 	}
-	root := widgets.NewColumn(split).WithGap(0)
+	chrome = append(chrome, split)
+	root := widgets.NewColumn(chrome...).WithGap(0)
 	root.AddFlex(split, 1)
 	s.refreshAll()
 	return wrapShortcutsReady(root, s.handleKey, s.maybeAskAddAccount)

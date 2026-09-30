@@ -227,14 +227,14 @@ width (libadwaita's `NavigationSplitView` / `OverlaySplitView` with a
 header bar per side, AppKit's full-height sidebar with its toolbar), or at
 least `HeaderBar.StartWidth` bound to a component's width.
 
-**Superseded in comms-mail** (2026-09-30): what the owner meant was a
-folder pane with nothing over it. comms-mail now leaves the window's own
-title bar full width (its title and caption buttons) and puts the menu,
-Fetch / Write / Search and the tabs in a row of the window's content,
-beside the folder pane and over the pages; `sideHead` and `edgeWatch` are
-gone. What is left of this gap is the one-row version — the folder pane
-up under the caption, the app's row in the caption beside it — which
-would save that row.
+**Updated** (2026-09-30): what the owner wants is a folder pane with
+nothing over it, and the menu, Fetch / Write / Search and the tabs in the
+title bar, starting where the pages do. comms-mail now leaves the title
+bar's part over the folder pane empty (caption space, `titleGap` in
+mailui/titlebar.go) and sizes it after each layout to where the pages
+landed (`edgeWatch`) — the same one-frame lag on a drag, and the caption
+band still runs across the top of the pane. A title bar whose start
+section follows a pane's width is still what would do this properly.
 
 ## Resolved
 
