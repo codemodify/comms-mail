@@ -120,9 +120,7 @@ func writeTable(b *strings.Builder, rows []string) {
 	head := tableCells(rows[0])
 	b.WriteString("<table><tr>")
 	for _, c := range head {
-		// Bold cells, not <th>: the rich-text view lays a header cell out
-		// as a level-1 heading, title-sized (uitoolkit-gaps.md #31).
-		b.WriteString("<td><b>" + inlineMarkdown(c) + "</b></td>")
+		b.WriteString("<th>" + inlineMarkdown(c) + "</th>")
 	}
 	b.WriteString("</tr>")
 	for _, r := range rows[2:] {

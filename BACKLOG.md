@@ -11,8 +11,9 @@ new ones turn up.
 - **Emoji, Greek, Cyrillic and CJK show as ▯** — the toolkit has no font
   fallback and has declined it for good (uitoolkit-gaps.md #2): comms-mail
   has to plan around it. Very visible in subjects and bodies.
-- **Tables whose cells wrap overlap** in the Markdown view — the next row
-  is drawn over a wrapped row's second line (uitoolkit-gaps.md #32).
+- **Tables whose cells wrap can overlap** in the Markdown view — at some
+  pane widths the next row is drawn over a wrapped row's second line
+  (uitoolkit-gaps.md #32).
 
 ## Calendar invitations
 - **Conflicts** — no "you are busy then" hint: comms-mail has no calendar
@@ -56,8 +57,7 @@ new ones turn up.
   wide (uitoolkit-gaps.md #29), so their rows fold in narrow windows.
 - **Icons after a toolkit update** — the icon packs are copied into
   `~/.config/uitoolkit/icons/` by hand; until they are, new icons draw as
-  "no icon" (uitoolkit-gaps.md #33). heroicons' Reply All is a share mark
-  (#34).
+  "no icon" (uitoolkit-gaps.md #33).
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header

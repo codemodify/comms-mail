@@ -34,7 +34,8 @@ type recipientField struct {
 	open  bool
 	// fetch asks the owner for suggestions for token, off the UI goroutine;
 	// the owner calls setSuggestions back on the UI goroutine.
-	fetch func(token string)
+	fetch    func(token string)
+	deduping bool
 }
 
 const maxSuggestRows = 6
@@ -42,13 +43,9 @@ const maxSuggestRows = 6
 func newRecipientField(placeholder string, fetch func(token string)) *recipientField {
 	rf := &recipientField{fetch: fetch}
 	rf.Init(rf)
-	rf.chips = widgets.NewTokenField(placeholder, nil)
+	rf.chips = widgets.NewTokenField(placeholder, rf.dropRepeats)
 	rf.chips.Accept = validRecipient
 	ed := rf.chips.Editor()
-	// The field's own split cuts at a comma inside a quoted name
-	// ("Doe, Jane" <jane@example.com>, uitoolkit-gaps.md #19); this one
-	// reads the address grammar.
-	ed.OnInput = rf.splitTyped
 	ed.OnChange = func(string) { rf.onEdit() }
 	commit := ed.OnFocusLost
 	ed.OnFocusLost = func() {
@@ -118,7 +115,8 @@ func recipientParts(s string) []string {
 }
 
 // splitRecipients returns the complete parts of s — each ended by a
-// separator — and what follows the last separator.
+// separator — and what follows the last separator. It reads a whole
+// header (a draft's, a reply's); what is typed is split by the TokenField.
 func splitRecipients(s string) (parts []string, tail string) {
 	quoted, escaped := false, false
 	depth, angle := 0, 0
@@ -150,35 +148,34 @@ func splitRecipients(s string) (parts []string, tail string) {
 	return parts, s[start:]
 }
 
-// splitTyped turns the addresses the writer ended with a separator into
-// chips. One that is not an address stops it: it and what follows stay in
-// the editor, without the separator, so the next key does not try it
-// again. One already there is dropped.
-func (rf *recipientField) splitTyped(s string) {
-	parts, tail := splitRecipients(s)
-	ed := rf.chips.Editor()
-	if len(parts) == 0 {
-		// Nothing finished. Separators and spaces alone are nothing to
-		// keep: the space after a comma is not the start of an address.
-		if s != "" && strings.Trim(s, ",; \t") == "" {
-			ed.SetText("")
-		}
+// dropRepeats takes out a chip whose address is already on the field,
+// whatever its capitals (TokenField.Unique compares the text exactly).
+func (rf *recipientField) dropRepeats([]string) {
+	if rf.deduping {
 		return
 	}
-	for i, p := range parts {
-		if rf.has(p) {
-			continue
-		}
-		if !rf.chips.AddToken(p) {
-			rest := strings.Join(parts[i:], ", ")
-			if t := strings.TrimLeft(tail, " \t"); t != "" {
-				rest += " " + t
+	rf.deduping = true
+	defer func() { rf.deduping = false }()
+	for {
+		seen := map[string]bool{}
+		again := -1
+		for i, t := range rf.chips.Tokens() {
+			a, err := mail.ParseAddress(t)
+			if err != nil {
+				continue
 			}
-			ed.SetText(rest)
+			key := strings.ToLower(a.Address)
+			if seen[key] {
+				again = i
+				break
+			}
+			seen[key] = true
+		}
+		if again < 0 {
 			return
 		}
+		rf.chips.RemoveAt(again)
 	}
-	ed.SetText(strings.TrimLeft(tail, " \t"))
 }
 
 // contactAddr is a contact as a chip holds it, the name quoted when it

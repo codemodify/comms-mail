@@ -6,11 +6,12 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.22.2** (2026-09-29). 0.22 closed
-sixteen of the first seventeen; 0.22.2 closed eight of the next ten, and
-half of each of the other two (#19, #24). Checking 0.22.2 turned up seven
-new items (#29–#35). What comms-mail uses for each closed item is under
-**Resolved**.
+Last checked against **uitoolkit v0.22.3** (2026-09-29). 0.22 closed
+sixteen of the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the
+rest of #19 and #24, and #30, #31 and #34 of the seven new ones. #32 is
+fixed at some widths and not at others (below); #29, #33 and #35 are
+design changes the toolkit has not taken up yet. What comms-mail uses for
+each closed item is under **Resolved**.
 
 ## Open
 
@@ -32,27 +33,6 @@ at length and names the answer for a product that cannot live with it —
 Qt or GTK, which have shaping engines. This will not be reopened, so
 comms-mail should plan around it rather than around its arriving.
 
-### 19. TokenField cuts a quoted name at its comma — still, while typing
-0.22.2 honours quotes: pasting `"Doe, Jane" <jane@example.com>, bob@x.org,`
-gives the two chips it should. But an unclosed quote is read as no quote
-("the user is still typing"), and while someone *types* that address the
-quote is unclosed at the moment the comma is typed — so the comma splits,
-`"Doe` is refused, and the comma is gone: the chip comes out as
-`"Doe Jane" <jane@example.com>`. Verified on 0.22.2 with `Window.Type` on
-a bare TokenField (Accept = a mail-address check). Comments (`(Smith, J)`)
-and angle brackets are not skipped either.
-comms-mail keeps its own split, which treats an open quote as open (the
-comma stays in it until the quote is closed) and skips `(…)` and `<…>`.
-**Fix:** while a quote is open at the end of the text, do not split inside
-it — the separator can only end the value once the quote is closed. (A
-stray `"` then holds splitting until it is closed or deleted, which the
-user can see in the editor.)
-
-### 24. Rich-text tables: a wrapped cell overlaps the next row
-0.22.2 closed what was asked: a cell keeps its bold and its links, and the
-block after a table gets its space (verified). Laying cells out as
-paragraphs brought two new problems, #31 and #32 below.
-
 ### 29. `Button.Icon` makes a button an icon-and-a-half wider
 The documented trade-off (the label stays centred, so a strip is reserved
 at *both* ends) costs about 64 px at 1x per button: "No" is 124 px wide,
@@ -67,22 +47,8 @@ rather than reserving two — through a label rect the engine draws into
 (`DrawButton` taking the text's box), or an opt-in `IconLeading` for
 looks whose label treatment tolerates it.
 
-### 30. `uitoolkit.Version` still says 0.22.1 in the 0.22.2 release
-`version.go` at tag v0.22.2 (aee5242) is `const Version = "0.22.1"`, so
-every application that shows the toolkit's version (comms-mail's Write
-window and status bar) shows the wrong one.
-**Fix:** bump it with the release; a test that compares it with the
-latest `release:` note would keep it from drifting.
-
-### 31. A table's header row is laid out as a level-1 heading
-`layoutTableRow` lays a header row's cells out with
-`kind = richtext.Heading` and the row's `Level`, which the HTML parser
-sets to 1 for `<th>` — so a header cell is an H1: title-sized, where it
-should be bold at the body's size. "Item / Price / Notes" come out as
-headlines, and "Price" breaks mid-word in a narrow column.
-comms-mail writes a Markdown table's header row as `<td><b>…</b></td>`
-until this is fixed.
-**Fix:** a header cell in the table face, bold.
+**Still open in 0.22.3**, listed there as a design change (all 33 engines,
+or an opt-in).
 
 ### 32. A table row whose cells wrap is overlapped by the next row
 With cells now wrapping, a row two lines tall is drawn two lines tall but
@@ -105,6 +71,22 @@ next row's top comes from was not traced. comms-mail has no workaround.
 **Fix:** position each row by the laid-out height of the rows above it;
 draw the column rules for the row's full height.
 
+**Closed in 0.22.3, and it was two bugs. The column rules and the rule under a row were drawn at the *first line's* height, so a wrapped row's later lines sat outside their own cell. And columns were being squeezed past their longest word — which broke "Price" into "Pric" and "£4.50" into "£4.5" and "0", growing each row a line — because the shrink still assumed cells elide. Each column has its own floor now, and is never rounded below it.**
+
+**Still there at some widths (checked on 0.22.3).** With the window at
+1100×800 the table above is right: every row as tall as its wrapped
+cells, the rules down the whole row. At 1280×800 — the reading pane about
+440 px wide — it is not: the Tea row draws two lines ("see the list and"
+/ "code") but the Cake row starts at Tea's second line, so "Cake with a
+long name that should" shares a line with "code", and there is no rule
+under Tea. `RequestLayout` and `Invalidate` on the RichText, and
+`SetHTML` of the same HTML, leave it as it is; resizing to 1100 puts it
+right. The header row is right at both widths. Not traced; a guess is
+that the height used to place the next row and the lines drawn come from
+two different widths at this size (with and without the scroll bar's
+gutter, say), so the Tea row is one line tall for the one and two for the
+other.
+
 ### 33. Icon packs installed before an update go stale, and new icons draw as "no icon"
 The premiere packs are not embedded: they are read from
 `~/.config/uitoolkit/icons/<set>/`, which the README says to refresh by
@@ -121,12 +103,9 @@ override, or fall back to the embedded PNG for a stem the installed copy
 lacks; at the least, have the Settings app refresh an installed premiere
 pack whose files are older than the library's.
 
-### 34. heroicons' reply-all is a share icon
-`icons/heroicons/reply-all.png` (0.22.2) is the three-linked-dots share
-mark, not a reply-all arrow; the other four packs draw a double reply
-arrow. comms-mail uses `IconReplyAll` in the message menu.
-**Fix:** heroicons has no reply-all — two `arrow-uturn-left`s offset, as
-the other packs do it.
+**Still open in 0.22.3**, listed there as a design change. The packs were
+copied by hand again for this check (heroicons' reply-all, #34, is only
+fixed on a machine that does).
 
 ### 35. An asynchronous check in a prompt needs a keep-open trick
 `MessageBoxInput.Validate` runs on the UI goroutine; for a check that is a
@@ -141,7 +120,19 @@ runs. It works; it is not a pattern anyone would find.
 **Fix:** `ValidateAsync func(string, done func(error))`, with the accept
 button busy until `done`, and the box closing with its result on nil.
 
+**Still open in 0.22.3**, listed there as a design change.
+
 ## Resolved
+
+### Closed in 0.22.3
+
+| # | Gap | 0.22.3 | In comms-mail |
+| --- | --- | --- | --- |
+| 19 | TokenField cut a quoted name at its comma while it was typed | An unclosed quote holds the split until it is closed or deleted; comments and angle brackets nest | comms-mail's own split is gone; typing `"Doe, Jane" <jane@example.com>,` makes one chip (tested). comms-mail only drops a repeated address whose capitals differ, which `Unique` does not |
+| 24 | Table cells were plain text on one line | (0.22.2) cells keep their spans and wrap; the block after a table gets its space | The Markdown view draws formatted cells; see #32 for what is left |
+| 30 | `uitoolkit.Version` said 0.22.1 in 0.22.2 | Bumped, and a test ties it to the release notes | comms-mail shows 0.22.3 |
+| 31 | A header cell was laid out as an H1 | Bold at the table's own size | comms-mail writes `<th>` again |
+| 34 | heroicons' reply-all was the share mark | `arrow-turn-up-left` | Checked after refreshing the installed pack (#33) |
 
 ### Closed in 0.22.2
 

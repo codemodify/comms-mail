@@ -22,8 +22,8 @@ func TestMarkdownToHTML(t *testing.T) {
 		"quote": {"> Quoted line\n>\n> Second", "<blockquote><p>Quoted line</p><p>Second</p></blockquote>"},
 		"rule":  {"a\n\n---\n\nb", "<p>a</p><hr><p>b</p>"},
 		"table": {"| Item | Price |\n| ---- | ----- |\n| **Tea**  | £3    |\n| Cake |\n| a \\| b | 1 | extra |",
-			"<table><tr><td><b>Item</b></td><td><b>Price</b></td></tr><tr><td><b>Tea</b></td><td>£3</td></tr><tr><td>Cake</td><td></td></tr><tr><td>a | b</td><td>1</td></tr></table>"},
-		"table without edge pipes": {"a | b\n--- | ---\n1 | 2", "<table><tr><td><b>a</b></td><td><b>b</b></td></tr><tr><td>1</td><td>2</td></tr></table>"},
+			"<table><tr><th>Item</th><th>Price</th></tr><tr><td><b>Tea</b></td><td>£3</td></tr><tr><td>Cake</td><td></td></tr><tr><td>a | b</td><td>1</td></tr></table>"},
+		"table without edge pipes": {"a | b\n--- | ---\n1 | 2", "<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>"},
 		"raw html is text":         {"<script>alert(1)</script> & co", "<p>&lt;script&gt;alert(1)&lt;/script&gt; &amp; co</p>"},
 		"escapes":                  {`\*not em\* and 1\. not a list`, "<p>*not em* and 1. not a list</p>"},
 	} {
