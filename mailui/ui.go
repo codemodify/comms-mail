@@ -124,10 +124,9 @@ type session struct {
 	tray       platform.StatusItem
 	notes      mailNotifier
 	mainBar    *widgets.ToolBar
-	// side is the title bar's left end, over the folder pane (search.go);
-	// searchBtn is its Search.
-	side      *sideHead
-	sideSplit *widgets.Splitter
+	// topRow is the menu, Fetch / Write / Search and the tabs, over the
+	// pages; searchBtn is its Search (search.go).
+	topRow    *widgets.FlexBox
 	searchBtn *widgets.ToolItem
 	status    *widgets.StatusBar
 	searchAll bool
@@ -389,9 +388,12 @@ func (s *session) build() widget.Component {
 	).WithGap(0).WithPad(6)
 	sidebar.AddFlex(s.tree, 1)
 
-	// The folder pane runs the window's height on the left. Right of it
-	// are the pages the tabs switch between: Mail — the list and the
-	// reading pane — and a page per message opened in a tab (tabs.go).
+	// The folder pane runs the window's height on the left, with nothing
+	// over it. Right of it: a row with the menu, Fetch, Write, Search and
+	// the tabs, over the pages the tabs switch between — Mail, the list
+	// and the reading pane, and a page per message opened in a tab
+	// (tabs.go). The window's own title bar (its title and caption
+	// buttons, drawn by uitoolkit or by the desktop) is above it all.
 	var right widget.Component
 	sideRatio := float32(0.17)
 	if s.opts.Layout == LayoutClassic {
@@ -404,32 +406,21 @@ func (s *session) build() widget.Component {
 		right = m
 	}
 	s.setupTabs(right)
-	pages := widgets.NewColumn(s.pages).WithGap(0)
+	s.mainBar = s.composeBar()
+	s.topRow = widgets.NewRow(s.menuBar(), s.mainBar, s.tabs).WithGap(8).WithAlign(layout.AlignCenter).WithPad(2)
+	s.topRow.AddFlex(s.tabs, 1)
+	pages := widgets.NewColumn(s.topRow, s.pages).WithGap(0)
 	pages.AddFlex(s.pages, 1)
 	if s.status != nil {
 		pages.Add(s.status)
 	}
-	split := widgets.NewSplitter(widgets.SplitColumns, sidebar, newEdgeWatch(pages, s.alignSideHead))
+	split := widgets.NewSplitter(widgets.SplitColumns, sidebar, pages)
 	split.Ratio = sideRatio
-	s.sideSplit = split
-
-	// The window's title bar: the menu, Fetch, Write and Search over the
-	// folder pane — as wide as it, so the pane reads as running from the
-	// top of the window — then the tabs, over the pages they switch. It is
-	// the caption of the frame uitoolkit draws (caption buttons at the
-	// desktop's sides, free space moves the window), or the first row
-	// under the desktop's own frame.
-	s.mainBar = s.composeBar()
-	s.side = newSideHead(widgets.NewRow(s.menuBar(), s.mainBar).WithGap(8).WithAlign(layout.AlignCenter))
-	head := widgets.NewHeaderBar([]widget.Component{s.side}, s.tabs, nil)
-	var chrome []widget.Component
 	if s.win != nil {
-		s.win.SetTitleBar(head)
-	} else {
-		chrome = append(chrome, head)
+		// A build before this one may have put its own row there.
+		s.win.SetTitleBar(nil)
 	}
-	chrome = append(chrome, split)
-	root := widgets.NewColumn(chrome...).WithGap(0)
+	root := widgets.NewColumn(split).WithGap(0)
 	root.AddFlex(split, 1)
 	s.refreshAll()
 	return wrapShortcutsReady(root, s.handleKey, s.maybeAskAddAccount)

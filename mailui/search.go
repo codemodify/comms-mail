@@ -1,11 +1,8 @@
 package mailui
 
 import (
-	"math"
 	"strings"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
@@ -103,102 +100,5 @@ func (s *session) syncSearchBtn() {
 	}
 	if s.mainBar != nil {
 		s.mainBar.Invalidate()
-	}
-}
-
-// sideHead is the title bar's left end: the menu, Fetch, Write and Search,
-// over the folder pane and as wide as it, so the tabs start where the
-// pages do and the folder pane reads as running from the top of the window
-// to the bottom. want is that width, from the panes' last layout
-// (alignSideHead); the row inside keeps its own width at the left.
-type sideHead struct {
-	widget.Base
-	want  float32 // device pixels
-	tries int     // adjustments in a row that have not settled
-}
-
-func newSideHead(row widget.Component) *sideHead {
-	h := &sideHead{}
-	h.Init(h)
-	h.Add(row)
-	return h
-}
-
-func (h *sideHead) Measure(c layout.Constraints) paintengine2d.Point {
-	kid := h.Children()[0].Measure(layout.Constraints{MaxW: -1, MaxH: c.MaxH})
-	return c.Constrain(paintengine2d.Pt(max(kid.X, h.want), kid.Y))
-}
-
-func (h *sideHead) Arrange(r paintengine2d.Rect) {
-	h.SetBounds(r)
-	h.Children()[0].Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
-}
-
-// alignSideHead sizes the title bar's left end so that the tabs after it
-// start where the pages do: pages is the right-hand side of the window,
-// just laid out. It measures where the tabs are rather than adding up the
-// header bar's gaps and padding. The title bar is laid out on its own, so
-// a change is taken up on the next layout.
-func (s *session) alignSideHead(pages widget.Component) {
-	h := s.side
-	if h == nil || s.tabs == nil || h.Host() == nil || pages.Host() == nil || s.tabs.Host() == nil {
-		return
-	}
-	off := widget.DeviceOrigin(pages).X - widget.DeviceOrigin(s.tabs).X
-	if math.Abs(float64(off)) < 1 {
-		h.tries = 0
-		return
-	}
-	// A layout that cannot settle (a window too narrow for the buttons)
-	// is left as it is rather than laid out again and again.
-	if h.tries++; h.tries > 4 {
-		return
-	}
-	want := h.Bounds().Dx() + off
-	natural := h.Children()[0].Measure(layout.Constraints{MaxW: -1, MaxH: -1}).X
-	if sp := s.sideSplit; want < natural && sp != nil && sp.A != nil && sp.Ratio > 0 {
-		// The folder pane is narrower than the buttons over it: it is
-		// widened to them, which makes their width its narrowest
-		// (uitoolkit's Splitter has no minimum of its own,
-		// uitoolkit-gaps.md #36). Half a pixel over, for the pane's
-		// rounding.
-		if aw := sp.A.Bounds().Dx(); aw > 0 {
-			sp.Ratio = (aw + natural - want + 0.5) * sp.Ratio / aw
-		}
-		want = natural
-	}
-	h.want = max(want, 0)
-	h.Invalidate()
-	// The layout this runs in is over; the next one takes it up.
-	s.post(func() {
-		if s.win != nil {
-			s.win.RequestLayout()
-		}
-	})
-}
-
-// edgeWatch lays its one child out in its own box and then calls
-// arranged: a way to learn where a pane landed.
-type edgeWatch struct {
-	widget.Base
-	arranged func(widget.Component)
-}
-
-func newEdgeWatch(child widget.Component, arranged func(widget.Component)) *edgeWatch {
-	e := &edgeWatch{arranged: arranged}
-	e.Init(e)
-	e.Add(child)
-	return e
-}
-
-func (e *edgeWatch) Measure(c layout.Constraints) paintengine2d.Point {
-	return e.Children()[0].Measure(c)
-}
-
-func (e *edgeWatch) Arrange(r paintengine2d.Rect) {
-	e.SetBounds(r)
-	e.Children()[0].Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
-	if e.arranged != nil {
-		e.arranged(e)
 	}
 }

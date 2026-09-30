@@ -50,31 +50,33 @@ func runSearch(t *testing.T, a *app.Application, w *app.Window, query string, al
 	}
 }
 
-// The title bar: M, then Fetch, Write and Search as icons alone, over the
-// folder pane and as wide as it; the tabs start where the pages do. No
-// quick filter, no All folders or On server buttons: they are in the
-// search dialog. The folder pane runs from the title bar to the bottom.
+// The folder pane runs the window's full height with nothing over it.
+// Right of it, one row holds the M menu, then Fetch, Write and Search as
+// icons alone, then the tabs; the pages are under that row. The window's
+// title bar is its own (title and caption buttons). No quick filter, no
+// All folders or On server buttons: they are in the search dialog.
 func TestMailTitleBarChrome(t *testing.T) {
 	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	for i := 0; i < 3; i++ {
-		a.PumpOnce()
-	}
-	head, ok := w.TitleBar().(*widgets.HeaderBar)
-	if !ok || head.Center() != widget.Component(s.tabs) {
-		t.Fatal("the title bar is not a header bar with the tabs in the middle")
-	}
-	if !widget.Contains(head, s.side) || !widget.Contains(s.side, s.mainBar) {
-		t.Fatal("the menu and tool bar are not at the title bar's left end")
+	a.PumpOnce()
+	if w.TitleBar() != nil {
+		t.Fatal("the window's title bar should be its own, with nothing of the app's in it")
 	}
 	var menu *widgets.MenuBar
-	widget.Walk(s.side, func(c widget.Component) {
+	widget.Walk(s.topRow, func(c widget.Component) {
 		if m, ok := c.(*widgets.MenuBar); ok {
 			menu = m
 		}
 	})
 	if menu == nil || len(menu.Menus()) != 1 || menu.Menus()[0].Title != "M" {
-		t.Fatal("the M menu is not at the left end")
+		t.Fatal("the M menu is not in the row")
+	}
+	if !widget.Contains(s.topRow, s.mainBar) || !widget.Contains(s.topRow, s.tabs) {
+		t.Fatal("the buttons and the tabs are not in the row")
+	}
+	mx, bx, tx := widget.DeviceOrigin(menu).X, widget.DeviceOrigin(s.mainBar).X, widget.DeviceOrigin(s.tabs).X
+	if !(mx < bx && bx < tx) {
+		t.Fatalf("order in the row: M at %v, buttons at %v, tabs at %v", mx, bx, tx)
 	}
 	want := []style.ToolIcon{style.IconDownload, style.IconPen, style.IconSearch}
 	items := s.mainBar.Items()
@@ -94,41 +96,26 @@ func TestMailTitleBarChrome(t *testing.T) {
 				t.Fatal("the quick filter is still in the window")
 			}
 		case *widgets.ToolBar:
-			for _, it := range v.Items() {
-				if it.Text == "All folders" || it.Text == "On server" {
-					t.Fatalf("%q is still on a tool bar", it.Text)
+			if v != s.mainBar {
+				for _, it := range v.Items() {
+					if it.Text == "All folders" || it.Text == "On server" {
+						t.Fatalf("%q is still on a tool bar", it.Text)
+					}
 				}
 			}
 		}
 	})
-	walkAll(head, func(c widget.Component) {
-		if tb, ok := c.(*widgets.ToolBar); ok && tb != s.mainBar {
-			t.Fatal("a second tool bar in the title bar")
-		}
-	})
 
-	// The tabs begin where the pages do: the left end is as wide as the
-	// folder pane.
-	var pages *edgeWatch
-	walkAll(w.Content(), func(c widget.Component) {
-		if e, ok := c.(*edgeWatch); ok {
-			pages = e
-		}
-	})
-	if pages == nil {
-		t.Fatal("no pages pane")
-	}
-	tabsX := widget.DeviceOrigin(s.tabs).X
-	pagesX := widget.DeviceOrigin(pages).X
-	if d := tabsX - pagesX; d > 2 || d < -2 {
-		t.Fatalf("tabs start at %v, the pages at %v", tabsX, pagesX)
-	}
-	// The folder pane runs to the bottom of the window.
+	// The folder pane: from the top of the window's content to its
+	// bottom, with the row beside it rather than over it.
 	tree := widget.DeviceBounds(s.tree)
 	outbox := widget.DeviceBounds(s.outboxTree)
 	content := widget.DeviceBounds(w.Content())
-	if outbox.Max.Y < content.Max.Y-12 || tree.Min.Y > content.Min.Y+12 {
+	if tree.Min.Y > content.Min.Y+12 || outbox.Max.Y < content.Max.Y-12 {
 		t.Fatalf("folder pane %v…%v inside %v: not the full height", tree, outbox, content)
+	}
+	if row := widget.DeviceBounds(s.topRow); row.Min.X < tree.Max.X {
+		t.Fatalf("the row %v reaches over the folder pane %v", row, tree)
 	}
 	assertTagsTree(t, s.tree)
 }

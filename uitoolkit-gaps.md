@@ -206,6 +206,10 @@ pane too narrow, a frame late.
 respect — Qt's `QSplitter` takes the children's minimum sizes, GTK's
 `GtkPaned` has `shrink-start-child`.
 
+**No longer needed by comms-mail** (2026-09-30): the buttons moved off the
+folder pane (#37), so nothing has to fit over it. Left open because the
+gap is real — a pane can still be dragged narrower than what it holds.
+
 ### 37. A sidebar cannot run up under the title bar
 comms-mail's owner asked for the folder pane to take the window's whole
 height, with the menu and the Fetch / Write / Search buttons on top of it
@@ -222,6 +226,15 @@ caption band still runs across the top of the pane.
 width (libadwaita's `NavigationSplitView` / `OverlaySplitView` with a
 header bar per side, AppKit's full-height sidebar with its toolbar), or at
 least `HeaderBar.StartWidth` bound to a component's width.
+
+**Superseded in comms-mail** (2026-09-30): what the owner meant was a
+folder pane with nothing over it. comms-mail now leaves the window's own
+title bar full width (its title and caption buttons) and puts the menu,
+Fetch / Write / Search and the tabs in a row of the window's content,
+beside the folder pane and over the pages; `sideHead` and `edgeWatch` are
+gone. What is left of this gap is the one-row version — the folder pane
+up under the caption, the app's row in the caption beside it — which
+would save that row.
 
 ## Resolved
 
