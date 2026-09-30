@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.22.3** (2026-09-29). 0.22 closed
+Last checked against **uitoolkit v0.22.4** (2026-09-29). 0.22 closed
 sixteen of the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the
 rest of #19 and #24, and #30, #31 and #34 of the seven new ones. #32 is
 fixed at some widths and not at others (below); #29, #33 and #35 are
@@ -50,6 +50,29 @@ looks whose label treatment tolerates it.
 **Still open in 0.22.3**, listed there as a design change (all 33 engines,
 or an opt-in).
 
+**Answered in 0.22.4 with documentation rather than a change, and the
+reasoning is now written down where someone who has never used this
+toolkit will find it.**
+
+The 64 px is inherent to not touching the engine: a push button's label
+is drawn *by the engine*, every engine centres it and decorates it its
+own way (Clearlooks embosses it, others shadow or grey it), so the widget
+cannot move the label without taking over drawing it and losing all of
+that. Reserving a strip at each end is what keeps the label centred and
+every era's treatment untouched.
+
+What was missing was not the trade-off but the guidance. `Button.Icon`'s
+doc comment now states the cost in the first line and names the three
+alternatives, and [docs/recipes.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/recipes.md)
+opens with a table of which control to reach for — `ToolIconBtn` for an
+icon-only button, `NewToolButton` for a tight icon-and-label one,
+`NewWrap` to let a tight row fold — which is what comms-mail worked out
+for itself.
+
+Left open as a design change: an `IconLeading` opt-in that draws the
+label itself at normal width, trading the engine's label treatment on
+those buttons.
+
 ### 32. A table row whose cells wrap is overlapped by the next row
 With cells now wrapping, a row two lines tall is drawn two lines tall but
 the next row starts one line below its top, over its second line; the
@@ -87,6 +110,26 @@ two different widths at this size (with and without the scroll bar's
 gutter, say), so the Tea row is one line tall for the one and two for the
 other.
 
+**Closed in 0.22.4, and the guess in the report was close: two widths,
+but not the scroll bar's — an estimated height and a laid-out one.**
+
+Not a table bug at all. Block tops are a prefix sum, `tops[k+1] =
+tops[k] + heights[k]`, so changing `heights[i]` invalidates `tops[i+1]`
+onward — and `setHeight` kept `tops[i+1]`, one too many. The block
+*directly after* one whose height changed was placed at the offset the
+old height gave.
+
+A height is estimated before its block is laid out and corrected when it
+is, so it fired wherever an estimate was wrong. That is why it was
+width-dependent (at 1100 nothing wrapped, so no estimate was wrong), why
+the header row was right (its height was guessed correctly), why no rule
+was drawn under Tea (the row below was placed inside it), and why
+nothing comms-mail could call fixed it while a resize did — a resize
+recomputes every top from zero.
+
+Six pixels, one character: `min(t.topsOK, i+1)` is `min(t.topsOK, i)`.
+The splice path beside it had always used the right form.
+
 ### 33. Icon packs installed before an update go stale, and new icons draw as "no icon"
 The premiere packs are not embedded: they are read from
 `~/.config/uitoolkit/icons/<set>/`, which the README says to refresh by
@@ -107,6 +150,20 @@ pack whose files are older than the library's.
 copied by hand again for this check (heroicons' reply-all, #34, is only
 fixed on a machine that does).
 
+**Closed in 0.22.4, by the other half of the design rather than by embedding.**
+
+`~/.config/uitoolkit/{icons,themes,skins}` is the *user's* — the
+toolkit's `~/.icons` — and an application writing there was the bug: two
+that do overwrite each other, last one wins, and neither can tell. What
+was missing was a way for an application to ship its own art at all.
+
+`style.AddSearchPath("/opt/comms-mail/share")` registers a directory
+shaped like the user's (`icons/`, `themes/`, `skins/`), private to that
+process. The user's copy comes first file by file, so a person's own set
+still wins where it has an icon, and a stem their copy predates — `print`,
+the corrected `reply-all` — is answered by the application. comms-mail
+can ship the packs it needs and stop asking anyone to copy anything.
+
 ### 35. An asynchronous check in a prompt needs a keep-open trick
 `MessageBoxInput.Validate` runs on the UI goroutine; for a check that is a
 round trip (the mail server refusing a folder name) its docs say to keep
@@ -121,6 +178,50 @@ runs. It works; it is not a pattern anyone would find.
 button busy until `done`, and the box closing with its result on nil.
 
 **Still open in 0.22.3**, listed there as a design change.
+
+**Closed in 0.22.4, and the report was right that the documented route
+did not work.** "Keep the dialog and call `SetInputError`" needed two
+things the API did not have: a way to say "keep it up" other than
+returning a non-nil error (`errors.New("")` worked only because an empty
+message hides the label — an accident, not an API), and a way to close
+with a result at all, since `finish` was unexported.
+
+`MessageBoxInput.ValidateAsync(value, done)` keeps the dialog up with the
+accepting button busy and ignoring further presses until `done`:
+`done(nil)` closes it with its accepting result so `OnResult` runs,
+`done(err)` shows the reason and re-enables. `MessageBox.Close(result)`
+is the general case, and `MessageBox.Checking` reports whether a check is
+out. comms-mail can drop the `errors.New("")` trick and the
+`DismissOverlay` close.
+
+### 36. `Splitter` has no minimum size for a pane
+A splitter divides its space by `Ratio` alone (`panes` in
+widgets/splitter.go: `aw := avail * s.Ratio`, clamped to the whole), so a
+pane can be dragged, or start, narrower than what it holds. comms-mail's
+folder pane has the menu and the Fetch / Write / Search buttons over it
+(#37) and must not be narrower than them: at 1280 px its 17 % was 3 px
+too narrow. comms-mail raises `Ratio` itself after a layout that left the
+pane too narrow, a frame late.
+**Fix:** `MinA` / `MinB` (1x design lengths) that `panes` and a drag both
+respect — Qt's `QSplitter` takes the children's minimum sizes, GTK's
+`GtkPaned` has `shrink-start-child`.
+
+### 37. A sidebar cannot run up under the title bar
+comms-mail's owner asked for the folder pane to take the window's whole
+height, with the menu and the Fetch / Write / Search buttons on top of it
+and the tabs beginning after it — the layout Thunderbird 115+, Apple Mail,
+GNOME's split views and the new Outlook share. The title bar is one
+full-width row (`Window.SetTitleBar`, a `HeaderBar` of start / centre /
+end), so the pane cannot reach into it and nothing ties a header bar's
+start section to a pane's width. comms-mail puts the buttons in a start
+section it sizes after each layout to end where the pages begin,
+measuring where the tabs landed (`sideHead` and `edgeWatch` in
+mailui/search.go) — a frame behind while the divider is dragged, and the
+caption band still runs across the top of the pane.
+**Fix:** a split header bar: one whose start section follows a pane's
+width (libadwaita's `NavigationSplitView` / `OverlaySplitView` with a
+header bar per side, AppKit's full-height sidebar with its toolbar), or at
+least `HeaderBar.StartWidth` bound to a component's width.
 
 ## Resolved
 

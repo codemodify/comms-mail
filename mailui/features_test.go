@@ -438,7 +438,7 @@ func TestFirstRunDialogYesNo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.SetContent(Open(a, w, cli, AppOptions{ShowFilter: true}))
+	w.SetContent(Open(a, w, cli, AppOptions{}))
 	a.PumpOnce()
 	ov := w.Overlay()
 	if ov == nil {
@@ -558,7 +558,7 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.SetContent(Open(a, w, cli, AppOptions{ShowFilter: true}))
+	w.SetContent(Open(a, w, cli, AppOptions{}))
 	a.PumpOnce()
 	if w.Overlay() != nil {
 		t.Fatal("first-run should not open when an account exists")
@@ -651,9 +651,9 @@ func TestConfigFromEnv(t *testing.T) {
 func TestChromePrefsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	saveChromePrefs(ChromePrefs{CardView: true, Density: "compact", ShowFilter: true})
+	saveChromePrefs(ChromePrefs{CardView: true, Density: "compact"})
 	p := loadChromePrefs()
-	if !p.CardView || p.density() != style.DensityCompact || !p.ShowFilter {
+	if !p.CardView || p.density() != style.DensityCompact {
 		t.Fatalf("%+v", p)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "comms-mail", "mailui.json")); err != nil {

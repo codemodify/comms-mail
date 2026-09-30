@@ -174,7 +174,7 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 // newsletter's image bar showing in the reading pane.
 func TestMainWindowFitsAtMinimumSize(t *testing.T) {
 	for _, layout := range []LayoutMode{LayoutVertical, LayoutClassic} {
-		s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{Layout: layout, ShowFilter: true})
+		s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{Layout: layout})
 		s.selectFolder(mailcore.FolderWorkInbox)
 		s.selected = []mailcore.MessageID{mailcore.DemoInviteID}
 		s.loadPreview()

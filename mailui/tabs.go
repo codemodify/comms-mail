@@ -11,11 +11,12 @@ import (
 )
 
 // Messages open in tabs, the way the uitoolkit Files sample opens folders:
-// a browser-style strip in the window's title bar, between the menu and
-// Fetch / Write on one side and the quick filter on the other. The first tab
-// is Mail — the three panes — and cannot be closed; E, a double click or
-// Return on a row opens that message in a tab of its own, or brings its tab
-// forward when it is already open. The keys that act on a message (R,
+// a browser-style strip in the window's title bar, after the menu and
+// Fetch / Write / Search, over the pages it switches — the folder pane
+// stays beside them. The first tab is Mail — the list and the reading pane
+// — and cannot be closed; E, a double click or Return on a row opens that
+// message in a tab of its own, or brings its tab forward when it is
+// already open. The keys that act on a message (R,
 // Shift+R, F, A, D, T, M, Delete) act on the tab's message while it shows.
 
 // messageTab is what a message tab holds: the message, in a reader of its

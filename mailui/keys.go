@@ -102,7 +102,7 @@ Menus
   Ctrl+N    Write
   Ctrl+R    Reply
   Ctrl+L    Forward
-  Ctrl+F    Quick Filter
+  Ctrl+F    Search
   Ctrl+,    Settings
   Ctrl+U    Message Source (raw RFC822)
   F7 / F8   previous / next

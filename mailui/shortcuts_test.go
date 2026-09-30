@@ -111,18 +111,13 @@ func TestMessageMenu(t *testing.T) {
 	}
 }
 
-// Every button on the title bar's tool bars carries an icon.
+// Every button on the title bar's tool bar carries an icon.
 func TestToolbarButtonsHaveIcons(t *testing.T) {
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	for _, it := range []*widgets.ToolItem{s.qfBtn, s.allBtn, s.srv.btn} {
-		if it.Icon == style.IconNone {
-			t.Errorf("%q has no icon", it.Text)
-		}
-	}
-	for _, it := range s.composeBar().Items() {
+	for _, it := range s.mainBar.Items() {
 		if it != nil && !it.Sep && it.Icon == style.IconNone {
-			t.Errorf("%q has no icon", it.Text)
+			t.Errorf("%q has no icon", it.Tip)
 		}
 	}
 }

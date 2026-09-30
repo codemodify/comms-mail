@@ -14,9 +14,9 @@ import (
 func TestServerSearchMergesHits(t *testing.T) {
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{ShowStatusBar: true})
 	defer done()
-	s.toggleServerSearch()
-	if !s.srv.on || !s.srv.btn.Down {
-		t.Fatal("the toggle did not turn on")
+	s.setSearch("", false, true)
+	if !s.srv.on {
+		t.Fatal("the server search did not turn on")
 	}
 	s.filter.Query = "zzqx-no-local-hit"
 	s.refreshList()
@@ -59,8 +59,8 @@ func TestServerSearchMergesHits(t *testing.T) {
 	if s.srvAdded != 0 || len(s.rows) != 0 {
 		t.Fatalf("a stale server answer was merged: %d rows", len(s.rows))
 	}
-	s.toggleServerSearch()
+	s.setSearch("", false, false)
 	if s.srv.on {
-		t.Fatal("the toggle did not turn off")
+		t.Fatal("the server search did not turn off")
 	}
 }

@@ -18,7 +18,7 @@ func TestMailRebuildDoesNotClobberLookJSON(t *testing.T) {
 	if err := style.SaveAppearance(want); err != nil {
 		t.Fatal(err)
 	}
-	s, a, w, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{ShowFilter: true, Light: false})
+	s, a, w, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{Light: false})
 	defer stop()
 
 	s.density = style.DensityCompact
@@ -48,7 +48,7 @@ func TestMailWatchLookAppliesSettingsPack(t *testing.T) {
 	if err := style.SaveAppearance(style.DefaultAppearance().WithPalette(style.ThemeDark)); err != nil {
 		t.Fatal(err)
 	}
-	s, a, _, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{ShowFilter: true, Light: false})
+	s, a, _, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{Light: false})
 	defer stop()
 	if style.LookAppearance(a.Look()).Theme != style.ThemeDark {
 		t.Fatalf("start %+v", style.LookAppearance(a.Look()))
@@ -85,7 +85,7 @@ func TestMailViewLightKeepsItsOwnTheme(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := style.LoadAppearance()
-	s, a, _, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{ShowFilter: true})
+	s, a, _, stop := openMailLookSession(t, style.PreferredLook(), true, AppOptions{})
 	defer stop()
 
 	s.setPalette(true)

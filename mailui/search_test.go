@@ -26,7 +26,6 @@ func TestSearchAllFolders(t *testing.T) {
 
 	// A word that appears in more than one folder. "re" (as in Re:) is
 	// common; fall back to any token if the demo changes.
-	s.opts.ShowFilter = true
 	s.searchAll = true
 	s.filter.Query = "the"
 	s.refreshList()

@@ -508,7 +508,6 @@ func TestMailChromeHidesStatusBarAndVIPFolder(t *testing.T) {
 	a.PumpOnce()
 	var bars, titles int
 	var vipNode bool
-	var qf widget.Component
 	var split *widgets.Splitter
 	widget.Walk(mailTree(w), func(c widget.Component) {
 		switch v := c.(type) {
@@ -548,107 +547,9 @@ func TestMailChromeHidesStatusBarAndVIPFolder(t *testing.T) {
 	if vipNode {
 		t.Fatal("VIP folder still in the sidebar tree")
 	}
-	qf = findQuickFilter(mailTree(w))
-	if qf == nil {
-		t.Fatal("quick filter field missing")
-	}
-	if qf.Visible() {
-		t.Fatal("quick filter field should stay hidden until the Filter icon or Ctrl+F")
-	}
 	assertNoUnreadFolderFooter(t, mailTree(w))
-	if split == nil || widget.Contains(split, qf) {
-		t.Fatal("quick filter should sit on the M chrome row, not inside the splitter")
-	}
-	assertMailToolChrome(t, mailTree(w), qf)
-	w.Close()
-}
-
-func TestMailToolBarChrome(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
-	w, err := a.NewWindow(platform.WindowOptions{
-		Title: "Mail", Width: 1280, Height: 800, Headless: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.SetContent(MailApp(a, w))
-	a.PumpOnce()
-	qf := findQuickFilter(mailTree(w))
-	if qf == nil {
-		t.Fatal("quick filter field missing")
-	}
-	assertMailToolChrome(t, mailTree(w), qf)
-	w.Close()
-}
-
-func TestMailFilterIconTogglesField(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
-	w, err := a.NewWindow(platform.WindowOptions{
-		Title: "Mail", Width: 1280, Height: 800, Headless: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.SetContent(MailApp(a, w))
-	a.PumpOnce()
-	qf := findQuickFilter(mailTree(w))
-	var btn *widgets.ToolItem
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		if v, ok := c.(*widgets.ToolBar); ok {
-			if it := filterIconItem(v); it != nil {
-				btn = it
-			}
-		}
-	})
-	if qf == nil || btn == nil || btn.OnClick == nil {
-		t.Fatal("filter icon / field")
-	}
-	if qf.Visible() {
-		t.Fatal("field should start hidden")
-	}
-	qf.SetText("lunch")
-	btn.OnClick()
-	a.PumpOnce()
-	if !qf.Visible() {
-		t.Fatal("Filter icon should reveal the field")
-	}
-	if qf.Text != "lunch" {
-		t.Fatalf("should keep filter text, got %q", qf.Text)
-	}
-	if qf.Bounds().Dx() <= 100 {
-		t.Fatalf("opened field crushed: width=%v", qf.Bounds().Dx())
-	}
-	if qf.OnEscape == nil {
-		t.Fatal("Escape should hide the field")
-	}
-	qf.OnEscape()
-	a.PumpOnce()
-	if qf.Visible() {
-		t.Fatal("Escape should hide the field")
-	}
-	if qf.Text != "lunch" {
-		t.Fatalf("hide should keep text, got %q", qf.Text)
-	}
-	w.Close()
-}
-
-func TestMailShowFilterPrefHonored(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	saveChromePrefs(ChromePrefs{ShowFilter: true})
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
-	w, err := a.NewWindow(platform.WindowOptions{
-		Title: "Mail", Width: 1280, Height: 800, Headless: true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.SetContent(MailApp(a, w))
-	a.PumpOnce()
-	qf := findQuickFilter(mailTree(w))
-	if qf == nil || !qf.Visible() {
-		t.Fatal("saved showFilter:true should open the Quick Filter field")
+	if split == nil {
+		t.Fatal("splitter")
 	}
 	w.Close()
 }
@@ -741,142 +642,6 @@ func visibleTreeRows(roots []*widgets.TreeNode) []*widgets.TreeNode {
 	return out
 }
 
-func assertMailToolChrome(t *testing.T, root widget.Component, qf widget.Component) {
-	t.Helper()
-	var split *widgets.Splitter
-	var table *widgets.TableView
-	var leftBar, rightBar *widgets.ToolBar
-	var menuBar *widgets.MenuBar
-	var tree *widgets.TreeView
-	removed := []string{"Tag", "Archive", "Junk", "Cards", "Classic"}
-	widget.Walk(root, func(c widget.Component) {
-		switch v := c.(type) {
-		case *widgets.Splitter:
-			if split == nil {
-				split = v
-			}
-		case *widgets.MenuBar:
-			if menuBar == nil {
-				menuBar = v
-			}
-		case *widgets.TableView:
-			if table == nil && len(v.Columns) >= 5 {
-				table = v
-			}
-		case *widgets.TreeView:
-			if tree == nil {
-				tree = v
-			}
-		case *widgets.ToolBar:
-			texts := toolTexts(v)
-			for _, name := range removed {
-				if texts[name] {
-					t.Fatalf("%q still on a toolbar: %v", name, texts)
-				}
-			}
-			if texts["Fetch"] || texts["Write"] {
-				leftBar = v
-			} else if texts["Delete"] || filterIconItem(v) != nil {
-				rightBar = v
-			}
-			for _, name := range []string{"Unread", "Starred", "Attachment", "From", "To", "Subject", "Body"} {
-				if texts[name] {
-					t.Fatalf("filter pin %q still on a toolbar", name)
-				}
-			}
-		case *widgets.ComboBox:
-			t.Fatal("Tags ComboBox should be gone from Mail chrome")
-		}
-	})
-	if leftBar == nil {
-		t.Fatal("left Fetch/Write toolbar")
-	}
-	if rightBar == nil {
-		t.Fatal("right Filter toolbar")
-	}
-	if filterIconItem(rightBar) == nil {
-		t.Fatal("icon-only Filter button missing on the right toolbar")
-	}
-	if split == nil || table == nil {
-		t.Fatal("splitter/table")
-	}
-	left := toolTexts(leftBar)
-	right := toolTexts(rightBar)
-	for _, name := range []string{"Fetch", "Write"} {
-		if !left[name] {
-			t.Fatalf("left toolbar missing %s: %v", name, left)
-		}
-		if right[name] {
-			t.Fatalf("right toolbar still has %s: %v", name, right)
-		}
-	}
-	if left["Get Messages"] || right["Get Messages"] {
-		t.Fatal("Get Messages should be renamed Fetch")
-	}
-	if right["Delete"] || left["Delete"] {
-		t.Fatal("Delete should not sit on either main toolbar")
-	}
-	var fetch, write *widgets.ToolItem
-	for _, it := range leftBar.Items() {
-		if it == nil {
-			continue
-		}
-		switch it.Text {
-		case "Fetch":
-			fetch = it
-		case "Write":
-			write = it
-		}
-	}
-	if fetch == nil || fetch.Icon != style.IconDownload {
-		t.Fatalf("Fetch should use IconDownload, got %+v", fetch)
-	}
-	if write == nil || write.Icon != style.IconPen {
-		t.Fatalf("Write should use IconPen, got %+v", write)
-	}
-	assertFetchWriteIconsPaint(t, leftBar)
-	for _, name := range []string{"Reply", "Forward", "Quick Filter"} {
-		if left[name] || right[name] {
-			t.Fatalf("toolbar still has %s: left=%v right=%v", name, left, right)
-		}
-	}
-	assertMenubarChromeRow(t, root, menuBar, leftBar, rightBar)
-	if widget.Contains(split, leftBar) || widget.Contains(split, rightBar) {
-		t.Fatal("toolbars should sit on the M row, not in the thread pane")
-	}
-	if widget.Contains(split, qf) {
-		t.Fatal("quick filter should sit on the M chrome row, not in the thread pane")
-	}
-	if !filterAfterListActions(root, qf) {
-		t.Fatal("Quick Filter field should share the M chrome row with the right toolbar")
-	}
-	if separateFilterRow(root) {
-		t.Fatal("separate Quick Filter row still under the main toolbar")
-	}
-	if widget.Contains(split, table) {
-		to := widget.DeviceOrigin(table)
-		mo := widget.DeviceOrigin(rightBar)
-		if to.Y+0.5 < mo.Y+rightBar.Bounds().Dy() {
-			t.Fatalf("thread list should sit below the M toolbar row: table=%v bar=%v", to, mo)
-		}
-	}
-	if qf.Visible() {
-		t.Fatal("quick filter field should be hidden until the Filter icon opens it")
-	}
-	assertTagsTree(t, tree)
-}
-
-func findQuickFilter(root widget.Component) *widgets.TextField {
-	var qf *widgets.TextField
-	walkAll(root, func(c widget.Component) {
-		v, ok := c.(*widgets.TextField)
-		if ok && qf == nil && strings.Contains(v.Placeholder, "Quick Filter") {
-			qf = v
-		}
-	})
-	return qf
-}
-
 func walkAll(c widget.Component, fn func(widget.Component)) {
 	if c == nil {
 		return
@@ -885,57 +650,6 @@ func walkAll(c widget.Component, fn func(widget.Component)) {
 	for _, ch := range c.Children() {
 		walkAll(ch, fn)
 	}
-}
-
-func filterIconItem(bar *widgets.ToolBar) *widgets.ToolItem {
-	if bar == nil {
-		return nil
-	}
-	for _, it := range bar.Items() {
-		if it != nil && it.Text == "" && it.Icon == style.IconSearch {
-			return it
-		}
-	}
-	return nil
-}
-
-func toolTexts(bar *widgets.ToolBar) map[string]bool {
-	out := map[string]bool{}
-	if bar == nil {
-		return out
-	}
-	for _, it := range bar.Items() {
-		if it != nil && it.Text != "" {
-			out[it.Text] = true
-		}
-	}
-	return out
-}
-
-func filterAfterListActions(root, qf widget.Component) bool {
-	var row *widgets.FlexBox
-	walkAll(root, func(c widget.Component) {
-		f, ok := c.(*widgets.FlexBox)
-		if !ok || row != nil {
-			return
-		}
-		var hasList, hasQF bool
-		walkAll(f, func(ch widget.Component) {
-			if bar, ok := ch.(*widgets.ToolBar); ok {
-				texts := toolTexts(bar)
-				if filterIconItem(bar) != nil && !texts["Fetch"] && !texts["Write"] {
-					hasList = true
-				}
-			}
-			if ch == qf {
-				hasQF = true
-			}
-		})
-		if hasList && hasQF {
-			row = f
-		}
-	})
-	return row != nil
 }
 
 func assertTagsTree(t *testing.T, tree *widgets.TreeView) {
@@ -1077,42 +791,6 @@ func styleRGB8(c paintengine2d.Color) (r, g, b uint8) {
 	return uint8(c.R*255 + 0.5), uint8(c.G*255 + 0.5), uint8(c.B*255 + 0.5)
 }
 
-func assertMenubarChromeRow(t *testing.T, root widget.Component, mb *widgets.MenuBar, left, right *widgets.ToolBar) {
-	t.Helper()
-	if mb == nil || left == nil || right == nil {
-		t.Fatal("menu / left / right toolbar")
-	}
-	menu := widget.DeviceBounds(mb)
-	compose := widget.DeviceBounds(left)
-	tool := widget.DeviceBounds(right)
-	if menu.Max.Y < compose.Min.Y+1 || compose.Max.Y < menu.Min.Y+1 {
-		t.Fatalf("M and Fetch/Write toolbar must share one row: menu=%v left=%v", menu, compose)
-	}
-	if menu.Max.Y < tool.Min.Y+1 || tool.Max.Y < menu.Min.Y+1 {
-		t.Fatalf("M and right toolbar must share one row: menu=%v right=%v", menu, tool)
-	}
-	if menu.Min.X > 16 {
-		t.Fatalf("M should sit on the left: %+v", menu)
-	}
-	if compose.Min.X < menu.Max.X {
-		t.Fatalf("Fetch/Write should sit after M: menu=%v left=%v", menu, compose)
-	}
-	if compose.Min.X > menu.Max.X+24 {
-		t.Fatalf("Fetch/Write should sit immediately after M: menu=%v left=%v", menu, compose)
-	}
-	if tool.Min.X < compose.Max.X+8 {
-		t.Fatalf("right toolbar should sit after Fetch/Write: left=%v right=%v", compose, tool)
-	}
-	rootBox := widget.DeviceBounds(root)
-	if tool.Max.X < rootBox.Max.X-24 {
-		t.Fatalf("right toolbar should be right-aligned: tool=%v root=%v", tool, rootBox)
-	}
-	row := parentRow(mb)
-	if row == nil || row != parentRow(left) || row != parentRow(right) {
-		t.Fatal("M, Fetch/Write, and the right toolbar should share one horizontal row")
-	}
-}
-
 func parentRow(c widget.Component) *widgets.FlexBox {
 	for p := c.Parent(); p != nil; p = p.Parent() {
 		f, ok := p.(*widgets.FlexBox)
@@ -1134,36 +812,6 @@ func containsMenuBar(c widget.Component) bool {
 		}
 	})
 	return found
-}
-
-func separateFilterRow(root widget.Component) bool {
-	// The column holding the thread pane: only the M chrome row may sit
-	// above the splitter. The chrome row may also be the window's title bar,
-	// above the column altogether.
-	var col *widgets.FlexBox
-	widget.Walk(root, func(c widget.Component) {
-		f, ok := c.(*widgets.FlexBox)
-		if !ok || col != nil {
-			return
-		}
-		for _, ch := range f.Children() {
-			if _, ok := ch.(*widgets.Splitter); ok {
-				col = f
-			}
-		}
-	})
-	if col == nil {
-		return true
-	}
-	for _, ch := range col.Children() {
-		if _, ok := ch.(*widgets.Splitter); ok {
-			return false
-		}
-		if !containsMenuBar(ch) {
-			return true
-		}
-	}
-	return true
 }
 
 func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
@@ -1257,7 +905,6 @@ func TestMailChromeHasNoActiveFilterBanner(t *testing.T) {
 	w.SetContent(MailApp(a, w))
 	a.PumpOnce()
 
-	qf := findQuickFilter(mailTree(w))
 	var tree *widgets.TreeView
 	var table *widgets.TableView
 	widget.Walk(mailTree(w), func(c widget.Component) {
@@ -1272,9 +919,6 @@ func TestMailChromeHasNoActiveFilterBanner(t *testing.T) {
 			}
 		}
 	})
-	if qf == nil {
-		t.Fatal("quick filter field missing")
-	}
 	if table == nil {
 		t.Fatal("thread table")
 	}
@@ -1284,15 +928,13 @@ func TestMailChromeHasNoActiveFilterBanner(t *testing.T) {
 	assertNoFilterBanner(t, mailTree(w))
 
 	before := table.RowCount
-	qf.SetText("lunch")
-	a.PumpOnce()
+	runSearch(t, a, w, "lunch", false)
 	assertNoFilterBanner(t, mailTree(w))
 	if table.RowCount <= 0 || table.RowCount > before {
 		t.Fatalf("quick filter should narrow the list, rows=%d before=%d", table.RowCount, before)
 	}
 
-	qf.SetText("")
-	a.PumpOnce()
+	runSearch(t, a, w, "", false)
 	assertNoFilterBanner(t, mailTree(w))
 	if table.RowCount != before {
 		t.Fatalf("emptying quick filter should restore the list, rows=%d want %d", table.RowCount, before)

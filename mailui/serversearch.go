@@ -6,24 +6,23 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// "On server" asks the mail server too. The local search covers every
-// message's headers and the bodies already downloaded; the server has every
-// body. With the toggle on, a query that has rested for a moment is sent to
-// the server (this folder, or every folder with All folders), and what it
-// finds is merged into the list — marked in the status line — without
-// waiting on it: the local results show at once.
+// "On the server too", in the search dialog, asks the mail server as well.
+// The local search covers every message's headers and the bodies already
+// downloaded; the server has every body. With it on, a search is sent to
+// the server as well (this folder, or every folder with All folders), and
+// what it finds is merged into the list — marked in the status line —
+// without waiting on it: the local results show at once.
 
 // serverSearchDelay is how long a query rests before the server is asked,
 // so typing a word does not send a search per letter.
 var serverSearchDelay = 700 * time.Millisecond
 
-// serverSearch is the toggle's state and the latest answer.
+// serverSearch is the setting's state (the search dialog's "On the
+// server too") and the latest answer.
 type serverSearch struct {
 	on    bool
-	btn   *widgets.ToolItem
 	key   string // the scope and query hits answers
 	hits  []mailcore.Message
 	asked string // the scope and query last sent
@@ -39,21 +38,6 @@ func (s *session) serverScope() (folder mailcore.FolderID, query, key string) {
 		folder = s.folder
 	}
 	return folder, query, string(folder) + "\x00" + query
-}
-
-func (s *session) toggleServerSearch() {
-	s.srv.on = !s.srv.on
-	if s.srv.btn != nil {
-		s.srv.btn.Down = s.srv.on
-	}
-	if s.srv.on && !s.opts.ShowFilter {
-		s.showFilter(true)
-	}
-	s.srv.asked, s.srv.key, s.srv.hits = "", "", nil
-	s.refreshList()
-	if s.srv.on {
-		s.mark("Searching the server too")
-	}
 }
 
 // maybeSearchServer schedules a server search for the current query when

@@ -47,11 +47,10 @@ const (
 	pinAttachment filterPin = "attachment"
 )
 
-// AppOptions tweak the first build (theme, layout, Quick Filter visibility).
+// AppOptions tweak the first build (theme, layout, list view).
 type AppOptions struct {
 	Light         bool
 	Layout        LayoutMode
-	ShowFilter    bool
 	ShowStatusBar bool // default off: no reserved bottom strip
 	CardView      bool
 	Density       style.Density
@@ -67,7 +66,7 @@ func MailApp(a *app.Application, win *app.Window) widget.Component {
 	if err != nil {
 		return widgets.NewLabel(err.Error())
 	}
-	return Open(a, win, cli, AppOptions{ShowFilter: false})
+	return Open(a, win, cli, AppOptions{})
 }
 
 // Open builds the Mail chrome against a comms-maild Client (no Store / IMAP).
@@ -124,18 +123,19 @@ type session struct {
 	trayMu     sync.Mutex
 	tray       platform.StatusItem
 	notes      mailNotifier
-	mainBar    widget.Component
-	listBar    *widgets.ToolBar
-	status     *widgets.StatusBar
-	qf         *widgets.TextField
-	qfBtn      *widgets.ToolItem
-	allBtn     *widgets.ToolItem
-	searchAll  bool
-	acctPanel  widget.Component
-	acctTitle  *widgets.Label
-	acctBody   *widgets.Label
-	thread     widget.Component
-	center     *widgets.Stack
+	mainBar    *widgets.ToolBar
+	// side is the title bar's left end, over the folder pane (search.go);
+	// searchBtn is its Search.
+	side      *sideHead
+	sideSplit *widgets.Splitter
+	searchBtn *widgets.ToolItem
+	status    *widgets.StatusBar
+	searchAll bool
+	acctPanel widget.Component
+	acctTitle *widgets.Label
+	acctBody  *widgets.Label
+	thread    widget.Component
+	center    *widgets.Stack
 
 	busy      sync.WaitGroup
 	refresher *refreshCoalescer
@@ -200,7 +200,6 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	p := loadChromePrefs()
 	s.chromePrefs = p
 	s.cardView = opts.CardView || p.CardView
-	s.opts.ShowFilter = opts.ShowFilter || p.ShowFilter
 	s.threaded = p.Threaded
 	s.hideMuted = p.HideMute
 	s.inviteCompact = p.InviteLess
@@ -224,7 +223,6 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 
 func (s *session) persistChrome() {
 	s.chromePrefs.CardView = s.cardView
-	s.chromePrefs.ShowFilter = s.opts.ShowFilter
 	s.chromePrefs.Threaded = s.threaded
 	s.chromePrefs.HideMute = s.hideMuted
 	s.chromePrefs.Density = s.density.String()
@@ -338,6 +336,10 @@ func (s *session) build() widget.Component {
 
 	s.tree = widgets.NewTreeView()
 	s.outboxTree = widgets.NewTreeView()
+	// The folder pane is the window's sidebar, drawn as one where the
+	// look has a sidebar style (Aqua's source list, Adwaita's, …).
+	s.tree.Sidebar = true
+	s.outboxTree.Sidebar = true
 	s.tree.DisableTypeAhead = true
 	s.outboxTree.DisableTypeAhead = true
 	s.tree.Sidebar, s.outboxTree.Sidebar = true, true
@@ -350,13 +352,6 @@ func (s *session) build() widget.Component {
 	s.tree.DropActions = platform.DragMove
 	s.tree.OnDropNode = s.dropOnFolder
 	s.tree.OnDrag = s.dragFolder
-
-	s.qf = widgets.NewTextField("", "Quick Filter (subject, people, body)", func(q string) {
-		s.filter.Query = q
-		s.refreshList()
-	})
-	s.qf.OnEscape = func() { s.showFilter(false) }
-	s.qf.SetVisible(s.opts.ShowFilter)
 
 	// The reading pane: the message's header, invitation, actions and
 	// attachments over Message, Source and Markdown (reader.go).
@@ -394,46 +389,48 @@ func (s *session) build() widget.Component {
 	).WithGap(0).WithPad(6)
 	sidebar.AddFlex(s.tree, 1)
 
-	var split *widgets.Splitter
+	// The folder pane runs the window's height on the left. Right of it
+	// are the pages the tabs switch between: Mail — the list and the
+	// reading pane — and a page per message opened in a tab (tabs.go).
+	var right widget.Component
+	sideRatio := float32(0.17)
 	if s.opts.Layout == LayoutClassic {
-		right := widgets.NewSplitter(widgets.SplitRows, s.center, previewCol)
-		right.Ratio = 0.46
-		split = widgets.NewSplitter(widgets.SplitColumns, sidebar, right)
-		split.Ratio = 0.18
+		r := widgets.NewSplitter(widgets.SplitRows, s.center, previewCol)
+		r.Ratio = 0.46
+		right, sideRatio = r, 0.18
 	} else {
-		mid := widgets.NewSplitter(widgets.SplitColumns, s.center, previewCol)
-		mid.Ratio = 0.58
-		split = widgets.NewSplitter(widgets.SplitColumns, sidebar, mid)
-		split.Ratio = 0.17
+		m := widgets.NewSplitter(widgets.SplitColumns, s.center, previewCol)
+		m.Ratio = 0.58
+		right = m
 	}
-
-	s.mainBar = s.composeBar()
-	s.listBar = s.toolBar()
-	// Thunderbird's single chrome row — the menu button, Fetch / Write, free
-	// space, the quick filter and its tool bar — is the window's title bar:
-	// the caption of the frame uitoolkit draws (caption buttons at the
-	// desktop's sides, the free space moves the window), or the first row
-	// under the desktop's own frame.
-	//
-	// The message tabs sit in the middle of that row, the way the uitoolkit
-	// Files sample puts its folder tabs in its title bar (tabs.go).
-	main := widgets.NewColumn(split).WithGap(0)
-	main.AddFlex(split, 1)
+	s.setupTabs(right)
+	pages := widgets.NewColumn(s.pages).WithGap(0)
+	pages.AddFlex(s.pages, 1)
 	if s.status != nil {
-		main = widgets.NewColumn(split, s.status).WithGap(0)
-		main.AddFlex(split, 1)
+		pages.Add(s.status)
 	}
-	s.setupTabs(main)
-	head := widgets.NewHeaderBar([]widget.Component{s.menuBar(), s.mainBar}, s.tabs, []widget.Component{s.qf, s.listBar})
+	split := widgets.NewSplitter(widgets.SplitColumns, sidebar, newEdgeWatch(pages, s.alignSideHead))
+	split.Ratio = sideRatio
+	s.sideSplit = split
+
+	// The window's title bar: the menu, Fetch, Write and Search over the
+	// folder pane — as wide as it, so the pane reads as running from the
+	// top of the window — then the tabs, over the pages they switch. It is
+	// the caption of the frame uitoolkit draws (caption buttons at the
+	// desktop's sides, free space moves the window), or the first row
+	// under the desktop's own frame.
+	s.mainBar = s.composeBar()
+	s.side = newSideHead(widgets.NewRow(s.menuBar(), s.mainBar).WithGap(8).WithAlign(layout.AlignCenter))
+	head := widgets.NewHeaderBar([]widget.Component{s.side}, s.tabs, nil)
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
 	} else {
 		chrome = append(chrome, head)
 	}
-	chrome = append(chrome, s.pages)
+	chrome = append(chrome, split)
 	root := widgets.NewColumn(chrome...).WithGap(0)
-	root.AddFlex(s.pages, 1)
+	root.AddFlex(split, 1)
 	s.refreshAll()
 	return wrapShortcutsReady(root, s.handleKey, s.maybeAskAddAccount)
 }
@@ -483,42 +480,18 @@ func (s *session) menuBar() *widgets.MenuBar {
 	)
 }
 
+// composeBar is Fetch, Write and Search, as icons (their names are their
+// tips and what a screen reader says). Search is pressed while a search is
+// narrowing the list.
 func (s *session) composeBar() *widgets.ToolBar {
-	get := widgets.ToolIconBtn(style.IconDownload, "Fetch", s.getMessages)
+	get := widgets.ToolIconBtn(style.IconDownload, "", s.getMessages)
 	get.Tip = "Fetch new messages for this account"
-	write := widgets.ToolIconBtn(style.IconPen, "Write", s.write)
+	write := widgets.ToolIconBtn(style.IconPen, "", s.write)
 	write.Tip = "Write a new message"
-	return widgets.NewToolBar(get, write)
-}
-
-func (s *session) toolBar() *widgets.ToolBar {
-	s.qfBtn = widgets.ToolIconBtn(style.IconSearch, "", s.toggleFilter)
-	s.qfBtn.Tip = "Quick Filter"
-	s.qfBtn.Toggle = true
-	s.qfBtn.Down = s.opts.ShowFilter
-	s.allBtn = widgets.ToolToggle("All folders", s.searchAll, s.toggleSearchAll)
-	s.allBtn.Icon = style.IconFolder
-	s.allBtn.Tip = "Search every folder, not just this one"
-	s.srv.btn = widgets.ToolToggle("On server", s.srv.on, s.toggleServerSearch)
-	s.srv.btn.Icon = style.IconMail
-	s.srv.btn.Tip = "Ask the mail server too — finds words in mail not downloaded yet"
-	return widgets.NewToolBar(s.qfBtn, s.allBtn, s.srv.btn)
-}
-
-// toggleSearchAll switches the message list between the current folder and a
-// search across every folder. It shows the filter field if it was hidden.
-func (s *session) toggleSearchAll() {
-	s.searchAll = !s.searchAll
-	if s.allBtn != nil {
-		s.allBtn.Down = s.searchAll
-	}
-	if s.searchAll && !s.opts.ShowFilter {
-		s.showFilter(true)
-	}
-	s.refreshList()
-	if s.searchAll {
-		s.mark("Searching all folders")
-	}
+	s.searchBtn = widgets.ToolIconBtn(style.IconSearch, "", s.openSearch)
+	s.searchBtn.Toggle = true
+	s.syncSearchBtn()
+	return widgets.NewToolBar(get, write, s.searchBtn)
 }
 
 func (s *session) notifyPrefs() mailcore.NotifyPrefs {
@@ -2440,29 +2413,6 @@ func (s *session) goKind(k mailcore.FolderKind) {
 	}
 }
 
-func (s *session) toggleFilter() {
-	s.showFilter(!s.opts.ShowFilter)
-	s.mark("Quick Filter")
-}
-
-func (s *session) showFilter(on bool) {
-	s.opts.ShowFilter = on
-	s.chromePrefs.ShowFilter = on
-	saveChromePrefs(s.chromePrefs)
-	if s.qf != nil {
-		s.qf.SetVisible(on)
-		if on && s.win != nil {
-			s.win.RequestFocus(s.qf)
-		}
-	}
-	if s.qfBtn != nil {
-		s.qfBtn.Down = on
-	}
-	if s.win != nil {
-		s.win.RequestLayout()
-	}
-}
-
 func (s *session) toggleFilterPin(p filterPin) {
 	switch p {
 	case pinUnread:
@@ -2837,9 +2787,7 @@ func (s *session) selectFolder(id mailcore.FolderID) {
 	s.folder = id
 	if s.searchAll {
 		s.searchAll = false
-		if s.allBtn != nil {
-			s.allBtn.Down = false
-		}
+		s.syncSearchBtn()
 	}
 	if f, ok, _ := s.cli.GetFolder(id); ok && f.AccountID != "" && !syntheticAccount(f.AccountID) {
 		s.account = f.AccountID
@@ -2981,7 +2929,7 @@ func (s *session) handleKey(e widget.KeyEvent) bool {
 		return true
 	}
 	if e.Mods.Ctrl() && e.Key == platform.KeyF {
-		s.showFilter(true)
+		s.openSearch()
 		return true
 	}
 	if isTextFocus(s.win.Focus()) {

@@ -13,13 +13,12 @@ import (
 // in mailui.json. Theme packs stay in look.json (Settings); Light is a
 // menu-checkmark mirror of LoadAppearance, not a second skin owner.
 type ChromePrefs struct {
-	CardView   bool   `json:"cardView"`
-	Density    string `json:"density"`
-	Layout     string `json:"layout,omitempty"`
-	Light      bool   `json:"light,omitempty"`
-	Threaded   bool   `json:"threaded,omitempty"`
-	HideMute   bool   `json:"hideMuted,omitempty"`
-	ShowFilter bool   `json:"showFilter,omitempty"`
+	CardView bool   `json:"cardView"`
+	Density  string `json:"density"`
+	Layout   string `json:"layout,omitempty"`
+	Light    bool   `json:"light,omitempty"`
+	Threaded bool   `json:"threaded,omitempty"`
+	HideMute bool   `json:"hideMuted,omitempty"`
 	// InviteLess folds invitation cards (Less / More).
 	InviteLess bool `json:"inviteLess,omitempty"`
 	// Theme is comms-mail's own theme (Settings › Appearance), over the

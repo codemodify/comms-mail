@@ -83,7 +83,7 @@ func writeMailFolderShot(cli *mailcore.Client, path string, folder mailcore.Fold
 	if err != nil {
 		return err
 	}
-	root := Open(a, w, cli, AppOptions{ShowFilter: true})
+	root := Open(a, w, cli, AppOptions{})
 	w.SetContent(root)
 	a.PumpOnce()
 	widget.Walk(root, func(c widget.Component) {
@@ -159,7 +159,7 @@ func writeEmptyShot(path string) error {
 	if err != nil {
 		return err
 	}
-	w.SetContent(Open(a, w, cli, AppOptions{ShowFilter: true}))
+	w.SetContent(Open(a, w, cli, AppOptions{}))
 	a.PumpOnce()
 	if err := w.WritePNG(path); err != nil {
 		return err
@@ -183,7 +183,7 @@ func writeMailShot(cli *mailcore.Client, path string, light bool, layout LayoutM
 		return err
 	}
 	w.SetContent(Open(a, w, cli, AppOptions{
-		Light: light, Layout: layout, ShowFilter: true, CardView: cards, Density: dens,
+		Light: light, Layout: layout, CardView: cards, Density: dens,
 	}))
 	a.PumpOnce()
 	PrepareShot(w, menu)
@@ -209,7 +209,7 @@ func writeInviteShot(cli *mailcore.Client, path string) error {
 	if err != nil {
 		return err
 	}
-	s := newSession(a, w, cli, AppOptions{ShowFilter: true})
+	s := newSession(a, w, cli, AppOptions{})
 	w.SetContent(s.build())
 	s.rd.invite.now = func() time.Time { return mailcore.DemoNow }
 	a.PumpOnce()
