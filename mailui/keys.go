@@ -104,6 +104,8 @@ Menus
   Ctrl+L    Forward
   Ctrl+F    Search
   Ctrl+,    Settings
+  F10       the app menu
+  Ctrl+Q    Quit
   Ctrl+U    Message Source (raw RFC822)
   F7 / F8   previous / next
   Esc       closes a tooltip, popup or overlay`

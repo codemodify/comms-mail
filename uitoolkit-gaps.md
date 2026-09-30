@@ -236,6 +236,45 @@ landed (`edgeWatch`) — the same one-frame lag on a drag, and the caption
 band still runs across the top of the pane. A title bar whose start
 section follows a pane's width is still what would do this properly.
 
+### 38. No typed icon for an app menu or an overflow menu
+comms-mail's owner asked for the app menu (View, Notify, Settings, Quit)
+to be a button with an icon. Every desktop draws that button as "more"
+(⋯ / ⋮) or a hamburger (☰, GNOME's `open-menu`). The packs ship `more`
+(and `list`, which is a bulleted list, not a hamburger), but only by
+stem: `IconByStem("more")` has no vector in the drawn sets, so in a look
+that draws its own icons — the default for most packs — it is the
+no-icon mark. comms-mail uses "more" where the look draws from a pack and
+falls back to `IconSettings` (a cog) where it draws its own.
+**Fix:** typed `IconMore` and `IconMenu` (a hamburger), with vectors in
+the drawn sets.
+
+### 39. No icon-only push button
+Also asked for by comms-mail's owner: Fetch, Write and Search as *real
+buttons* — the look's push-button face — with an icon alone. The recipes
+page (0.22.4) says a button that is only a mark is `ToolIconBtn`, which
+has the tool face: flat, with no frame until hovered, in most eras, so it
+does not read as a button ("why don't they look like real buttons?"). And
+`Button.Icon` with no text leaves the engine's empty label centred and the
+mark to one side, in a button 64 px wider (#29). comms-mail draws the
+icon itself on an empty `Button` through `Button.Content`, centred and in
+the label's colour.
+**Fix:** a push button whose content is its icon (`NewIconButton(icon,
+name, on)`: the look's button face, the icon centred, the name as its
+tip and accessible name), sized as a square of the control height; and
+a way to show it latched on (a toggle push button — comms-mail marks an
+active search with a dot it paints).
+
+### 40. No button that drops a menu
+The app menu used to be a one-menu `MenuBar` ("M"); as a button, it is an
+ordinary `Button` whose `OnClick` calls `ShowContextMenu` under it. That
+loses what a menu button does — the menu opening on press rather than
+release, a drag from the button into the menu, the button staying down
+while its menu is open, and F10 / the menu key reaching it — and the
+menu bar's accelerators: Ctrl+Q stopped quitting until comms-mail
+handled it itself.
+**Fix:** a `MenuButton` (Qt's `QToolButton` with a menu, GTK's
+`GtkMenuButton`) that owns its menu's accelerators like a menu bar does.
+
 ## Resolved
 
 ### Closed in 0.22.3

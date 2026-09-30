@@ -44,8 +44,10 @@ func TestMailAppPaints(t *testing.T) {
 			areas++
 		case *widgets.StatusBar:
 			bars++
-		case *widgets.MenuBar:
-			menus++
+		case *widgets.Button:
+			if c.(*widgets.Button).AccessibleName() == "Menu" {
+				menus++
+			}
 		}
 	})
 	widget.Walk(mailTree(w), func(c widget.Component) {
@@ -804,16 +806,6 @@ func parentRow(c widget.Component) *widgets.FlexBox {
 	return nil
 }
 
-func containsMenuBar(c widget.Component) bool {
-	found := false
-	widget.Walk(c, func(n widget.Component) {
-		if _, ok := n.(*widgets.MenuBar); ok {
-			found = true
-		}
-	})
-	return found
-}
-
 func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
 	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
@@ -842,20 +834,16 @@ func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
 			if v.Title && (v.Text == "Folders" || v.Text == "Account" || v.Text == "Tags") {
 				t.Fatalf("sidebar section header still present: %q", v.Text)
 			}
-		case *widgets.MenuBar:
-			for _, m := range v.Menus() {
-				for _, it := range m.Items {
-					if it == nil {
-						continue
-					}
-					label, _, _ := widgets.ParseMnemonic(it.Text)
-					if label == "Settings" && it.OnClick != nil {
-						prefs = true
-					}
-				}
-			}
 		}
 	})
+	for _, it := range appMenuRows(t, a, w) {
+		if it == nil {
+			continue
+		}
+		if label, _, _ := widgets.ParseMnemonic(it.Text); label == "Settings" && it.OnClick != nil {
+			prefs = true
+		}
+	}
 	if split == nil {
 		t.Fatal("splitter")
 	}
@@ -1359,16 +1347,6 @@ func TestMailMessageSourceShowsRFC822(t *testing.T) {
 		t.Fatal("Source tab used reconstructed headers")
 	}
 
-	var mb *widgets.MenuBar
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		if m, ok := c.(*widgets.MenuBar); ok && mb == nil {
-			mb = m
-		}
-	})
-	if mb == nil {
-		t.Fatal("menu bar")
-	}
-	mb.RequestFocus()
 	w.Inject(platform.Event{Kind: platform.EventKeyDown, Key: platform.KeyU, Mods: platform.ModCtrl})
 	a.PumpOnce()
 	var srcWin *app.Window
@@ -1437,23 +1415,14 @@ func TestMailMenuHoverDoesNotRebuildTree(t *testing.T) {
 	}
 	w.SetContent(MailApp(a, w))
 	a.PumpOnce()
-	var mb *widgets.MenuBar
-	var folder *widgets.TreeView
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		if m, ok := c.(*widgets.MenuBar); ok && mb == nil {
-			mb = m
-		}
-	})
-	folder, _ = mailSidebarTrees(mailTree(w))
-	if mb == nil || folder == nil {
+	folder, _ := mailSidebarTrees(mailTree(w))
+	if folder == nil {
 		t.Fatal("mail chrome")
 	}
 	roots := folder.Roots
-	mb.Open(0)
-	a.PumpOnce()
-	pop, ok := w.Popup().(*widgets.PopupMenu)
-	if !ok || pop == nil || len(pop.Items) < 3 {
-		t.Fatal("M menu")
+	pop := openAppMenu(t, a, w)
+	if len(pop.Items) < 3 {
+		t.Fatal("app menu")
 	}
 	for i := 0; i < 3; i++ {
 		r := pop.ItemBounds(i)
@@ -1553,7 +1522,7 @@ func assertNoUnreadFolderFooter(t *testing.T, root widget.Component) {
 	})
 }
 
-func TestMailMenuBarIsOnlyM(t *testing.T) {
+func TestMailAppMenu(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
@@ -1564,29 +1533,13 @@ func TestMailMenuBarIsOnlyM(t *testing.T) {
 	}
 	w.SetContent(MailApp(a, w))
 	a.PumpOnce()
-	var mb *widgets.MenuBar
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		if m, ok := c.(*widgets.MenuBar); ok && mb == nil {
-			mb = m
+	// One app menu, behind one button: no menu bar of File, Edit, View…
+	walkAll(mailTree(w), func(c widget.Component) {
+		if _, ok := c.(*widgets.MenuBar); ok {
+			t.Fatal("a menu bar: the app menu is a button")
 		}
 	})
-	if mb == nil {
-		t.Fatal("menu bar")
-	}
-	menus := mb.Menus()
-	if len(menus) != 1 {
-		t.Fatalf("menus %d want 1", len(menus))
-	}
-	title, _, _ := widgets.ParseMnemonic(menus[0].Title)
-	if title != "M" {
-		t.Fatalf("menu title %q want M", menus[0].Title)
-	}
-	bannedTitles := []string{"File", "Edit", "View", "Go", "Message", "Tools", "Help"}
-	for _, name := range bannedTitles {
-		if title == name {
-			t.Fatalf("old top-level menu %q", name)
-		}
-	}
+	items := appMenuRows(t, a, w)
 	var labels []string
 	var quit, prefs, view, notify, threaded, muted bool
 	gone := []string{
@@ -1595,7 +1548,7 @@ func TestMailMenuBarIsOnlyM(t *testing.T) {
 		"Dark", "Light", "Message Source",
 	}
 	topGone := []string{"Threaded", "Hide muted threads"}
-	for _, it := range menus[0].Items {
+	for _, it := range items {
 		if it == nil {
 			continue
 		}
@@ -1806,35 +1759,26 @@ func TestMailNotifyMenuPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 	var notifyOn, vipOnly *widgets.MenuItem
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		mb, ok := c.(*widgets.MenuBar)
-		if !ok {
-			return
+	for _, it := range appMenuRows(t, a, w) {
+		if it == nil {
+			continue
 		}
-		for _, m := range mb.Menus() {
-			for _, it := range m.Items {
-				if it == nil {
-					continue
-				}
-				label, _, _ := widgets.ParseMnemonic(it.Text)
-				if label != "Notify" {
-					continue
-				}
-				for _, sub := range it.Submenu {
-					if sub == nil {
-						continue
-					}
-					subLabel, _, _ := widgets.ParseMnemonic(sub.Text)
-					switch subLabel {
-					case "Notify on new mail":
-						notifyOn = sub
-					case "VIP senders only":
-						vipOnly = sub
-					}
-				}
+		if label, _, _ := widgets.ParseMnemonic(it.Text); label != "Notify" {
+			continue
+		}
+		for _, sub := range it.Submenu {
+			if sub == nil {
+				continue
+			}
+			subLabel, _, _ := widgets.ParseMnemonic(sub.Text)
+			switch subLabel {
+			case "Notify on new mail":
+				notifyOn = sub
+			case "VIP senders only":
+				vipOnly = sub
 			}
 		}
-	})
+	}
 	if notifyOn == nil || notifyOn.OnClick == nil || vipOnly == nil || vipOnly.OnClick == nil {
 		t.Fatal("M → Notify checks")
 	}

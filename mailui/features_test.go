@@ -564,20 +564,14 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 		t.Fatal("first-run should not open when an account exists")
 	}
 	var prefs *widgets.MenuItem
-	widget.Walk(mailTree(w), func(c widget.Component) {
-		mb, ok := c.(*widgets.MenuBar)
-		if !ok {
-			return
+	for _, it := range appMenuRows(t, a, w) {
+		if it == nil {
+			continue
 		}
-		for _, m := range mb.Menus() {
-			for _, it := range m.Items {
-				label, _, _ := widgets.ParseMnemonic(it.Text)
-				if label == "Settings" {
-					prefs = it
-				}
-			}
+		if label, _, _ := widgets.ParseMnemonic(it.Text); label == "Settings" {
+			prefs = it
 		}
-	})
+	}
 	if prefs == nil || prefs.OnClick == nil {
 		t.Fatal("M → Settings missing")
 	}

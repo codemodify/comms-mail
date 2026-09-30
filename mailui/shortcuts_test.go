@@ -111,13 +111,19 @@ func TestMessageMenu(t *testing.T) {
 	}
 }
 
-// Every button on the title bar's tool bar carries an icon.
-func TestToolbarButtonsHaveIcons(t *testing.T) {
-	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+// The title bar's buttons are real push buttons, each with an icon; F10
+// opens the app menu and Ctrl+Q is its Quit.
+func TestTitleBarButtonsAndKeys(t *testing.T) {
+	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	for _, it := range s.mainBar.Items() {
-		if it != nil && !it.Sep && it.Icon == style.IconNone {
-			t.Errorf("%q has no icon", it.Tip)
+	for _, b := range []*widgets.Button{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
+		if b == nil || b.Content == nil || b.Tip == "" {
+			t.Fatal("a title bar button without its icon or tip")
 		}
+	}
+	press(s, platform.KeyF10, 0)
+	a.PumpOnce()
+	if _, ok := w.Popup().(*widgets.PopupMenu); !ok {
+		t.Fatal("F10 did not open the app menu")
 	}
 }

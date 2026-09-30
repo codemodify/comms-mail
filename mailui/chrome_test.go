@@ -66,7 +66,7 @@ func TestMailTitleBarChrome(t *testing.T) {
 	if !ok || head.Center() != widget.Component(s.tabs) {
 		t.Fatal("the tabs are not in the title bar")
 	}
-	for _, c := range []widget.Component{s.titleGap, s.menu, s.mainBar} {
+	for _, c := range []widget.Component{s.titleGap, s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
 		if !widget.Contains(head, c) {
 			t.Fatalf("%T is not in the title bar", c)
 		}
@@ -74,12 +74,9 @@ func TestMailTitleBarChrome(t *testing.T) {
 	if len(s.titleGap.Children()) != 0 || !s.titleGap.CaptionAt(paintengine2d.Pt(1, 1)) {
 		t.Fatal("the title bar over the folder pane should be empty caption")
 	}
-	if len(s.menu.Menus()) != 1 || s.menu.Menus()[0].Title != "M" {
-		t.Fatal("the M menu is not in the title bar")
-	}
-	mx, bx, tx := widget.DeviceOrigin(s.menu).X, widget.DeviceOrigin(s.mainBar).X, widget.DeviceOrigin(s.tabs).X
+	mx, bx, tx := widget.DeviceOrigin(s.appBtn).X, widget.DeviceOrigin(s.fetchBtn).X, widget.DeviceOrigin(s.tabs).X
 	if !(mx < bx && bx < tx) {
-		t.Fatalf("order: M at %v, buttons at %v, tabs at %v", mx, bx, tx)
+		t.Fatalf("order: menu at %v, buttons at %v, tabs at %v", mx, bx, tx)
 	}
 	var pages *edgeWatch
 	walkAll(w.Content(), func(c widget.Component) {
@@ -91,19 +88,39 @@ func TestMailTitleBarChrome(t *testing.T) {
 		t.Fatal("no pages pane")
 	}
 	if d := mx - widget.DeviceOrigin(pages).X; d > 2 || d < -2 {
-		t.Fatalf("M starts at %v, the pages at %v", mx, widget.DeviceOrigin(pages).X)
+		t.Fatalf("the menu button starts at %v, the pages at %v", mx, widget.DeviceOrigin(pages).X)
 	}
-	want := []style.ToolIcon{style.IconDownload, style.IconPen, style.IconSearch}
-	items := s.mainBar.Items()
-	if len(items) != len(want) {
-		t.Fatalf("tool bar has %d items", len(items))
-	}
-	for i, it := range items {
-		if it.Icon != want[i] || it.Text != "" || it.Tip == "" {
-			t.Fatalf("item %d: icon %v text %q tip %q — want icon alone, with a tip", i, it.Icon, it.Text, it.Tip)
+	// Real buttons — the look's push-button face — with an icon alone
+	// and a name for the tip and the screen reader.
+	for _, b := range []*widgets.Button{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
+		if b.Text != "" || b.Content == nil || b.Tip == "" || b.AccessibleName() == "" {
+			t.Fatalf("button %q: text %q, tip %q — want an icon alone with a name", b.AccessibleName(), b.Text, b.Tip)
+		}
+		if sz := b.Bounds(); sz.Dx() < 20 || sz.Dy() < 20 {
+			t.Fatalf("button %q is %v", b.AccessibleName(), sz)
 		}
 	}
-	assertFetchWriteIconsPaint(t, s.mainBar)
+	for _, b := range []*widgets.Button{s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn} {
+		img := paintengine2d.NewImage(int(b.Bounds().Dx()), int(b.Bounds().Dy()))
+		b.Paint(paintengine2d.NewContext(img))
+		if ink := cellInk(img, 0, img.Width); ink < 20 {
+			t.Fatalf("button %q draws nothing (%d)", b.AccessibleName(), ink)
+		}
+	}
+	// The menu drops from its button.
+	pop := openAppMenu(t, a, w)
+	var labels []string
+	for _, it := range pop.Items {
+		if it != nil && !it.Separator {
+			l, _, _ := widgets.ParseMnemonic(it.Text)
+			labels = append(labels, l)
+		}
+	}
+	if strings.Join(labels, "|") != "View|Notify|Settings|Quit" {
+		t.Fatalf("app menu %q", labels)
+	}
+	w.DismissPopup()
+	a.PumpOnce()
 	walkAll(w.Content(), func(c widget.Component) {
 		switch v := c.(type) {
 		case *widgets.TextField:
@@ -117,7 +134,7 @@ func TestMailTitleBarChrome(t *testing.T) {
 				}
 			}
 		case *widgets.MenuBar:
-			t.Fatal("a menu bar in the window's content")
+			t.Fatal("a menu bar in the window: the app menu is a button")
 		}
 	})
 
@@ -137,12 +154,13 @@ func TestSearchDialog(t *testing.T) {
 	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
 	before := len(s.rows)
-	if s.searchBtn.Down {
-		t.Fatal("Search is pressed with no search")
+	searching := func() bool { return strings.TrimSpace(s.filter.Query) != "" }
+	if searching() {
+		t.Fatal("a search with none asked for")
 	}
 	runSearch(t, a, w, "lunch", true)
-	if s.filter.Query != "lunch" || !s.searchAll || !s.searchBtn.Down {
-		t.Fatalf("query %q all %v pressed %v", s.filter.Query, s.searchAll, s.searchBtn.Down)
+	if s.filter.Query != "lunch" || !s.searchAll || !searching() {
+		t.Fatalf("query %q all %v", s.filter.Query, s.searchAll)
 	}
 	if len(s.rows) == 0 || len(s.rows) >= before {
 		t.Fatalf("rows %d, before %d", len(s.rows), before)
@@ -176,8 +194,8 @@ func TestSearchDialog(t *testing.T) {
 	}
 	clear.OnClick()
 	a.PumpOnce()
-	if s.filter.Query != "" || s.searchAll || s.searchBtn.Down || len(s.rows) != before || w.Overlay() != nil {
-		t.Fatalf("after Clear: query %q all %v pressed %v rows %d", s.filter.Query, s.searchAll, s.searchBtn.Down, len(s.rows))
+	if s.filter.Query != "" || s.searchAll || len(s.rows) != before || w.Overlay() != nil {
+		t.Fatalf("after Clear: query %q all %v rows %d", s.filter.Query, s.searchAll, len(s.rows))
 	}
 
 	// "On the server too" is the server search's setting.
@@ -213,3 +231,41 @@ func TestMessageTabKeepsFolderPane(t *testing.T) {
 }
 
 var _ = uitoolkit.Version
+
+// appMenuButton is the app menu's button in the title bar.
+func appMenuButton(t *testing.T, w *app.Window) *widgets.Button {
+	t.Helper()
+	var btn *widgets.Button
+	walkAll(mailTree(w), func(c widget.Component) {
+		if b, ok := c.(*widgets.Button); ok && b.AccessibleName() == "Menu" {
+			btn = b
+		}
+	})
+	if btn == nil {
+		t.Fatal("no app menu button in the title bar")
+	}
+	return btn
+}
+
+// openAppMenu presses the app menu's button and returns the menu it
+// dropped, which stays open.
+func openAppMenu(t *testing.T, a *app.Application, w *app.Window) *widgets.PopupMenu {
+	t.Helper()
+	appMenuButton(t, w).OnClick()
+	a.PumpOnce()
+	pop, ok := w.Popup().(*widgets.PopupMenu)
+	if !ok || pop == nil {
+		t.Fatal("the app menu did not open")
+	}
+	return pop
+}
+
+// appMenuRows is the app menu's rows, the menu closed again.
+func appMenuRows(t *testing.T, a *app.Application, w *app.Window) []*widgets.MenuItem {
+	t.Helper()
+	pop := openAppMenu(t, a, w)
+	items := pop.Items
+	w.DismissPopup()
+	a.PumpOnce()
+	return items
+}

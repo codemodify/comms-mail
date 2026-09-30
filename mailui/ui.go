@@ -123,20 +123,19 @@ type session struct {
 	trayMu     sync.Mutex
 	tray       platform.StatusItem
 	notes      mailNotifier
-	mainBar    *widgets.ToolBar
-	// menu, mainBar (Fetch / Write / Search; searchBtn is Search) and the
-	// tabs are in the title bar after titleGap, the empty part over the
-	// folder pane (titlebar.go).
-	menu      *widgets.MenuBar
-	titleGap  *titleGap
-	searchBtn *widgets.ToolItem
-	status    *widgets.StatusBar
-	searchAll bool
-	acctPanel widget.Component
-	acctTitle *widgets.Label
-	acctBody  *widgets.Label
-	thread    widget.Component
-	center    *widgets.Stack
+	// The title bar: titleGap, the empty part over the folder pane, then
+	// the app menu's button and Fetch / Write / Search, then the tabs
+	// (titlebar.go).
+	titleGap                      *titleGap
+	appBtn                        *widgets.Button
+	fetchBtn, writeBtn, searchBtn *widgets.Button
+	status                        *widgets.StatusBar
+	searchAll                     bool
+	acctPanel                     widget.Component
+	acctTitle                     *widgets.Label
+	acctBody                      *widgets.Label
+	thread                        widget.Component
+	center                        *widgets.Stack
 
 	busy      sync.WaitGroup
 	refresher *refreshCoalescer
@@ -419,10 +418,8 @@ func (s *session) build() widget.Component {
 	// It is the caption of the frame uitoolkit draws (caption buttons at
 	// the desktop's sides, free space — the empty part included — moves
 	// the window), or the first row under the desktop's own frame.
-	s.mainBar = s.composeBar()
-	s.menu = s.menuBar()
 	s.titleGap = newTitleGap()
-	head := widgets.NewHeaderBar([]widget.Component{s.titleGap, s.menu, s.mainBar}, s.tabs, nil)
+	head := widgets.NewHeaderBar([]widget.Component{s.titleGap, s.titleButtons()}, s.tabs, nil)
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
@@ -436,63 +433,53 @@ func (s *session) build() widget.Component {
 	return wrapShortcutsReady(root, s.handleKey, s.maybeAskAddAccount)
 }
 
-func (s *session) menuBar() *widgets.MenuBar {
+// appMenuItems is the app menu: View, Notify, Settings, Quit. Its button
+// is the first in the title bar (titlebar.go).
+func (s *session) appMenuItems() []*widgets.MenuItem {
 	layoutClassic := s.opts.Layout == LayoutClassic
-	return widgets.NewMenuBar(
-		widgets.NewMenu("M",
-			withIcon(style.IconEye, widgets.Submenu("&View",
-				widgets.RadioItem("&Vertical (3-pane)", "layout", !layoutClassic, func() {
-					s.opts.Layout = LayoutVertical
-					s.rebuild()
-				}),
-				widgets.RadioItem("&Classic (preview below)", "layout", layoutClassic, func() {
-					s.opts.Layout = LayoutClassic
-					s.rebuild()
-				}),
-				widgets.Sep(),
-				widgets.RadioItem("&Table view", "list", !s.cardView, func() { s.setCardView(false) }),
-				widgets.RadioItem("C&ard view", "list", s.cardView, func() { s.setCardView(true) }),
-				widgets.Sep(),
-				widgets.RadioItem("&Compact", "density", s.density == style.DensityCompact, func() { s.setDensity(style.DensityCompact) }),
-				widgets.RadioItem("&Default density", "density", s.density == style.DensityDefault, func() { s.setDensity(style.DensityDefault) }),
-				widgets.RadioItem("&Relaxed", "density", s.density == style.DensityRelaxed, func() { s.setDensity(style.DensityRelaxed) }),
-				widgets.Sep(),
-				widgets.CheckItem("&Threaded", s.threaded, func() {
-					s.threaded = !s.threaded
-					s.persistChrome()
-					s.refreshList()
-				}),
-				widgets.CheckItem("Hide muted threads", s.hideMuted, func() {
-					s.hideMuted = !s.hideMuted
-					s.persistChrome()
-					s.refreshList()
-				}),
-			)),
-			widgets.Sep(),
-			withIcon(style.IconBell, s.notifyMenuItems()),
-			widgets.Sep(),
-			iconItem(style.IconSettings, "Settings", "Ctrl+,", s.openPrefs),
-			widgets.Sep(),
-			iconItem(style.IconQuit, "&Quit", "Ctrl+Q", func() {
-				s.commitUndoNow()
-				s.app.Quit()
+	return []*widgets.MenuItem{
+		withIcon(style.IconEye, widgets.Submenu("&View",
+			widgets.RadioItem("&Vertical (3-pane)", "layout", !layoutClassic, func() {
+				s.opts.Layout = LayoutVertical
+				s.rebuild()
 			}),
-		),
-	)
+			widgets.RadioItem("&Classic (preview below)", "layout", layoutClassic, func() {
+				s.opts.Layout = LayoutClassic
+				s.rebuild()
+			}),
+			widgets.Sep(),
+			widgets.RadioItem("&Table view", "list", !s.cardView, func() { s.setCardView(false) }),
+			widgets.RadioItem("C&ard view", "list", s.cardView, func() { s.setCardView(true) }),
+			widgets.Sep(),
+			widgets.RadioItem("&Compact", "density", s.density == style.DensityCompact, func() { s.setDensity(style.DensityCompact) }),
+			widgets.RadioItem("&Default density", "density", s.density == style.DensityDefault, func() { s.setDensity(style.DensityDefault) }),
+			widgets.RadioItem("&Relaxed", "density", s.density == style.DensityRelaxed, func() { s.setDensity(style.DensityRelaxed) }),
+			widgets.Sep(),
+			widgets.CheckItem("&Threaded", s.threaded, func() {
+				s.threaded = !s.threaded
+				s.persistChrome()
+				s.refreshList()
+			}),
+			widgets.CheckItem("Hide muted threads", s.hideMuted, func() {
+				s.hideMuted = !s.hideMuted
+				s.persistChrome()
+				s.refreshList()
+			}),
+		)),
+		widgets.Sep(),
+		withIcon(style.IconBell, s.notifyMenuItems()),
+		widgets.Sep(),
+		iconItem(style.IconSettings, "Settings", "Ctrl+,", s.openPrefs),
+		widgets.Sep(),
+		iconItem(style.IconQuit, "&Quit", "Ctrl+Q", s.quit),
+	}
 }
 
-// composeBar is Fetch, Write and Search, as icons (their names are their
-// tips and what a screen reader says). Search is pressed while a search is
-// narrowing the list.
-func (s *session) composeBar() *widgets.ToolBar {
-	get := widgets.ToolIconBtn(style.IconDownload, "", s.getMessages)
-	get.Tip = "Fetch new messages for this account"
-	write := widgets.ToolIconBtn(style.IconPen, "", s.write)
-	write.Tip = "Write a new message"
-	s.searchBtn = widgets.ToolIconBtn(style.IconSearch, "", s.openSearch)
-	s.searchBtn.Toggle = true
-	s.syncSearchBtn()
-	return widgets.NewToolBar(get, write, s.searchBtn)
+// quit leaves, after the move or delete waiting on its undo bar goes
+// through.
+func (s *session) quit() {
+	s.commitUndoNow()
+	s.app.Quit()
 }
 
 func (s *session) notifyPrefs() mailcore.NotifyPrefs {
@@ -2931,6 +2918,16 @@ func (s *session) handleKey(e widget.KeyEvent) bool {
 	}
 	if e.Mods.Ctrl() && e.Key == platform.KeyF {
 		s.openSearch()
+		return true
+	}
+	// The app menu's keys: the toolkit ran them for the menu bar the
+	// menu used to be in, and a button has none.
+	if e.Mods.Ctrl() && !e.Mods.Shift() && e.Key == platform.KeyQ {
+		s.quit()
+		return true
+	}
+	if e.Key == platform.KeyF10 && !e.Mods.Ctrl() && !e.Mods.Alt() {
+		s.openAppMenu()
 		return true
 	}
 	if isTextFocus(s.win.Focus()) {
