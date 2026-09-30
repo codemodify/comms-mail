@@ -55,9 +55,6 @@ new ones turn up.
   Body as plain text, Run Now, Unlock / Protect and the toggles (Turn Off,
   Less / More): no toolkit icon means what they do. Buttons with icons are
   wide (uitoolkit-gaps.md #29), so their rows fold in narrow windows.
-- **Icons after a toolkit update** — the icon packs are copied into
-  `~/.config/uitoolkit/icons/` by hand; until they are, new icons draw as
-  "no icon" (uitoolkit-gaps.md #33).
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header

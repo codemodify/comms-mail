@@ -31,6 +31,8 @@ func main() {
 	light := flag.Bool("light", false, "start with the light look")
 	classic := flag.Bool("classic", false, "classic layout (preview below the thread list)")
 	flag.Parse()
+	// The icon packs built with comms-mail, found after the user's own.
+	mailui.UseShippedArt()
 
 	if *shot != "" {
 		if err := mailui.WriteScreenshots(*shot); err != nil {

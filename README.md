@@ -56,6 +56,14 @@ and comms-mail shows whichever theme you chose for all uitoolkit apps
 plain `go build` has only the default engine: a theme it lacks is drawn as
 the default, and comms-mail says so when it starts.
 
+`make` also copies uitoolkit's icon packs into `share/comms-mail/icons/`
+beside `bin/`. comms-mail draws from them wherever your own
+`~/.config/uitoolkit/icons` has no copy of an icon — a set you never
+installed, or an icon newer than your copy — and never writes to that
+directory. It also looks in `~/.local/share/comms-mail` and
+`/usr/share/comms-mail`. `go run` and `go install …@latest` copy nothing,
+so there only your own packs are used.
+
 Try it without an account, in one process:
 
 ```bash
@@ -72,7 +80,7 @@ go run ./cmd/comms-maild
 go run ./cmd/comms-mail
 ```
 
-Then **File → Add Account**: type an address and comms-mail fills in the
+Then **Add account** (offered on first run, and in Settings › Accounts): type an address and comms-mail fills in the
 well-known servers for the big providers, or set the hosts yourself. For
 Gmail and Outlook, **Sign in with Google / Microsoft** does OAuth in your
 browser and stores an encrypted refresh token instead of a password.
@@ -81,7 +89,7 @@ Accounts live in `~/.config/comms-mail/mail.json`, mode `0600`; the cache is `~/
 To install the binaries:
 
 ```bash
-make install
+make install    # into $GOBIN, the icon packs into $GOBIN/../share/comms-mail
 # or, without a checkout:
 go install github.com/codemodify/comms-mail/cmd/comms-maild@latest
 go install -tags theme_engine_all github.com/codemodify/comms-mail/cmd/comms-mail@latest

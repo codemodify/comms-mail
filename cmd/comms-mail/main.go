@@ -27,6 +27,8 @@ func main() {
 	classic := flag.Bool("classic", false, "classic layout (preview below the thread list)")
 	sock := flag.String("socket", mailcore.DefaultSocket(), "comms-maild Unix socket")
 	flag.Parse()
+	// The icon packs built with comms-mail, found after the user's own.
+	mailui.UseShippedArt()
 
 	if *shot != "" {
 		if err := mailui.WriteScreenshots(*shot); err != nil {

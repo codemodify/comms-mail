@@ -6,12 +6,13 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.22.4** (2026-09-29). 0.22 closed
+Last checked against **uitoolkit v0.22.5** (2026-09-30). 0.22 closed
 sixteen of the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the
-rest of #19 and #24, and #30, #31 and #34 of the seven new ones. #32 is
-fixed at some widths and not at others (below); #29, #33 and #35 are
-design changes the toolkit has not taken up yet. What comms-mail uses for
-each closed item is under **Resolved**.
+rest of #19 and #24, and #30, #31 and #34 of the seven new ones; 0.22.4
+and 0.22.5 #32, #33, #35, #36, #38, #39 and #40. Open: #2 (declined and
+settled), #29 and #37 (answered in part, by design), and #41, found
+checking 0.22.5. What comms-mail uses for each closed item is under
+**Resolved**, with the report and the toolkit's answer.
 
 ## Open
 
@@ -73,7 +74,107 @@ Left open as a design change: an `IconLeading` opt-in that draws the
 label itself at normal width, trading the engine's label treatment on
 those buttons.
 
-### 32. A table row whose cells wrap is overlapped by the next row
+**Still open in 0.22.5**, by design. The release notes point at
+`IconButton` where a row is tight, which is what comms-mail's title bar
+uses now (#39).
+
+### 37. A sidebar cannot run up under the title bar
+comms-mail's owner asked for the folder pane to take the window's whole
+height, with the menu and the Fetch / Write / Search buttons on top of it
+and the tabs beginning after it — the layout Thunderbird 115+, Apple Mail,
+GNOME's split views and the new Outlook share. The title bar is one
+full-width row (`Window.SetTitleBar`, a `HeaderBar` of start / centre /
+end), so the pane cannot reach into it and nothing ties a header bar's
+start section to a pane's width. comms-mail puts the buttons in a start
+section it sizes after each layout to end where the pages begin,
+measuring where the tabs landed (`sideHead` and `edgeWatch` in
+mailui/search.go) — a frame behind while the divider is dragged, and the
+caption band still runs across the top of the pane.
+**Fix:** a split header bar: one whose start section follows a pane's
+width (libadwaita's `NavigationSplitView` / `OverlaySplitView` with a
+header bar per side, AppKit's full-height sidebar with its toolbar), or at
+least `HeaderBar.StartWidth` bound to a component's width.
+
+**Updated** (2026-09-30): what the owner wants is a folder pane with
+nothing over it, and the menu, Fetch / Write / Search and the tabs in the
+title bar, starting where the pages do. comms-mail now leaves the title
+bar's part over the folder pane empty (caption space, `titleGap` in
+mailui/titlebar.go) and sizes it after each layout to where the pages
+landed (`edgeWatch`) — the same one-frame lag on a drag, and the caption
+band still runs across the top of the pane. A title bar whose start
+section follows a pane's width is still what would do this properly.
+
+**0.22.5: not taken up as asked, and the reasoning holds.** The window
+lays the caption out *before* the content, so a header bar bound to a
+pane's width would only move the measurement, not the ordering. What
+landed is `Splitter.OnRatioChanged` (on a drag and on `SetRatio`) and
+`HeaderBar.StartWidth` as a plain number that the next layout takes up.
+A sidebar running *beside* the title bar needs client-side decorations
+and is not planned; a full-width title bar with the sidebar under it —
+what comms-mail has — needs none of it.
+
+**In comms-mail** (2026-09-30): `OnRatioChanged` covers a drag but not a
+window resize or the first layout. Both move the pages without changing
+the ratio (it is a share of a width that changed, and 0.22.5's pane
+minimums can clamp it), so there is nothing to hear, and the menu and
+tabs sat a frame behind: a `-headless` render, which paints the first
+layout, showed them at the window's left edge over the folder pane.
+comms-mail watches where the pages land (`edgeWatch`) and, when that is
+not where the title bar's items start, sets `StartWidth` and re-arranges
+the header bar with its own bounds in the same pass (`alignTitle`,
+mailui/titlebar.go). That covers a drag too, so `OnRatioChanged` is not
+used. Tested: the menu button is at the pages' edge after the first
+layout, and after `SetRatio(0.3)` with one layout between.
+**Left:** nothing blocks comms-mail. It would help the next application
+to find this: either `StartWidth`'s doc saying that a change made while
+the content is laid out needs `Arrange(Bounds())` on the bar to show in
+that frame, or the window laying out again a caption whose layout was
+requested while the content was being laid out.
+
+### 41. A `Stack`'s minimum width is its widest page's natural width, hidden pages included
+0.22.5's `Splitter` keeps each pane at `widget.MinWidthOf` of what it
+holds (#36). comms-mail's list pane is a `widgets.Stack` of two pages
+shown one at a time: the message list (a `FlexBox` around the
+`TableView`) and Account Central. `Stack` has no `MinWidth`, so
+`MinWidthOf` probes it (`MinWidthByProbe`, widget/minwidth.go:67):
+
+- Unbounded, the stack measures 973 × 6196: the list's height (every
+  row) and Account Central's width. Account Central is hidden, but
+  `Stack.Measure` (widgets/flex.go:231) measures every child, visible or
+  not.
+- At a quarter of that width it is still 6196 tall, because the list is
+  as tall at any width. The probe reads "did not get taller, so it does
+  not fold" and returns 973.
+- The pages' own minimums are 296 (the list) and 260 (Account Central).
+
+At 1280 × 800 the splitter then gave the list 973 px and left the
+reading pane 265 px wide instead of 441. comms-mail wraps the stack in a
+component whose `MinWidth` is `widget.MinWidthOfChildren` of its pages
+(`stackMin`, mailui/titlebar.go), which skips hidden ones.
+**Fix:** `Stack.MinWidth()`, the largest `MinWidthOf` among its pages
+(Qt's `QStackedLayout` takes the largest of its pages' minimums), and
+`Stack.Measure` leaving hidden children out, as `MinWidthOfChildren`
+already does. More generally, the probe cannot tell "nothing folds" from
+"the tallest child is one that does not fold", so any container that
+shows one child at a time needs its own answer.
+
+## Resolved
+
+### Closed in 0.22.4 and 0.22.5
+
+| # | Gap | Fixed by | In comms-mail |
+| --- | --- | --- | --- |
+| 32 | A wrapped table row was overlapped by the next row at some widths | Block tops recomputed from the block whose height changed (0.22.4) | Checked at 1280 × 800, where it failed before: in the reading pane's Markdown view every row is as tall as its wrapped cells and the rules run the row's full height |
+| 33 | Installed icon packs go stale; new icons draw as "no icon" | `style.AddSearchPath` (0.22.4): an application's own art, searched after the user's, file by file | `make build` / `make install` copy the five packs from the uitoolkit they build with to `bin/../share/comms-mail/icons/`; `mailui.UseShippedArt` registers that, `$XDG_DATA_HOME/comms-mail` and `$XDG_DATA_DIRS/comms-mail`. Checked with the owner's heroicons, which predates `menu`: the menu button draws the no-icon mark without the shipped copy and the hamburger with it. Nothing is copied into `~/.config/uitoolkit` any more |
+| 35 | An asynchronous check in a prompt needed a keep-open trick | `MessageBoxInput.ValidateAsync`, `MessageBox.Close` (0.22.4) | New Folder and Rename Folder check the name with the server through `ValidateAsync`; the `errors.New("")` trick and the `DismissOverlay` close are gone |
+| 36 | `Splitter` had no minimum size for a pane | Panes keep `widget.MinWidthOf` of what they hold; `MinA` / `MinB`, `AllowCollapse` (0.22.5) | The folder pane, the list and the reading pane keep their own minimums; the list's `Stack` needed a wrapper to report one (#41) |
+| 38 | No typed icon for an app menu or an overflow menu | `IconMenu`, `IconMore`, with vectors in the drawn sets (0.22.5) | The app menu's button shows `IconMenu` in every set; the cog fallback is gone |
+| 39 | No icon-only push button | `NewIconButton`; `Button.Checked` / `Toggle` (0.22.5) | Fetch, Write and Search are `IconButton`s; Search stays pressed while a search is on. comms-mail's own icon drawing and the dot it painted are gone |
+| 40 | No button that drops a menu | `NewMenuButton`, which owns its items' accelerators (0.22.5) | The app menu is a `MenuButton` whose `Build` makes the rows at each opening; F10 opens it; comms-mail's own Ctrl+Q handler is gone, since the button's accelerator quits (tested) |
+
+The reports and the toolkit's answers, as they were:
+
+#### 32. A table row whose cells wrap is overlapped by the next row
 With cells now wrapping, a row two lines tall is drawn two lines tall but
 the next row starts one line below its top, over its second line; the
 column rules are drawn beside the first line only. Seen in comms-mail's
@@ -130,7 +231,7 @@ recomputes every top from zero.
 Six pixels, one character: `min(t.topsOK, i+1)` is `min(t.topsOK, i)`.
 The splice path beside it had always used the right form.
 
-### 33. Icon packs installed before an update go stale, and new icons draw as "no icon"
+#### 33. Icon packs installed before an update go stale, and new icons draw as "no icon"
 The premiere packs are not embedded: they are read from
 `~/.config/uitoolkit/icons/<set>/`, which the README says to refresh by
 copying `icons/*` by hand after every pull. Until someone does, every
@@ -164,7 +265,7 @@ still wins where it has an icon, and a stem their copy predates — `print`,
 the corrected `reply-all` — is answered by the application. comms-mail
 can ship the packs it needs and stop asking anyone to copy anything.
 
-### 35. An asynchronous check in a prompt needs a keep-open trick
+#### 35. An asynchronous check in a prompt needs a keep-open trick
 `MessageBoxInput.Validate` runs on the UI goroutine; for a check that is a
 round trip (the mail server refusing a folder name) its docs say to keep
 the dialog up and call `SetInputError` when the answer comes. There is no
@@ -194,7 +295,7 @@ is the general case, and `MessageBox.Checking` reports whether a check is
 out. comms-mail can drop the `errors.New("")` trick and the
 `DismissOverlay` close.
 
-### 36. `Splitter` has no minimum size for a pane
+#### 36. `Splitter` has no minimum size for a pane
 A splitter divides its space by `Ratio` alone (`panes` in
 widgets/splitter.go: `aw := avail * s.Ratio`, clamped to the whole), so a
 pane can be dragged, or start, narrower than what it holds. comms-mail's
@@ -210,33 +311,9 @@ respect — Qt's `QSplitter` takes the children's minimum sizes, GTK's
 folder pane (#37), so nothing has to fit over it. Left open because the
 gap is real — a pane can still be dragged narrower than what it holds.
 
-### 37. A sidebar cannot run up under the title bar
-comms-mail's owner asked for the folder pane to take the window's whole
-height, with the menu and the Fetch / Write / Search buttons on top of it
-and the tabs beginning after it — the layout Thunderbird 115+, Apple Mail,
-GNOME's split views and the new Outlook share. The title bar is one
-full-width row (`Window.SetTitleBar`, a `HeaderBar` of start / centre /
-end), so the pane cannot reach into it and nothing ties a header bar's
-start section to a pane's width. comms-mail puts the buttons in a start
-section it sizes after each layout to end where the pages begin,
-measuring where the tabs landed (`sideHead` and `edgeWatch` in
-mailui/search.go) — a frame behind while the divider is dragged, and the
-caption band still runs across the top of the pane.
-**Fix:** a split header bar: one whose start section follows a pane's
-width (libadwaita's `NavigationSplitView` / `OverlaySplitView` with a
-header bar per side, AppKit's full-height sidebar with its toolbar), or at
-least `HeaderBar.StartWidth` bound to a component's width.
+**Addressed after 0.22.4. A `Splitter` takes its panes' own minimums — what `widget.MinWidthOf` says each needs — so a pane cannot be dragged or opened narrower than the things inside it, which is what Qt's QSplitter does. `MinA` / `MinB` override that and `AllowCollapse` lets a pane close entirely (and now really close: the old hard 8 % floor on `Ratio` applied even to a pane meant to collapse). The pane rect is snapped to whole pixels too, so `PaneA` is the rect the child actually got.**
 
-**Updated** (2026-09-30): what the owner wants is a folder pane with
-nothing over it, and the menu, Fetch / Write / Search and the tabs in the
-title bar, starting where the pages do. comms-mail now leaves the title
-bar's part over the folder pane empty (caption space, `titleGap` in
-mailui/titlebar.go) and sizes it after each layout to where the pages
-landed (`edgeWatch`) — the same one-frame lag on a drag, and the caption
-band still runs across the top of the pane. A title bar whose start
-section follows a pane's width is still what would do this properly.
-
-### 38. No typed icon for an app menu or an overflow menu
+#### 38. No typed icon for an app menu or an overflow menu
 comms-mail's owner asked for the app menu (View, Notify, Settings, Quit)
 to be a button with an icon. Every desktop draws that button as "more"
 (⋯ / ⋮) or a hamburger (☰, GNOME's `open-menu`). The packs ship `more`
@@ -248,7 +325,9 @@ falls back to `IconSettings` (a cog) where it draws its own.
 **Fix:** typed `IconMore` and `IconMenu` (a hamburger), with vectors in
 the drawn sets.
 
-### 39. No icon-only push button
+**Addressed after 0.22.4. Typed `IconMore` and `IconMenu`, both with vectors in the drawn sets, and `menu` rendered into all five packs from the same pinned upstreams. This was the hazard `IconByStem` documents — a stem with no typed id draws the missing-icon mark in a drawn set, and every pack uses a drawn set unless the user picks otherwise — left standing on the two commonest button marks there are.**
+
+#### 39. No icon-only push button
 Also asked for by comms-mail's owner: Fetch, Write and Search as *real
 buttons* — the look's push-button face — with an icon alone. The recipes
 page (0.22.4) says a button that is only a mark is `ToolIconBtn`, which
@@ -264,7 +343,9 @@ tip and accessible name), sized as a square of the control height; and
 a way to show it latched on (a toggle push button — comms-mail marks an
 active search with a dot it paints).
 
-### 40. No button that drops a menu
+**Addressed after 0.22.4, and the report is right that the recipe was wrong. `ToolIconBtn` is a *tool* item: flat with no frame until hovered in most eras, which is why it did not read as a button. `widgets.NewIconButton(icon, name, on)` is the third shape — the look's push-button face, the icon centred, a square of the control height, and `name` as both the tooltip and the accessible name so the two cannot drift. `Button.Checked` / `Toggle` latch it; 53 of the 135 packs draw a checked button exactly as an ordinary one, so on those it is drawn pressed instead, which is how Windows 3.1, Motif, CDE and OPEN LOOK drew a toggle anyway. docs/recipes.md's table is corrected — it had sent you to the control that does not do this.**
+
+#### 40. No button that drops a menu
 The app menu used to be a one-menu `MenuBar` ("M"); as a button, it is an
 ordinary `Button` whose `OnClick` calls `ShowContextMenu` under it. That
 loses what a menu button does — the menu opening on press rather than
@@ -275,7 +356,7 @@ handled it itself.
 **Fix:** a `MenuButton` (Qt's `QToolButton` with a menu, GTK's
 `GtkMenuButton`) that owns its menu's accelerators like a menu bar does.
 
-## Resolved
+**Addressed after 0.22.4. `widgets.NewMenuButton(icon, name, items...)`: opens on press so a drag can run into the menu, stays down while it is open, closes on a second press, and **owns its items' accelerators** — the matcher is now shared with `MenuBar` rather than written twice, which is how Ctrl+Q came to work in one and not the other. `Build` supplies the items at each opening for a menu that depends on the moment.**
 
 ### Closed in 0.22.3
 
