@@ -218,6 +218,9 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	if inbox, ok := mailcore.SpecialFolderClient(cli, s.account, mailcore.FolderInbox); ok {
 		s.folder = inbox.ID
 	}
+	if a != nil {
+		a.OnLookChange(s.padTitleMarks)
+	}
 	return s
 }
 
@@ -396,11 +399,11 @@ func (s *session) build() widget.Component {
 	var right widget.Component
 	sideRatio := float32(0.17)
 	if s.opts.Layout == LayoutClassic {
-		r := widgets.NewSplitter(widgets.SplitRows, newStackMin(s.center), previewCol)
+		r := widgets.NewSplitter(widgets.SplitRows, s.center, previewCol)
 		r.Ratio = 0.46
 		right, sideRatio = r, 0.18
 	} else {
-		m := widgets.NewSplitter(widgets.SplitColumns, newStackMin(s.center), previewCol)
+		m := widgets.NewSplitter(widgets.SplitColumns, s.center, previewCol)
 		m.Ratio = 0.58
 		right = m
 	}
@@ -435,7 +438,12 @@ func (s *session) build() widget.Component {
 	root := widgets.NewColumn(chrome...).WithGap(0)
 	root.AddFlex(split, 1)
 	s.refreshAll()
-	return wrapShortcutsReady(root, s.handleKey, s.maybeAskAddAccount)
+	// Once laid out (the look known), the window's minimum width follows
+	// what the panes need, then a first run offers to add an account.
+	return wrapShortcutsReady(root, s.handleKey, func(c widget.Component) {
+		fitMinWidth(s.win, c)
+		s.maybeAskAddAccount(c)
+	})
 }
 
 // appMenuItems is the app menu: View, Notify, Settings, Quit. Its button
@@ -1679,7 +1687,7 @@ func (s *session) newSmartFolder() {
 	form := widgets.NewColumn(fields,
 		widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)).WithGap(8)
 	form.AddFlex(fields, 1)
-	win.SetContent(widgets.NewPad(12, form))
+	setContent(win, widgets.NewPad(12, form))
 }
 
 func (s *session) openSmartFolders() {

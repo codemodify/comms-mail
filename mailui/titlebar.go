@@ -27,7 +27,37 @@ func (s *session) titleButtons() widget.Component {
 	s.searchBtn = widgets.NewIconButton(style.IconSearch, "Search", s.openSearch)
 	s.searchBtn.Toggle = true // down while a search narrows the list
 	s.syncSearchBtn()
+	s.padTitleMarks()
 	return widgets.NewRow(s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn).WithGap(4).WithAlign(layout.AlignCenter)
+}
+
+// titleMark is the side of the marks on the title bar's buttons, as a 1x
+// design length: the small icon size, which is what the tabs beside them
+// wear.
+const titleMark = 16
+
+// padTitleMarks sizes the marks on the title bar's buttons. uitoolkit
+// draws an IconButton's mark as the button's height less 8 px a side,
+// which at Compact density, or in an era with short controls, is a 6 to 8
+// px speck (uitoolkit-gaps.md #43); the pad here makes it titleMark where
+// the button has room, with at least 3 px around it. It runs again when
+// the look changes, since the button's height does.
+func (s *session) padTitleMarks() {
+	if s.app == nil || s.app.Look() == nil || s.fetchBtn == nil {
+		return
+	}
+	lk := s.app.Look()
+	unit := style.Dip(lk, 1)
+	if unit <= 0 {
+		return
+	}
+	pad := max((lk.Metrics().ControlH/unit-titleMark)/2, 3)
+	for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
+		if b.Pad != pad {
+			b.Pad = pad
+			b.Invalidate()
+		}
+	}
 }
 
 // openAppMenu drops the app menu under its button (F10).
@@ -73,6 +103,9 @@ func (e *edgeWatch) Measure(c layout.Constraints) paintengine2d.Point {
 	return e.Children()[0].Measure(c)
 }
 
+// MinWidth is its child's (widget.MinWidther).
+func (e *edgeWatch) MinWidth() float32 { return widget.MinWidthOfChildren(e.Children()) }
+
 func (e *edgeWatch) Arrange(r paintengine2d.Rect) {
 	e.SetBounds(r)
 	e.Children()[0].Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
@@ -80,31 +113,3 @@ func (e *edgeWatch) Arrange(r paintengine2d.Rect) {
 		e.arranged(e)
 	}
 }
-
-// stackMin gives a stack the minimum width of the pages it shows, which
-// is what a splitter keeps a pane at (uitoolkit 0.22.5). The toolkit's
-// Stack has no minimum of its own, and the probe standing in for it takes
-// the widest page's natural width whenever another page — a message list —
-// is taller than anything that folds (uitoolkit-gaps.md #41).
-type stackMin struct {
-	widget.Base
-	stack *widgets.Stack
-}
-
-func newStackMin(stack *widgets.Stack) *stackMin {
-	m := &stackMin{stack: stack}
-	m.Init(m)
-	m.Add(stack)
-	return m
-}
-
-func (m *stackMin) Measure(c layout.Constraints) paintengine2d.Point { return m.stack.Measure(c) }
-
-func (m *stackMin) Arrange(r paintengine2d.Rect) {
-	m.SetBounds(r)
-	m.stack.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
-}
-
-// MinWidth is the widest minimum among the pages showing
-// (widget.MinWidther).
-func (m *stackMin) MinWidth() float32 { return widget.MinWidthOfChildren(m.stack.Children()) }

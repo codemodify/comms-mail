@@ -221,6 +221,29 @@ func TestTitleBarIsTheCaptionUnderAStackedPack(t *testing.T) {
 	}
 }
 
+// The marks on the title bar's buttons stay readable at Compact density,
+// where uitoolkit's own sizing would leave them a few pixels across
+// (uitoolkit-gaps.md #43), and follow the look when it changes.
+func TestTitleBarMarksAtCompact(t *testing.T) {
+	compact := style.WithDensity(style.DarkLook(), style.DensityCompact)
+	s, a, _, done := openMailLookSession(t, compact, false, AppOptions{})
+	defer done()
+	check := func(when string) {
+		t.Helper()
+		lk := a.Look()
+		for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
+			mark := b.Bounds().Dy() - 2*style.Dip(lk, b.Pad)
+			if b.Pad <= 0 || mark < style.Dip(lk, 14) || mark > style.Dip(lk, titleMark)+1 {
+				t.Fatalf("%s: %q draws its mark %v px across (pad %v, button %v)", when, b.Action, mark, b.Pad, b.Bounds().Dy())
+			}
+		}
+	}
+	check("compact")
+	a.SetLook(style.WithDensity(style.DarkLook(), style.DensityRelaxed))
+	a.PumpOnce()
+	check("after a look change")
+}
+
 // The search dialog narrows the list, presses the Search button while it
 // does, and Clear takes the list back.
 func TestSearchDialog(t *testing.T) {

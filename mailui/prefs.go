@@ -20,7 +20,7 @@ func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.
 	if err != nil {
 		return nil, err
 	}
-	win.SetContent(PrefsApp(a, win, cli, onChange))
+	setContent(win, PrefsApp(a, win, cli, onChange))
 	return win, nil
 }
 
@@ -141,10 +141,14 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 		})
 	})
 	importBtn.Tip = "Bring accounts in from Thunderbird or KMail"
-	return widgets.NewColumn(
+	// The table gives up height (it scrolls) so the buttons keep theirs
+	// when a narrow window folds them onto a second line.
+	col := widgets.NewColumn(
 		widgets.NewTitle("Accounts (stores / transports)"),
 		info, table, foldRow(add, remove, importBtn),
 	).WithGap(8)
+	col.AddFlex(table, 1)
+	return col
 }
 
 func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
@@ -316,7 +320,7 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 		widgets.NewPad(12, widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)),
 	).WithGap(0)
 	root.AddFlex(fields, 1)
-	win.SetContent(root)
+	setContent(win, root)
 	return win, nil
 }
 

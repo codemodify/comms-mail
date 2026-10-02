@@ -42,7 +42,7 @@ func OpenCompose(a *app.Application, cli *mailcore.Client, opts ComposeOptions) 
 	if err != nil {
 		return nil, err
 	}
-	win.SetContent(ComposeApp(a, win, cli, opts))
+	setContent(win, ComposeApp(a, win, cli, opts))
 	return win, nil
 }
 

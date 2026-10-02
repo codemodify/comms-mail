@@ -48,6 +48,10 @@ func (s *shortcutRoot) Measure(c layout.Constraints) paintengine2d.Point {
 	return s.Children()[0].Measure(c)
 }
 
+// MinWidth is its content's (widget.MinWidther): a wrapper the toolkit
+// probes instead reads a splitter's placeholder size, not its panes'.
+func (s *shortcutRoot) MinWidth() float32 { return widget.MinWidthOfChildren(s.Children()) }
+
 func (s *shortcutRoot) Arrange(r paintengine2d.Rect) {
 	s.SetBounds(r)
 	if len(s.Children()) > 0 {

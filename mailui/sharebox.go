@@ -43,6 +43,10 @@ func (b *reserveBox) Measure(c layout.Constraints) paintengine2d.Point {
 	return c.Constrain(p)
 }
 
+// MinWidth is its child's (widget.MinWidther): the box only ever takes
+// height away.
+func (b *reserveBox) MinWidth() float32 { return widget.MinWidthOfChildren(b.Children()) }
+
 // newHeaderScroll is the scroll view a reserveBox holds: as tall as what
 // is in it, not as tall as it is offered, which would make every
 // message's header as tall as the cap and squeeze the body under it.

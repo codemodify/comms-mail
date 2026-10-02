@@ -249,7 +249,7 @@ func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailco
 		widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(imp, widgets.RoleAccept),
 	).WithGap(10)
 	body.AddFlex(scroll, 1)
-	win.SetContent(widgets.NewPad(12, body))
+	setContent(win, widgets.NewPad(12, body))
 	return win
 }
 

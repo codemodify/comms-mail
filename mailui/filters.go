@@ -419,7 +419,7 @@ func openRuleEditor(a *app.Application, cli *mailcore.Client, r mailcore.FilterR
 	cancel := newButton("Cancel", func() { win.Close() })
 	root := widgets.NewColumn(fields, widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)).WithGap(8)
 	root.AddFlex(fields, 1)
-	win.SetContent(widgets.NewPad(12, root))
+	setContent(win, widgets.NewPad(12, root))
 	return e
 }
 

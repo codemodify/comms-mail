@@ -6,16 +6,15 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.0** (2026-10-01), from scratch:
-every open item re-read against the code, every closed one re-checked
-by comms-mail's tests, and the release's new pieces tried. 0.22 closed
+Last checked against **uitoolkit v0.23.1** (2026-10-02), from scratch:
+every open item re-read against the code, every closed one re-checked by
+comms-mail's tests, and the release's new pieces tried. 0.22 closed
 sixteen of the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the
-rest of #19 and #24, and #30, #31 and #34 of the seven new ones; 0.22.4
-and 0.22.5 #32, #33, #35, #36, #38, #39 and #40. 0.23.0 closed none of
-the four still open — #2 (declined and settled), #29 and #37 (answered in
-part, by design), #41 — and checking it found #42. What comms-mail uses
-for each closed item is under **Resolved**, with the report and the
-toolkit's answer.
+rest of #19 and #24, and #30, #31 and #34; 0.22.4 and 0.22.5 #32, #33,
+#35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42. Open: #2 (declined
+and settled), #29 (a design change, its doc now right), and #43 and #44,
+found checking 0.23.1. What comms-mail uses for each closed item is under
+**Resolved**, with the report and the toolkit's answer.
 
 ## Open
 
@@ -87,7 +86,83 @@ uses now (#39).
 the recipes table says `NewIconButton`, the field's own doc says the
 opposite.
 
-### 37. A sidebar cannot run up under the title bar
+**0.23.1: the doc pointer is fixed** — `Button.Icon`'s comment now sends
+an icon-only button to `NewIconButton` and a tool bar's mark to
+`ToolIconBtn`, as docs/recipes.md does. The leading-icon layout itself is
+still the open design change.
+
+### 43. An `IconButton`'s mark shrinks with the control height, to 6 px at Compact
+A non-flat `IconButton` draws its mark as the button's side less 8 design
+px each side (widgets/iconbutton.go:126–131, `pad := style.Dip(lk, 8)`),
+and the button is a square of `Metrics().ControlH` (line 112). So the mark
+is whatever the control height leaves, and look.json's `iconSize`
+(small 16, medium 24, large 32) is not consulted:
+
+| Pack | Density | ControlH | Mark |
+| --- | --- | --- | --- |
+| metal-ocean | Compact | 20 | **6** |
+| wmaker-default | Compact | 22 | **8** |
+| sourcegit | Compact | 22 | 11 |
+| wmaker-default | Default | 28 | 12 |
+| light | Default | 34 | 18 |
+
+comms-mail's owner runs wmaker-default at Compact: the title bar's menu,
+Fetch, Write and Search showed two bars, a few pixels and a speck,
+beside tab marks (`BrowserTab.Icon`) drawn at 16 in the same strip.
+comms-mail sets `IconButton.Pad` itself from the look's control height so
+the mark is 16 where the button has room and never less than 3 px from
+its edge, again on every look change (`padTitleMarks`,
+mailui/titlebar.go), with a test at Compact.
+**Fix:** size the mark from the look's icon size (the `iconSize`
+preference, as tool buttons and tabs are sized), clamped to the button's
+face, rather than from a fixed inset off the control height.
+
+### 44. `MinWidthOf` reads through a wrapper to a splitter's placeholder size
+A component with children that does not implement `MinWidther` is probed
+(`MinWidthByProbe`, widget/minwidth.go:67), and the probe looks only at
+the component's own measurements. A `Splitter` measures as a fixed
+320 × 200 when unbounded (widgets/splitter.go:88), so any pass-through
+wrapper around one — a key handler, a drop target, a watcher, the
+commonest thing an application writes — reports 320, whatever the
+splitter's own `MinWidth` says. comms-mail's main window has two such
+wrappers. `widget.MinWidthOf` of its content was **320**, against 848
+once they implement `MinWidth`, so the line `Window.SetMinSize`'s doc
+gives (`win.SetMinSize(widget.MinWidthOf(content)/win.Scale(), 0)`) would
+have let the window shrink to a third of what its panes need.
+comms-mail's wrappers implement `MinWidth` now (`shortcutRoot`,
+`edgeWatch`, `reserveBox`).
+**Fix:** have the probe never answer less than its widest visible
+child's minimum (`MinWidthOfChildren`), which is a floor for every kind
+of container, so a wrapper that forgot `MinWidther` is merely imprecise
+rather than wrong by a factor of three. Or say in `SetMinSize`'s doc
+that every component of the application's own with children must
+implement `MinWidther` before that line can be trusted.
+
+## Resolved
+
+### Closed in 0.23.1
+
+| # | Gap | 0.23.1 | In comms-mail |
+| --- | --- | --- | --- |
+| 37 | A sidebar cannot run up under the title bar | Answered by design: `StartWidth` (0.22.5) holds under either frame, and its doc now says to call `Arrange(Bounds())` after setting it inside a layout pass; a header bar split per pane is not planned | `alignTitle` is the documented pattern; tested after the first layout, a resize and a divider move |
+| 41 | A `Stack`'s minimum width was its widest page's natural width | `Stack.MinWidth`: the widest of its pages' minimums, hidden ones included (Qt's rule) | `stackMin` is gone; the reading pane is 441 px at 1280 with the toolkit's own answer |
+| 42 | `StartWidth` was ignored under a stacked frame | Kept in a stacked frame's row | Checked under kde1 with `CaptionStacked` forced: the menu button and the pages both start at x 226. comms-mail keeps `CaptionMerged` by choice: its tabs are its title bar, as Thunderbird's are |
+
+Also from 0.23.1:
+- `Window.SetMinSize` / `MinSize`: every comms-mail window raises its
+  minimum width to `widget.MinWidthOf` of its content where that is more
+  than the hand-chosen one (`fitMinWidth`, mailui/winsize.go). It found
+  the Passphrase window's buttons overlapping at its old minimum (440;
+  its content needs 528). comms-mail's minimum-size test now also fails
+  on controls that overlap. That check found Settings' Import… hidden
+  under Close at 520 × 440, now fixed.
+- Browser tabs no longer repaint their chrome to place a mark: the
+  slanted Window Maker tabs comms-mail's owner uses draw cleanly with
+  the Mail tab's icon and the message tabs' close buttons.
+
+The reports and the toolkit's answers, as they were:
+
+#### 37. A sidebar cannot run up under the title bar
 comms-mail's owner asked for the folder pane to take the window's whole
 height, with the menu and the Fetch / Write / Search buttons on top of it
 and the tabs beginning after it — the layout Thunderbird 115+, Apple Mail,
@@ -144,7 +219,7 @@ requested while the content was being laid out.
 still describes only the `OnRatioChanged` route, which leaves a resize a
 frame behind. And it is not kept at all under a stacked frame — #42.
 
-### 41. A `Stack`'s minimum width is its widest page's natural width, hidden pages included
+#### 41. A `Stack`'s minimum width is its widest page's natural width, hidden pages included
 0.22.5's `Splitter` keeps each pane at `widget.MinWidthOf` of what it
 holds (#36). comms-mail's list pane is a `widgets.Stack` of two pages
 shown one at a time: the message list (a `FlexBox` around the
@@ -175,7 +250,7 @@ shows one child at a time needs its own answer.
 `Measure` (widgets/flex.go:231) still counts hidden pages. The
 workaround stays.
 
-### 42. `HeaderBar.StartWidth` is ignored under a stacked frame
+#### 42. `HeaderBar.StartWidth` is ignored under a stacked frame
 With the toolkit drawing the frame and a pack whose era stacks it (KDE 1,
 Windows 95, Metal: their own title strip, the application's title bar
 in a row under it), the row ignores `StartWidth`. `HeaderBar.Arrange`
@@ -200,8 +275,6 @@ it reports "asked a title bar of the application's own (SetTitleBar),
 got it in a row under the look's title strip". comms-mail's tests now
 open a window under kde1 with the toolkit's frame and fail on that
 finding.
-
-## Resolved
 
 ### Taken up from 0.23.0
 

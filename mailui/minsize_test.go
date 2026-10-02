@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
+	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
@@ -14,9 +15,11 @@ import (
 )
 
 // Every window, at the smallest size it allows, shows each of its controls
-// whole: none cut off at an edge or squeezed to nothing, so no one has to
-// resize a window to find a button (they had to, for Import). A control in
-// a scrolling area may sit below the fold; that is what the scroll is for.
+// whole: none cut off at an edge, squeezed to nothing or lying over
+// another, so no one has to resize a window to find a button (they had to,
+// for Import). A control in a scrolling area may sit below the fold; that
+// is what the scroll is for. The smallest size is the larger of what the
+// window was made with and what its content needs (fitMinWidth).
 
 // shownOnScreen reports whether c and every ancestor are visible, and
 // whether it sits inside a scrolling area.
@@ -59,10 +62,32 @@ func controlName(c widget.Component) string {
 // tab of every tab view.
 func auditAtMinSize(t *testing.T, a *app.Application, w *app.Window, name string, minW, minH int) {
 	t.Helper()
+	if mw, _ := w.MinSize(); int(mw+0.5) > minW {
+		minW = int(mw + 0.5)
+	}
 	w.Inject(platform.Event{Kind: platform.EventResize, Width: minW, Height: minH})
 	a.PumpOnce()
 	check := func(where string) int {
 		n := 0
+		type placed struct {
+			c     widget.Component
+			label string
+			r     paintengine2d.Rect
+		}
+		var seen []placed
+		defer func() {
+			for i := range seen {
+				for j := i + 1; j < len(seen); j++ {
+					p, q := seen[i], seen[j]
+					if widget.Contains(p.c, q.c) || widget.Contains(q.c, p.c) {
+						continue
+					}
+					if in := p.r.Intersect(q.r); in.Dx() > 1 && in.Dy() > 1 {
+						t.Errorf("%s%s: %s lies over %s at %dx%d: %v and %v", name, where, p.label, q.label, minW, minH, p.r, q.r)
+					}
+				}
+			}
+		}()
 		widget.Walk(w.Content(), func(c widget.Component) {
 			label := controlName(c)
 			if label == "" {
@@ -82,8 +107,13 @@ func auditAtMinSize(t *testing.T, a *app.Application, w *app.Window, name string
 				if r.Min.X < vr.Min.X-0.5 || r.Max.X > vr.Max.X+0.5 {
 					t.Errorf("%s%s: %s runs off the side of its scroll area: %v in %v", name, where, label, r, vr)
 				}
+				// What the scroll area clips away lies over nothing.
+				if r = r.Intersect(vr); !r.Empty() {
+					seen = append(seen, placed{c, label, r})
+				}
 				return
 			}
+			seen = append(seen, placed{c, label, r})
 			if r.Min.X < -0.5 || r.Min.Y < -0.5 || r.Max.X > float32(minW)+0.5 || r.Max.Y > float32(minH)+0.5 {
 				t.Errorf("%s%s: %s is cut off at %dx%d: %v", name, where, label, minW, minH, r)
 			} else if r.Dx() < 8 || r.Dy() < 8 {

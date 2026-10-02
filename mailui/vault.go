@@ -189,7 +189,7 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 		col.Add(wrapLabel(laterNote))
 	}
 	col.Add(buttons)
-	win.SetContent(widgets.NewPad(14, col))
+	setContent(win, widgets.NewPad(14, col))
 	return win
 }
 
@@ -301,7 +301,7 @@ func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, don
 		col.Add(f)
 	}
 	col.Add(buttons)
-	win.SetContent(widgets.NewPad(14, col))
+	setContent(win, widgets.NewPad(14, col))
 	win.SetInitialFocus(focus)
 	return win
 }

@@ -25,7 +25,7 @@ func OpenAddAccount(a *app.Application, cli *mailcore.Client, onSaved func()) (*
 	if err != nil {
 		return nil, err
 	}
-	win.SetContent(AddAccountAppOn(a, win, cli, onSaved))
+	setContent(win, AddAccountAppOn(a, win, cli, onSaved))
 	return win, nil
 }
 

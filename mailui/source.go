@@ -25,7 +25,7 @@ func OpenMessageSource(a *app.Application, msg mailcore.Message, rfc822 string) 
 	if err != nil {
 		return nil, err
 	}
-	win.SetContent(MessageSourceApp(win, msg, rfc822))
+	setContent(win, MessageSourceApp(win, msg, rfc822))
 	return win, nil
 }
 
