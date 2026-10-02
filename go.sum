@@ -8,6 +8,8 @@ github.com/codemodify/uitoolkit v0.23.0 h1:3rTqq2Uz2WZ4Cb2A6ixi3EZuGWk8+9TK/DsEz
 github.com/codemodify/uitoolkit v0.23.0/go.mod h1:vgrBZXkdFfZ7sNpD854j6a6sXeGVtbutOdRlcfApQ74=
 github.com/codemodify/uitoolkit v0.23.1 h1:k7BakYNL+bpIhwtf3mFf5P2FqiAqdFXJ6h+8g+8v8QY=
 github.com/codemodify/uitoolkit v0.23.1/go.mod h1:vgrBZXkdFfZ7sNpD854j6a6sXeGVtbutOdRlcfApQ74=
+github.com/codemodify/uitoolkit v0.23.2 h1:8Fw99XRefkVz+OKqBrgFErTY5fNaZjpdYTrSWldQ9ds=
+github.com/codemodify/uitoolkit v0.23.2/go.mod h1:vgrBZXkdFfZ7sNpD854j6a6sXeGVtbutOdRlcfApQ74=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/go-sql-driver/mysql v1.10.1 h1:arlSnNLq6a5yxGxV7qg9lF4j0C+KwD6NbQyKr9QL6ME=

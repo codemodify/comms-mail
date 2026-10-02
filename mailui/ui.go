@@ -219,7 +219,11 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		s.folder = inbox.ID
 	}
 	if a != nil {
-		a.OnLookChange(s.padTitleMarks)
+		a.OnLookChange(func() {
+			if s.win != nil && s.head != nil {
+				s.win.SetCaptionStyle(captionStyle(a.Look()))
+			}
+		})
 	}
 	return s
 }
@@ -426,11 +430,7 @@ func (s *session) build() widget.Component {
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
-		// The tabs are the title bar under every pack, as Thunderbird's
-		// are: an era that draws its own title strip (Windows 95, KDE 1)
-		// would otherwise put this row under it, where the empty start
-		// over the folder pane is not kept (uitoolkit-gaps.md #42).
-		s.win.SetCaptionStyle(style.CaptionMerged)
+		s.win.SetCaptionStyle(captionStyle(s.app.Look()))
 	} else {
 		chrome = append(chrome, head)
 	}

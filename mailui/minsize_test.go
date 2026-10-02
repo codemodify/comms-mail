@@ -65,6 +65,11 @@ func auditAtMinSize(t *testing.T, a *app.Application, w *app.Window, name string
 	if mw, _ := w.MinSize(); int(mw+0.5) > minW {
 		minW = int(mw + 0.5)
 	}
+	// The minimum does not resize the window, so it has to open at least
+	// that wide.
+	if opened := w.Content().Bounds().Dx(); opened+0.5 < float32(minW) {
+		t.Errorf("%s opens %v wide, under its minimum %d", name, opened, minW)
+	}
 	w.Inject(platform.Event{Kind: platform.EventResize, Width: minW, Height: minH})
 	a.PumpOnce()
 	check := func(where string) int {

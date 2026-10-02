@@ -6,14 +6,15 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.1** (2026-10-02), from scratch:
+Last checked against **uitoolkit v0.23.2** (2026-10-02), from scratch:
 every open item re-read against the code, every closed one re-checked by
-comms-mail's tests, and the release's new pieces tried. 0.22 closed
-sixteen of the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the
-rest of #19 and #24, and #30, #31 and #34; 0.22.4 and 0.22.5 #32, #33,
-#35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42. Open: #2 (declined
-and settled), #29 (a design change, its doc now right), and #43 and #44,
-found checking 0.23.1. What comms-mail uses for each closed item is under
+comms-mail's tests, and the release's new pieces tried on the packs
+comms-mail's owner uses and a sample of the rest. 0.22 closed sixteen of
+the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the rest of #19
+and #24, and #30, #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38,
+#39 and #40; 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44. Open: #2
+(declined and settled), #29 (a design change), and #45 and #46, found
+checking 0.23.2. What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 ## Open
@@ -91,7 +92,77 @@ an icon-only button to `NewIconButton` and a tool bar's mark to
 `ToolIconBtn`, as docs/recipes.md does. The leading-icon layout itself is
 still the open design change.
 
-### 43. An `IconButton`'s mark shrinks with the control height, to 6 px at Compact
+**Unchanged in 0.23.2.**
+
+### 45. `CaptionMerged` under a caption that fits its title (BeOS) cuts the bar away
+BeOS's caption is a tab only as wide as its title and buttons
+(`DecorationSpec.CaptionFits`, style/decoration.go:194–200), and the
+window's silhouette "leaves the rest of the top edge to the desktop". With
+`Window.SetCaptionStyle(style.CaptionMerged)` the application's bar is
+laid out across the window's full width from its top edge (the header
+bar is 0–32 at 1280 × 800), but the silhouette is not dropped: the yellow
+tab is still drawn, empty — no title, no window buttons — and everything
+right of it above the body is outside the window. comms-mail's menu,
+Fetch / Write / Search and tabs showed only their bottom 8 px. The deck
+skin is also a split frame but does not fit its caption, and draws
+merged correctly, as do the 23 other stacked packs rendered merged
+(Window Maker, NeXT, OpenStep, Aqua, Luna, OS/2 Warp, AmigaOS 3.1,
+System 7, OPEN LOOK, Motif, IRIX, HP VUE, KDE 1, Windows 95, Metal,
+Plastik, Oxygen, and the Cassette and Nocturne skins). No
+diagnostic is reported for this; 0.23.0's caption note recommends
+`CaptionMerged` "under every pack".
+comms-mail asks for `CaptionMerged` except where the look's caption fits
+its title, and decides again when the look changes (`captionStyle`,
+mailui/titlebar.go). Under BeOS the tab stays and comms-mail's bar is the
+row under it — whole, and lined up with the pages since 0.23.1 (#42).
+Tested by switching beos → kde1 → beos.
+**Fix:** under `CaptionMerged`, drop `CaptionFits` and the silhouette as
+`DecorationOf` already does for a maximized or tiled window
+(style/decoration.go:349–354), so the bar is the caption
+across the whole top edge; or refuse `CaptionMerged` for such a frame and
+say so through `diag`, as the stacked case is reported.
+
+### 46. An unselected browser tab's title and mark are centred on its slot, not its face
+Window Maker, NeXT and OpenStep draw an unselected tab lower than the
+selected one, with its top edge several pixels down the strip. `BrowserTabs`
+places a tab's title in `labelBox(i, s, g)` and its mark in `iconRect`,
+both from the tab's slot `s`, the strip's full height
+(widgets/browsertabs.go:666–668 and 722–739), so the title of an
+unselected tab is centred on the strip rather than the face drawn for it.
+Its tops cross the tab's top edge. Seen on all seven packs of that
+family (wmaker-default, wmaker-openstep, wmaker-night,
+wmaker-steelbluesilk, next, next-night, openstep) with comms-mail's Mail
+tab behind a message tab, at 1280 × 800 with the toolkit's frame; irix,
+hp-vue, win95, kde1, breeze, plastik, metal-ocean, adwaita and sourcegit
+are right. It was the same in 0.23.1, so it is not 0.23.2's new label
+placement; that only made it the toolkit's own code that places it.
+comms-mail's owner runs wmaker-default at times. comms-mail has no
+workaround: nothing says where an engine drew a tab's face.
+**Fix:** place the title and the mark against the face the engine drew
+for the tab in its state (an engine hook for the face rect, or the
+inset `TabContentInsetOf` already answers for the sides, for the top).
+
+## Resolved
+
+### Closed in 0.23.2
+
+| # | Gap | 0.23.2 | In comms-mail |
+| --- | --- | --- | --- |
+| 43 | An `IconButton`'s mark shrank with the control height | The mark is the look's icon size (`style.IconSizeOf`, look.json `iconSize`), clamped to the face, never under 10 | `padTitleMarks` is gone: a stated `Pad` would now override the owner's icon size. Tested at Compact on metal-ocean by the mark's own ink: 12 to 19 px in a 26 px face, where 0.23.1 drew 6 |
+| 44 | `MinWidthOf` read through a wrapper to a splitter's placeholder | A wrapper that holds one thing answers for it | comms-mail's `MinWidth` on `shortcutRoot`, `edgeWatch` and `reserveBox` is gone; the main window still reads 848 (Vertical) and 546 (Classic) |
+
+Also from 0.23.2:
+- A minimum stated with `SetMinSize` lasts through a resize (checked:
+  the Passphrase window keeps 528). comms-mail's minimum-size test now
+  also fails a window that would open narrower than its own minimum,
+  since `SetMinSize` does not resize it.
+- A browser tab's title is set against its mark (`BrowserTabs.Align`,
+  `AlignStart`), and the selected tab merges with what is under it.
+  comms-mail takes both as they come.
+
+The reports and the toolkit's answers, as they were:
+
+#### 43. An `IconButton`'s mark shrinks with the control height, to 6 px at Compact
 A non-flat `IconButton` draws its mark as the button's side less 8 design
 px each side (widgets/iconbutton.go:126–131, `pad := style.Dip(lk, 8)`),
 and the button is a square of `Metrics().ControlH` (line 112). So the mark
@@ -117,7 +188,7 @@ mailui/titlebar.go), with a test at Compact.
 preference, as tool buttons and tabs are sized), clamped to the button's
 face, rather than from a fixed inset off the control height.
 
-### 44. `MinWidthOf` reads through a wrapper to a splitter's placeholder size
+#### 44. `MinWidthOf` reads through a wrapper to a splitter's placeholder size
 A component with children that does not implement `MinWidther` is probed
 (`MinWidthByProbe`, widget/minwidth.go:67), and the probe looks only at
 the component's own measurements. A `Splitter` measures as a fixed
@@ -137,8 +208,6 @@ of container, so a wrapper that forgot `MinWidther` is merely imprecise
 rather than wrong by a factor of three. Or say in `SetMinSize`'s doc
 that every component of the application's own with children must
 implement `MinWidther` before that line can be trusted.
-
-## Resolved
 
 ### Closed in 0.23.1
 

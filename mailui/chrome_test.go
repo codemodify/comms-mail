@@ -221,27 +221,94 @@ func TestTitleBarIsTheCaptionUnderAStackedPack(t *testing.T) {
 	}
 }
 
-// The marks on the title bar's buttons stay readable at Compact density,
-// where uitoolkit's own sizing would leave them a few pixels across
-// (uitoolkit-gaps.md #43), and follow the look when it changes.
-func TestTitleBarMarksAtCompact(t *testing.T) {
-	compact := style.WithDensity(style.DarkLook(), style.DensityCompact)
-	s, a, _, done := openMailLookSession(t, compact, false, AppOptions{})
-	defer done()
-	check := func(when string) {
-		t.Helper()
-		lk := a.Look()
-		for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
-			mark := b.Bounds().Dy() - 2*style.Dip(lk, b.Pad)
-			if b.Pad <= 0 || mark < style.Dip(lk, 14) || mark > style.Dip(lk, titleMark)+1 {
-				t.Fatalf("%s: %q draws its mark %v px across (pad %v, button %v)", when, b.Action, mark, b.Pad, b.Bounds().Dy())
-			}
+// Under BeOS, whose caption is a tab only as wide as its title, the tab
+// stays and the title bar is the row under it, whole: merged, it would be
+// cut away above the window's body (uitoolkit-gaps.md #45). The choice
+// follows the look when it changes.
+func TestTitleBarUnderACaptionTab(t *testing.T) {
+	packs := map[string]style.LookAndFeel{}
+	for _, p := range style.ListBuiltinThemes() {
+		if p.Name == "beos" || p.Name == "kde1" {
+			packs[p.Name] = p.Look()
 		}
 	}
-	check("compact")
-	a.SetLook(style.WithDensity(style.DarkLook(), style.DensityRelaxed))
+	if len(packs) < 2 {
+		t.Skip("beos and kde1 are not in this build (-tags theme_engine_all)")
+	}
+	s, a, w, done := openMailFramedSession(t, packs["beos"], false, AppOptions{}, platform.DecorationsClient)
+	defer done()
+	w.Inject(platform.Event{Kind: platform.EventResize, Width: 1280, Height: 800})
 	a.PumpOnce()
-	check("after a look change")
+	var pages *edgeWatch
+	walkAll(w.Content(), func(c widget.Component) {
+		if e, ok := c.(*edgeWatch); ok {
+			pages = e
+		}
+	})
+	strip := style.DecorationOf(a.Look(), style.DecorationState{Active: true}).Caption
+	check := func(when string, stacked bool) {
+		t.Helper()
+		if s.head.Stacked() != stacked {
+			t.Fatalf("%s: stacked %v, want %v", when, s.head.Stacked(), stacked)
+		}
+		menu := widget.DeviceBounds(s.appBtn)
+		if stacked && menu.Min.Y < strip {
+			t.Fatalf("%s: the menu button %v reaches into the look's tab (%v tall)", when, menu, strip)
+		}
+		if d := menu.Min.X - widget.DeviceOrigin(pages).X; d > 2 || d < -2 {
+			t.Fatalf("%s: the menu button at %v, the pages at %v", when, menu.Min.X, widget.DeviceOrigin(pages).X)
+		}
+	}
+	check("beos", true)
+	a.SetLook(packs["kde1"])
+	a.PumpOnce()
+	check("kde1", false)
+	a.SetLook(packs["beos"])
+	a.PumpOnce()
+	check("beos again", true)
+}
+
+// The marks on the title bar's buttons are readable on a pack with short
+// controls at Compact density, where uitoolkit before 0.23.2 drew them a
+// few pixels across (uitoolkit-gaps.md #43): at most 10 in this face, and
+// 12 to 19 since. What is measured is the mark's own ink: the button
+// painted with its icon and without.
+func TestTitleBarMarksAtCompact(t *testing.T) {
+	var look style.LookAndFeel
+	for _, p := range style.ListBuiltinThemes() {
+		if p.Name == "metal-ocean" {
+			look = style.WithDensity(p.Look(), style.DensityCompact)
+		}
+	}
+	if look == nil {
+		t.Skip("metal-ocean is not in this build (-tags theme_engine_all)")
+	}
+	s, a, _, done := openMailLookSession(t, look, false, AppOptions{})
+	defer done()
+	lk := a.Look()
+	for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
+		w, h := int(b.Bounds().Dx()), int(b.Bounds().Dy())
+		with := paintengine2d.NewImage(w, h)
+		b.Paint(paintengine2d.NewContext(with))
+		icon := b.Icon
+		b.Icon = style.IconNone
+		without := paintengine2d.NewImage(w, h)
+		b.Paint(paintengine2d.NewContext(without))
+		b.Icon = icon
+		x0, x1, y0, y1 := w, -1, h, -1
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				r1, g1, b1, _ := with.PremulAt(x, y)
+				r2, g2, b2, _ := without.PremulAt(x, y)
+				if r1 != r2 || g1 != g2 || b1 != b2 {
+					x0, x1, y0, y1 = min(x0, x), max(x1, x), min(y0, y), max(y1, y)
+				}
+			}
+		}
+		if span := float32(max(x1-x0, y1-y0) + 1); x1 < 0 || span < style.Dip(lk, 11) {
+			t.Fatalf("%q in a %dx%d button draws its mark %v px across", b.Action, w, h, span)
+		}
+	}
 }
 
 // The search dialog narrows the list, presses the Search button while it

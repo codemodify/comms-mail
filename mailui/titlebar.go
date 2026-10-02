@@ -27,37 +27,23 @@ func (s *session) titleButtons() widget.Component {
 	s.searchBtn = widgets.NewIconButton(style.IconSearch, "Search", s.openSearch)
 	s.searchBtn.Toggle = true // down while a search narrows the list
 	s.syncSearchBtn()
-	s.padTitleMarks()
 	return widgets.NewRow(s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn).WithGap(4).WithAlign(layout.AlignCenter)
 }
 
-// titleMark is the side of the marks on the title bar's buttons, as a 1x
-// design length: the small icon size, which is what the tabs beside them
-// wear.
-const titleMark = 16
-
-// padTitleMarks sizes the marks on the title bar's buttons. uitoolkit
-// draws an IconButton's mark as the button's height less 8 px a side,
-// which at Compact density, or in an era with short controls, is a 6 to 8
-// px speck (uitoolkit-gaps.md #43); the pad here makes it titleMark where
-// the button has room, with at least 3 px around it. It runs again when
-// the look changes, since the button's height does.
-func (s *session) padTitleMarks() {
-	if s.app == nil || s.app.Look() == nil || s.fetchBtn == nil {
-		return
+// captionStyle is how the title bar meets the look's frame. It is the
+// caption itself, the tabs in the title bar as Thunderbird has them, under
+// every pack — an era that draws its own title strip (Windows 95, KDE 1)
+// would otherwise put it in a row under that strip. Except under a frame
+// whose caption is a tab only as wide as its title (BeOS's, CaptionFits):
+// the window's shape keeps that tab and leaves the rest of the top edge to
+// the desktop, so a merged bar is cut away above the window's body and the
+// tab loses its buttons (uitoolkit-gaps.md #45). There the look's tab
+// stays and the bar is the row under it.
+func captionStyle(lk style.LookAndFeel) style.CaptionStyle {
+	if lk != nil && style.DecorationOf(lk, style.DecorationState{Active: true}).CaptionFits {
+		return style.CaptionFollowsLook
 	}
-	lk := s.app.Look()
-	unit := style.Dip(lk, 1)
-	if unit <= 0 {
-		return
-	}
-	pad := max((lk.Metrics().ControlH/unit-titleMark)/2, 3)
-	for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
-		if b.Pad != pad {
-			b.Pad = pad
-			b.Invalidate()
-		}
-	}
+	return style.CaptionMerged
 }
 
 // openAppMenu drops the app menu under its button (F10).
@@ -102,9 +88,6 @@ func newEdgeWatch(child widget.Component, arranged func(widget.Component)) *edge
 func (e *edgeWatch) Measure(c layout.Constraints) paintengine2d.Point {
 	return e.Children()[0].Measure(c)
 }
-
-// MinWidth is its child's (widget.MinWidther).
-func (e *edgeWatch) MinWidth() float32 { return widget.MinWidthOfChildren(e.Children()) }
 
 func (e *edgeWatch) Arrange(r paintengine2d.Rect) {
 	e.SetBounds(r)
