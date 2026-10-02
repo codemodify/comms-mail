@@ -44,7 +44,7 @@ func (s *session) setupTabs(main widget.Component) {
 	s.mainPage = main
 	s.pages = widgets.NewStack(main)
 	s.tabs = widgets.NewBrowserTabs()
-	s.tabs.AddTab(widgets.BrowserTab{Title: "Mail", NoClose: true})
+	s.tabs.AddTab(widgets.BrowserTab{Title: "Mail", Icon: style.IconInbox, NoClose: true})
 	s.tabs.OnSelect = s.showTab
 	s.tabs.OnClose = s.closeTab
 	s.tabs.OnContextMenu = func(i int, at paintengine2d.Point) bool {
@@ -167,7 +167,7 @@ func (s *session) addMessageTab(m mailcore.Message) int {
 	if title == "" {
 		title = "(no subject)"
 	}
-	s.tabs.AddTab(widgets.BrowserTab{Title: title, Tip: title + "\n" + m.From, Data: mt})
+	s.tabs.AddTab(widgets.BrowserTab{Title: title, Icon: style.IconMail, Tip: title + "\n" + m.From, Data: mt})
 
 	rd := mt.rd
 	rd.showHeaders(m)

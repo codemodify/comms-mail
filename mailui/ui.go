@@ -423,6 +423,11 @@ func (s *session) build() widget.Component {
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
+		// The tabs are the title bar under every pack, as Thunderbird's
+		// are: an era that draws its own title strip (Windows 95, KDE 1)
+		// would otherwise put this row under it, where the empty start
+		// over the folder pane is not kept (uitoolkit-gaps.md #42).
+		s.win.SetCaptionStyle(style.CaptionMerged)
 	} else {
 		chrome = append(chrome, head)
 	}

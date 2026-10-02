@@ -6,13 +6,16 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.22.5** (2026-09-30). 0.22 closed
+Last checked against **uitoolkit v0.23.0** (2026-10-01), from scratch:
+every open item re-read against the code, every closed one re-checked
+by comms-mail's tests, and the release's new pieces tried. 0.22 closed
 sixteen of the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the
 rest of #19 and #24, and #30, #31 and #34 of the seven new ones; 0.22.4
-and 0.22.5 #32, #33, #35, #36, #38, #39 and #40. Open: #2 (declined and
-settled), #29 and #37 (answered in part, by design), and #41, found
-checking 0.22.5. What comms-mail uses for each closed item is under
-**Resolved**, with the report and the toolkit's answer.
+and 0.22.5 #32, #33, #35, #36, #38, #39 and #40. 0.23.0 closed none of
+the four still open — #2 (declined and settled), #29 and #37 (answered in
+part, by design), #41 — and checking it found #42. What comms-mail uses
+for each closed item is under **Resolved**, with the report and the
+toolkit's answer.
 
 ## Open
 
@@ -78,6 +81,12 @@ those buttons.
 `IconButton` where a row is tight, which is what comms-mail's title bar
 uses now (#39).
 
+**Unchanged in 0.23.0.** One stale pointer: `Button.Icon`'s doc comment
+(widgets/button.go:77–83) still sends an icon-only button to
+`ToolIconBtn`, the advice 0.22.5 corrected in docs/recipes.md (#39) —
+the recipes table says `NewIconButton`, the field's own doc says the
+opposite.
+
 ### 37. A sidebar cannot run up under the title bar
 comms-mail's owner asked for the folder pane to take the window's whole
 height, with the menu and the Fetch / Write / Search buttons on top of it
@@ -131,6 +140,10 @@ the content is laid out needs `Arrange(Bounds())` on the bar to show in
 that frame, or the window laying out again a caption whose layout was
 requested while the content was being laid out.
 
+**Unchanged in 0.23.0.** `StartWidth`'s doc (widgets/headerbar.go:51–65)
+still describes only the `OnRatioChanged` route, which leaves a resize a
+frame behind. And it is not kept at all under a stacked frame — #42.
+
 ### 41. A `Stack`'s minimum width is its widest page's natural width, hidden pages included
 0.22.5's `Splitter` keeps each pane at `widget.MinWidthOf` of what it
 holds (#36). comms-mail's list pane is a `widgets.Stack` of two pages
@@ -158,7 +171,58 @@ already does. More generally, the probe cannot tell "nothing folds" from
 "the tallest child is one that does not fold", so any container that
 shows one child at a time needs its own answer.
 
+**Unchanged in 0.23.0**: `Stack` still has no `MinWidth`, and its
+`Measure` (widgets/flex.go:231) still counts hidden pages. The
+workaround stays.
+
+### 42. `HeaderBar.StartWidth` is ignored under a stacked frame
+With the toolkit drawing the frame and a pack whose era stacks it (KDE 1,
+Windows 95, Metal: their own title strip, the application's title bar
+in a row under it), the row ignores `StartWidth`. `HeaderBar.Arrange`
+applies it only in the merged case (widgets/headerbar.go:345); the
+stacked case places the row at the frame's inset whatever `StartWidth`
+says (line 334–336). So under kde1 comms-mail's menu and Fetch / Write /
+Search sat at the window's left edge, over the folder pane the owner
+asked to have nothing over, with the tabs after them rather than over
+the pages — checked by rendering comms-mail under kde1 with
+`DecorationsClient` at 1280 × 800. `StartWidth`'s doc states no
+exception.
+comms-mail now sets `Window.SetCaptionStyle(style.CaptionMerged)`: its
+tabs are its title bar under every pack, as Thunderbird's are, which is
+also what the new caption diagnostic recommends. That is the right call
+for comms-mail on its own merits; the gap is for an application that
+wants the era's strip *and* a row lined up with a pane.
+**Fix:** keep `StartWidth` in the stacked row too (as room after the
+row's inset), or say in its doc that it applies only to a merged caption.
+
+0.23.0's diagnostics caught the case comms-mail had missed: under kde1
+it reports "asked a title bar of the application's own (SetTitleBar),
+got it in a row under the look's title strip". comms-mail's tests now
+open a window under kde1 with the toolkit's frame and fail on that
+finding.
+
 ## Resolved
+
+### Taken up from 0.23.0
+
+Nothing comms-mail filed, but these replace or avoid work of its own:
+
+- `Window.SetCaptionStyle(style.CaptionMerged)`: the tabs are the title
+  bar under every pack (#42).
+- `diag` / `Application.Diagnostics()`: a test fails if the toolkit
+  overrules the title bar; a session reports no findings at all in
+  either build.
+- `BrowserTab.Icon`: the Mail tab shows the inbox, a message tab the
+  envelope.
+- New typed ids: `IconPlus` (Add, Add a test, Add an action),
+  `IconInbox` (Open Inbox), `IconSync` (a filter's Run Now), `IconLock`
+  (Unlock), `IconArrowDown` / `IconArrowUp` (an invitation's More / Less).
+- `Options.AppID`: "comms-mail" (and "comms-mail-demo"), so the desktop
+  files the windows under comms-mail whatever the binary is called. Two
+  uitoolkit programs no longer share one task-bar entry.
+- A stale installed set now draws the toolkit's mark for a typed id it
+  lacks. comms-mail still ships the packs (#33), which come first, so the
+  set's own art is what shows.
 
 ### Closed in 0.22.4 and 0.22.5
 

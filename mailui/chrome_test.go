@@ -8,6 +8,7 @@ import (
 	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
+	"github.com/codemodify/uitoolkit/diag"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
@@ -168,6 +169,56 @@ func TestMailTitleBarChrome(t *testing.T) {
 		t.Fatalf("folder pane %v…%v inside %v: not the full height", tree, outbox, content)
 	}
 	assertTagsTree(t, s.tree)
+}
+
+// Under a pack whose era draws its own title strip (KDE 1 here), with the
+// toolkit drawing the frame, the title bar is still the caption — the
+// tabs in it, the menu and buttons over the pages — not a row under the
+// era's strip that runs over the folder pane. The toolkit says so when it
+// overrules a title bar, so no such finding is the test.
+func TestTitleBarIsTheCaptionUnderAStackedPack(t *testing.T) {
+	if !style.ThemePackAvailable("kde1") {
+		t.Skip("kde1 is not in this build (-tags theme_engine_all)")
+	}
+	var look style.LookAndFeel
+	for _, p := range style.ListBuiltinThemes() {
+		if p.Name == "kde1" {
+			look = p.Look()
+		}
+	}
+	if style.DecorationOf(look, style.DecorationState{Active: true}).Stacked == false {
+		t.Skip("kde1 no longer draws a stacked frame")
+	}
+	diag.Reset()
+	t.Cleanup(diag.Reset)
+	s, a, w, done := openMailFramedSession(t, look, false, AppOptions{}, platform.DecorationsClient)
+	defer done()
+	w.Inject(platform.Event{Kind: platform.EventResize, Width: 1280, Height: 800})
+	a.PumpOnce()
+	if !s.head.Framed() || s.head.Stacked() {
+		t.Fatalf("framed %v, stacked %v: want the title bar to be the caption", s.head.Framed(), s.head.Stacked())
+	}
+	for _, f := range a.Diagnostics() {
+		if f.Area == "caption" {
+			t.Fatalf("the toolkit overruled the title bar: %v", f)
+		}
+	}
+	var pages *edgeWatch
+	walkAll(w.Content(), func(c widget.Component) {
+		if e, ok := c.(*edgeWatch); ok {
+			pages = e
+		}
+	})
+	if pages == nil {
+		t.Fatal("no pages pane")
+	}
+	mx, px := widget.DeviceOrigin(s.appBtn).X, widget.DeviceOrigin(pages).X
+	if d := mx - px; d > 2 || d < -2 {
+		t.Fatalf("the menu button starts at %v, the pages at %v", mx, px)
+	}
+	if widget.DeviceBounds(s.appBtn).Max.Y > widget.DeviceBounds(s.tree).Min.Y {
+		t.Fatal("the title bar's buttons are not above the folder pane")
+	}
 }
 
 // The search dialog narrows the list, presses the Search button while it

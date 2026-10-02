@@ -147,6 +147,7 @@ func (c *inviteCard) set(inv mailcore.Invite) {
 	if compact {
 		c.more.Text = "More"
 	}
+	c.more.Icon = actionIcon(c.more.Text)
 	c.more.RequestLayout()
 	c.openCal.SetVisible(inv.PartID != "" && inv.Method != "CANCEL" && inv.Method != "REPLY" &&
 		inv.Method != "COUNTER" && inv.Method != "DECLINECOUNTER")

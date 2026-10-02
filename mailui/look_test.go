@@ -104,6 +104,13 @@ func TestMailViewLightKeepsItsOwnTheme(t *testing.T) {
 
 func openMailLookSession(t *testing.T, look style.LookAndFeel, watch bool, opts AppOptions) (*session, *app.Application, *app.Window, func()) {
 	t.Helper()
+	return openMailFramedSession(t, look, watch, opts, platform.DecorationsAuto)
+}
+
+// openMailFramedSession is openMailLookSession with the window's frame
+// drawn by deco: platform.DecorationsClient for the toolkit's own caption.
+func openMailFramedSession(t *testing.T, look style.LookAndFeel, watch bool, opts AppOptions, deco platform.Decorations) (*session, *app.Application, *app.Window, func()) {
+	t.Helper()
 	sock, stopDemo, err := mailcore.StartDemo(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +121,7 @@ func openMailLookSession(t *testing.T, look style.LookAndFeel, watch bool, opts 
 		t.Fatal(err)
 	}
 	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: true, Scale: 1, WatchLook: watch})
-	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true, Decorations: deco})
 	if err != nil {
 		cli.Close()
 		stopDemo()

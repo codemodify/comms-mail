@@ -52,9 +52,10 @@ new ones turn up.
 
 ## Icons
 - **A few rows still without an icon** — Compact Folder, Select All,
-  Body as plain text, Run Now, Unlock / Protect and the toggles (Turn Off,
-  Less / More): no toolkit icon means what they do. Buttons with icons are
-  wide (uitoolkit-gaps.md #29), so their rows fold in narrow windows.
+  Body as plain text and a filter's Turn Off: no toolkit icon means what
+  they do (Run Now, Unlock and an invitation's More / Less got theirs
+  from uitoolkit 0.23). Buttons with icons are wide (uitoolkit-gaps.md
+  #29), so their rows fold in narrow windows.
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header
