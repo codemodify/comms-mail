@@ -221,51 +221,44 @@ func TestTitleBarIsTheCaptionUnderAStackedPack(t *testing.T) {
 	}
 }
 
-// Under BeOS, whose caption is a tab only as wide as its title, the tab
-// stays and the title bar is the row under it, whole: merged, it would be
-// cut away above the window's body (uitoolkit-gaps.md #45). The choice
-// follows the look when it changes.
+// Under BeOS, whose caption is a tab only as wide as its title, the title
+// bar is still the caption, and a whole one: the tab's fitted width and
+// the window's silhouette are dropped for it, where before uitoolkit
+// 0.23.3 they cut the bar away above the window's body
+// (uitoolkit-gaps.md #45).
 func TestTitleBarUnderACaptionTab(t *testing.T) {
-	packs := map[string]style.LookAndFeel{}
+	var look style.LookAndFeel
 	for _, p := range style.ListBuiltinThemes() {
-		if p.Name == "beos" || p.Name == "kde1" {
-			packs[p.Name] = p.Look()
+		if p.Name == "beos" {
+			look = p.Look()
 		}
 	}
-	if len(packs) < 2 {
-		t.Skip("beos and kde1 are not in this build (-tags theme_engine_all)")
+	if look == nil {
+		t.Skip("beos is not in this build (-tags theme_engine_all)")
 	}
-	s, a, w, done := openMailFramedSession(t, packs["beos"], false, AppOptions{}, platform.DecorationsClient)
+	if !style.DecorationOf(look, style.DecorationState{Active: true}).CaptionFits {
+		t.Skip("beos no longer fits its caption to its title")
+	}
+	s, a, w, done := openMailFramedSession(t, look, false, AppOptions{}, platform.DecorationsClient)
 	defer done()
 	w.Inject(platform.Event{Kind: platform.EventResize, Width: 1280, Height: 800})
 	a.PumpOnce()
+	if s.head.Stacked() {
+		t.Fatal("the title bar is a row under BeOS's tab, not the caption")
+	}
+	st := s.head.DecorationState()
+	if !st.Merged || style.DecorationOf(a.Look(), st).CaptionFits {
+		t.Fatalf("merged %v: the caption is still fitted to a title it does not draw", st.Merged)
+	}
 	var pages *edgeWatch
 	walkAll(w.Content(), func(c widget.Component) {
 		if e, ok := c.(*edgeWatch); ok {
 			pages = e
 		}
 	})
-	strip := style.DecorationOf(a.Look(), style.DecorationState{Active: true}).Caption
-	check := func(when string, stacked bool) {
-		t.Helper()
-		if s.head.Stacked() != stacked {
-			t.Fatalf("%s: stacked %v, want %v", when, s.head.Stacked(), stacked)
-		}
-		menu := widget.DeviceBounds(s.appBtn)
-		if stacked && menu.Min.Y < strip {
-			t.Fatalf("%s: the menu button %v reaches into the look's tab (%v tall)", when, menu, strip)
-		}
-		if d := menu.Min.X - widget.DeviceOrigin(pages).X; d > 2 || d < -2 {
-			t.Fatalf("%s: the menu button at %v, the pages at %v", when, menu.Min.X, widget.DeviceOrigin(pages).X)
-		}
+	if d := widget.DeviceOrigin(s.appBtn).X - widget.DeviceOrigin(pages).X; d > 2 || d < -2 {
+		t.Fatalf("the menu button at %v, the pages at %v", widget.DeviceOrigin(s.appBtn).X, widget.DeviceOrigin(pages).X)
 	}
-	check("beos", true)
-	a.SetLook(packs["kde1"])
-	a.PumpOnce()
-	check("kde1", false)
-	a.SetLook(packs["beos"])
-	a.PumpOnce()
-	check("beos again", true)
 }
 
 // The marks on the title bar's buttons are readable on a pack with short

@@ -218,13 +218,6 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	if inbox, ok := mailcore.SpecialFolderClient(cli, s.account, mailcore.FolderInbox); ok {
 		s.folder = inbox.ID
 	}
-	if a != nil {
-		a.OnLookChange(func() {
-			if s.win != nil && s.head != nil {
-				s.win.SetCaptionStyle(captionStyle(a.Look()))
-			}
-		})
-	}
 	return s
 }
 
@@ -430,7 +423,10 @@ func (s *session) build() widget.Component {
 	var chrome []widget.Component
 	if s.win != nil {
 		s.win.SetTitleBar(head)
-		s.win.SetCaptionStyle(captionStyle(s.app.Look()))
+		// The tabs are the title bar under every pack, as Thunderbird's
+		// are: an era that draws its own title strip (Windows 95, KDE 1,
+		// BeOS's tab) would otherwise put this row under it.
+		s.win.SetCaptionStyle(style.CaptionMerged)
 	} else {
 		chrome = append(chrome, head)
 	}

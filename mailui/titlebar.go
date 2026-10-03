@@ -30,22 +30,6 @@ func (s *session) titleButtons() widget.Component {
 	return widgets.NewRow(s.appBtn, s.fetchBtn, s.writeBtn, s.searchBtn).WithGap(4).WithAlign(layout.AlignCenter)
 }
 
-// captionStyle is how the title bar meets the look's frame. It is the
-// caption itself, the tabs in the title bar as Thunderbird has them, under
-// every pack — an era that draws its own title strip (Windows 95, KDE 1)
-// would otherwise put it in a row under that strip. Except under a frame
-// whose caption is a tab only as wide as its title (BeOS's, CaptionFits):
-// the window's shape keeps that tab and leaves the rest of the top edge to
-// the desktop, so a merged bar is cut away above the window's body and the
-// tab loses its buttons (uitoolkit-gaps.md #45). There the look's tab
-// stays and the bar is the row under it.
-func captionStyle(lk style.LookAndFeel) style.CaptionStyle {
-	if lk != nil && style.DecorationOf(lk, style.DecorationState{Active: true}).CaptionFits {
-		return style.CaptionFollowsLook
-	}
-	return style.CaptionMerged
-}
-
 // openAppMenu drops the app menu under its button (F10).
 func (s *session) openAppMenu() {
 	if s.appBtn != nil {

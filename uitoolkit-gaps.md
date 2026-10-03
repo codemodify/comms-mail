@@ -6,15 +6,15 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.2** (2026-10-02), from scratch:
+Last checked against **uitoolkit v0.23.3** (2026-10-02), from scratch:
 every open item re-read against the code, every closed one re-checked by
-comms-mail's tests, and the release's new pieces tried on the packs
-comms-mail's owner uses and a sample of the rest. 0.22 closed sixteen of
-the first seventeen; 0.22.2 eight of the next ten; 0.22.3 the rest of #19
-and #24, and #30, #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38,
-#39 and #40; 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44. Open: #2
-(declined and settled), #29 (a design change), and #45 and #46, found
-checking 0.23.2. What comms-mail uses for each closed item is under
+comms-mail's tests, and the release's fixes rendered on the packs they
+name and the owner's own. 0.22 closed sixteen of the first seventeen;
+0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30,
+#31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
+0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
+#2 (declined and settled) and #29 (a design change). Nothing new was
+found checking 0.23.3. What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 ## Open
@@ -94,7 +94,27 @@ still the open design change.
 
 **Unchanged in 0.23.2.**
 
-### 45. `CaptionMerged` under a caption that fits its title (BeOS) cuts the bar away
+**Unchanged in 0.23.3.**
+
+## Resolved
+
+### Closed in 0.23.3
+
+| # | Gap | 0.23.3 | In comms-mail |
+| --- | --- | --- | --- |
+| 45 | `CaptionMerged` under BeOS's fitted caption cut the bar away | `DecorationState.Merged`: a merged caption drops the fitted width and the silhouette, as a maximized or tiled window does | `captionStyle` and its look-change hook are gone; comms-mail asks for `CaptionMerged` under every pack again. Checked under BeOS: a full-width yellow caption with the menu, Fetch / Write / Search, the tabs and the window's buttons. Tested through the frame's own `DecorationOf` |
+| 46 | An unselected tab's title and mark were centred on its slot | `style.TabFaceOf` (an engine hook, `TabFaceEngine`): the title and mark sit on the face the look drew | Checked on all seven Window Maker, NeXT and OpenStep packs with the Mail tab behind a message tab: "Mail" is inside its face; irix, BeOS and sourcegit unchanged |
+
+Also from 0.23.3, nothing for comms-mail to change: a menu row's
+accessible action now runs (`PopupMenu.AccessibleAction`), an accessible
+list row is where the row is drawn, Caps Lock is reported before the
+first key on Wayland and macOS, and a secret copied to the clipboard no
+longer outlives it. comms-mail's own session (metal-ocean, Relaxed, small
+icons, the toolkit's frame) reports no diagnostics.
+
+The reports and the toolkit's answers, as they were:
+
+#### 45. `CaptionMerged` under a caption that fits its title (BeOS) cuts the bar away
 BeOS's caption is a tab only as wide as its title and buttons
 (`DecorationSpec.CaptionFits`, style/decoration.go:194–200), and the
 window's silhouette "leaves the rest of the top edge to the desktop". With
@@ -122,7 +142,7 @@ Tested by switching beos → kde1 → beos.
 across the whole top edge; or refuse `CaptionMerged` for such a frame and
 say so through `diag`, as the stacked case is reported.
 
-### 46. An unselected browser tab's title and mark are centred on its slot, not its face
+#### 46. An unselected browser tab's title and mark are centred on its slot, not its face
 Window Maker, NeXT and OpenStep draw an unselected tab lower than the
 selected one, with its top edge several pixels down the strip. `BrowserTabs`
 places a tab's title in `labelBox(i, s, g)` and its mark in `iconRect`,
@@ -141,8 +161,6 @@ workaround: nothing says where an engine drew a tab's face.
 **Fix:** place the title and the mark against the face the engine drew
 for the tab in its state (an engine hook for the face rect, or the
 inset `TabContentInsetOf` already answers for the sides, for the top).
-
-## Resolved
 
 ### Closed in 0.23.2
 
