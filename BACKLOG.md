@@ -67,25 +67,37 @@ new ones turn up.
 - **OAuth (Gmail / Microsoft 365)** — decided 2026-09-28: the owner's own
   client ID while comms-mail has one user (works today). A built-in
   registration only when others use it (Google verification + CASA).
-- **secretvault** — codemodify/secretvault is listed as a place for
-  passwords but has no API yet; `TODO(secretvault)` in
-  `mailcore/secrets.go` is where it plugs in.
+- **secretvault** — its API is built (a Go client with only its own
+  protocol package as a dependency), but it is not published yet: GitHub's
+  `dev` holds the initial commit only. Once it is, `secretVaultStore` in
+  `mailcore/secrets.go` (a stub today) keeps passwords and OAuth tokens
+  there. While secretvault is locked, comms-maild holds no secrets and
+  waits for it to unlock (decided 2026-10-03).
 - **Keyring on macOS and Windows** — written (Keychain through the
   security tool, Credential Manager through advapi32) and compiled, not
   yet run on those systems.
 
-## Security (decided 2026-09-28, docs/security/security-primer.md)
+## Security (decided 2026-09-28, revised 2026-10-03; docs/security/security-primer.md)
 - **Sender warnings** — `Authentication-Results` (SPF/DKIM/DMARC) failures,
   look-alike display names, Reply-To on another domain; "Always show
   images" only for senders who passed.
-- **Recognise and check signed / encrypted mail** — PGP and S/MIME both;
-  encrypted mail says what it is (an S/MIME `smime.p7m` shows as binary
-  text today).
-- **PGP** — built in (Proton `go-crypto`): keys, decrypt, sign/encrypt on
-  send, private keys in the vault.
-- **S/MIME** — built in, own CMS code: `.p12` import, decrypt, sign/encrypt
-  on send.
-- **Search inside encrypted mail** — a setting, off by default.
+- **Recognise and check signed / encrypted mail** — PGP and S/MIME both,
+  through secretvault (`InspectMail`: every layer, protected headers,
+  Autocrypt, a verdict on each signer; keys a message carries are passed to
+  `KeySeen`). Encrypted mail says what it is (an S/MIME `smime.p7m` shows
+  as binary text today).
+- **PGP and S/MIME** — only through secretvault, which keeps the private
+  keys and signs and decrypts in its own daemon: comms-mail writes no
+  crypto of its own (decided 2026-10-03; this replaces building in Proton
+  `go-crypto` and our own CMS). Sending is `ComposeMail` with Sign /
+  Encrypt in the Write window. Without secretvault as the store there is
+  no PGP or S/MIME.
+- **Asked of secretvault** — publishing it; S/MIME roots beyond an
+  organisation's own CA (a public CA's certificate does not verify as
+  trusted today); a check before Send of which recipients can be
+  encrypted to.
+- **Search inside encrypted mail** — a setting, off by default: decrypted
+  text stays out of mail.db and the search index unless it is on.
 - **Passphrase fields that never hold a string** — uitoolkit 0.22 has a
   `SecretField` (a wiped byte buffer, no copy, input method off), a
   secret clipboard, and Caps Lock state. The passphrase and account
