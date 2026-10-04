@@ -227,11 +227,12 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 				texts = append(texts, v.Text)
 			}
 		})
+		texts = append(texts, "in use: "+strings.Join(inUseShown(section), ","))
 		return btn, strings.Join(texts, "\n")
 	}
 	btn, text := unlockButton()
 	// (A hidden button is not walked.)
-	if !strings.Contains(text, "Secret Vault, in use now") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
+	if !strings.Contains(text, "in use: Secret Vault") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
 		t.Fatalf("Settings, unlocked (unlock shown %v):\n%s", btn != nil && btn.Visible(), text)
 	}
 
@@ -483,10 +484,10 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	// cannot be used here (no keyring, no secretvault in tests), and
 	// secretvault's vault; no text over them.
 	want := []string{
-		"radio System Keyring (Secret Service)", "text Not available: ",
+		"radio System Keyring", "text (Secret Service)", "text Not available: ",
 		"radio Secret Vault", "text Not available: ", "radio Default", "radio Custom",
-		"radio Encrypted file (Argon2id hashing + AES-256-GCM encryption)", "path " + vaultPath,
-		"radio Plain file (open to anyone)", "path " + configPath,
+		"radio Encrypted file", "text (Argon2id hashing + AES-256-GCM encryption)", "path " + vaultPath,
+		"radio Plain file", "text (open to anyone)", "path " + configPath,
 	}
 	got := placesSay(page)
 	if len(got) != len(want) {
@@ -540,7 +541,7 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	// The window that asks says the same, under its own words.
 	st, _ := cli.SecretsStatus()
 	ask := newWindowFrom(t, a, func() { openStoreChooser(a, cli, switchIntro, st, nil) })
-	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[6:], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
+	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[7:], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
 		t.Fatalf("the window says:\n%s", got)
 	}
 	ask.Close()
@@ -560,7 +561,7 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	}
 	p = look()
 	inUse := p.radios["Encrypted file"]
-	if inUse == nil || !inUse.Selected || !strings.HasSuffix(inUse.Text, ", in use now") || len(p.fields) != 0 || p.buttons["Change passphrase…"] == nil || p.buttons["Apply"].Enabled() {
+	if inUse == nil || !inUse.Selected || !slices.Equal(inUseShown(page), []string{"Encrypted file"}) || len(p.fields) != 0 || p.buttons["Change passphrase…"] == nil || p.buttons["Apply"].Enabled() {
 		t.Fatalf("after the move: radios %v, %d fields, buttons %v", p.radios, len(p.fields), p.buttons)
 	}
 	// Picking another place offers Apply; the one in use again takes it back.
@@ -581,13 +582,14 @@ func placesSay(root widget.Component) []string {
 	widget.Walk(root, func(c widget.Component) {
 		switch v := c.(type) {
 		case *widgets.RadioButton:
-			out = append(out, "radio "+strings.TrimSuffix(v.Text, ", in use now"))
+			out = append(out, "radio "+v.Text)
 		case *widgets.TextArea:
 			if v.ReadOnly {
 				out = append(out, "path "+v.Text)
 			}
 		case *widgets.Label:
-			if len(out) > 0 || strings.TrimSpace(v.Text) != "" {
+			// (A mark alone is an iconLine's; its text follows.)
+			if strings.TrimSpace(v.Text) != "" {
 				out = append(out, "text "+v.Text)
 			}
 		}
@@ -638,7 +640,7 @@ func TestPathViewShowsAllOfIt(t *testing.T) {
 var places = []string{"System Keyring", "Secret Vault", "Encrypted file", "Plain file"}
 
 // placeTitle is a radio's name without what follows it: "Encrypted file"
-// of "Encrypted file (Argon2id …), in use now".
+// of "Encrypted file (Argon2id …)".
 func placeTitle(text string) string {
 	if i := strings.IndexAny(text, "(,"); i > 0 {
 		return strings.TrimSpace(text[:i])
@@ -730,7 +732,7 @@ func TestPasswordsInANamedVault(t *testing.T) {
 		t.Fatal("the password is not in work")
 	}
 	p = look()
-	if r := p.radios["Secret Vault"]; !r.Selected || !strings.HasSuffix(r.Text, ", in use now") ||
+	if r := p.radios["Secret Vault"]; !r.Selected || !slices.Equal(inUseShown(page), []string{"Secret Vault"}) ||
 		!p.radios["Custom"].Selected || p.name.Text != "work" || p.apply.Enabled() {
 		t.Fatalf("the page after: %v, name %q, Apply %v", p.radios, p.name.Text, p.apply.Enabled())
 	}
@@ -738,4 +740,22 @@ func TestPasswordsInANamedVault(t *testing.T) {
 	if !p.apply.Enabled() {
 		t.Fatal("back to the default vault offers no Apply")
 	}
+}
+
+// inUseShown are the places with the green check after their names: the
+// place in use.
+func inUseShown(root widget.Component) []string {
+	var out []string
+	last := ""
+	widget.Walk(root, func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.RadioButton:
+			last = placeTitle(v.Text)
+		case *widgets.Label:
+			if v.Icon == style.IconCheck && v.Text == "" && v.Tone == widgets.ToneSuccess {
+				out = append(out, last)
+			}
+		}
+	})
+	return out
 }

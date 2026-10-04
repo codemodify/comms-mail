@@ -62,24 +62,20 @@ const laterNote = "You can set this up later, or switch to another place at any 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
 
-// storeOption is one of the places in the chooser: its name, with what it
-// is in brackets; path is the file it keeps them in, for the two that are
-// files; problem why it cannot be used, when it cannot.
+// storeOption is one of the places in the chooser: its name, and what it
+// is, shown in brackets after it; path is the file it keeps them in, for
+// the two that are files; problem why it cannot be used, when it cannot.
 type storeOption struct {
-	kind, title, path, problem string
-	available                  bool
+	kind, title, what, path, problem string
+	available                        bool
 }
 
 func storeOptions(st mailcore.SecretsStatus) []storeOption {
-	keyring := "System Keyring"
-	if st.KeyringBackend != "" {
-		keyring += " (" + st.KeyringBackend + ")"
-	}
 	return []storeOption{
-		{mailcore.StoreKeyring, keyring, "", st.KeyringProblem, st.KeyringAvailable},
-		{mailcore.StoreSecretVault, "Secret Vault", "", st.SecretVaultProblem, st.SecretVaultAvailable},
-		{mailcore.StoreEncrypted, "Encrypted file (Argon2id hashing + AES-256-GCM encryption)", st.EncryptedFile, "", true},
-		{mailcore.StorePlain, "Plain file (open to anyone)", st.PlainFile, "", true},
+		{mailcore.StoreKeyring, "System Keyring", st.KeyringBackend, "", st.KeyringProblem, st.KeyringAvailable},
+		{mailcore.StoreSecretVault, "Secret Vault", "", "", st.SecretVaultProblem, st.SecretVaultAvailable},
+		{mailcore.StoreEncrypted, "Encrypted file", "Argon2id hashing + AES-256-GCM encryption", st.EncryptedFile, "", true},
+		{mailcore.StorePlain, "Plain file", "open to anyone", st.PlainFile, "", true},
 	}
 }
 
@@ -159,11 +155,7 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 	c.radios = make([]*widgets.RadioButton, len(c.opts))
 	c.list = widgets.NewColumn().WithGap(10)
 	for i, o := range c.opts {
-		label := o.title
-		if o.kind == st.Store {
-			label += ", in use now"
-		}
-		rb := widgets.NewRadio(label, false, nil)
+		rb := widgets.NewRadio(o.title, false, nil)
 		rb.OnChange = func(on bool) {
 			if on {
 				c.pick(i)
@@ -178,9 +170,7 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 			details.Add(pathView(o.path))
 		}
 		if !o.available && o.problem != "" {
-			l := widgets.NewIconLabel(style.IconWarning, "Not available: "+o.problem)
-			l.Wrap = true
-			details.Add(l)
+			details.Add(iconLine(style.IconWarning, "Not available: "+o.problem))
 		}
 		if o.kind == mailcore.StoreSecretVault {
 			details.Add(c.vaultChoice(i, o.available))
@@ -188,13 +178,32 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 		if extra := under[o.kind]; extra != nil {
 			details.Add(extra)
 		}
-		c.list.Add(widgets.NewColumn(rb, details.WithPadding(28, 0, 0, 0)).WithGap(2))
+		// The name, what it is in brackets — wrapping, where the window
+		// is narrow — and the place in use's green check at the end.
+		head := widgets.NewRow(rb).WithGap(2).WithAlign(layout.AlignCenter)
+		var what widget.Component = widgets.NewSpacer()
+		if o.what != "" {
+			what = wrapLabel("(" + o.what + ")")
+		}
+		head.AddFlex(what, 1)
+		if inUse {
+			head.Add(inUseMark())
+		}
+		c.list.Add(widgets.NewColumn(head, details.WithPadding(28, 0, 0, 0)).WithGap(2))
 		if inUse && showInUse {
 			rb.Selected = true
 			c.chosen = i
 		}
 	}
 	return c
+}
+
+// inUseMark is the green check after the place in use: a mark, in the
+// look's own success colour.
+func inUseMark() *widgets.Label {
+	l := widgets.NewIconLabel(style.IconCheck, "")
+	l.Tone = widgets.ToneSuccess
+	return l
 }
 
 // vaultChoice is which of secretvault's vaults: its default, named when

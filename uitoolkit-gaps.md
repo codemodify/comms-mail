@@ -13,8 +13,8 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30,
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
-#2 (declined and settled), #29 (a design change), #47 and #48 (found
-2026-10-04). What comms-mail uses for each closed item is under
+#2 (declined and settled), #29 (a design change), #47, #48 and #49
+(found 2026-10-04). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 ## Open
@@ -146,6 +146,22 @@ after the layout (mailui/vault.go, `fitText`).
 (`FitRows`, Qt's `sizeHint` from the document, GTK's natural height).
 
 Found 2026-10-04 against 0.23.3; the same in 0.23.4.
+
+### 49. A wrapping `Label` with an `Icon` cuts off its first and last lines
+`Label.Measure` wraps the text at the whole width offered
+(widgets/label.go:144, `wrapW = c.MaxW - 2`) and adds the mark's width
+afterwards; `Paint` takes the mark's room off first and wraps at what is
+left (:211–214). So a long line wraps to more lines than it was measured
+for, and the lines, centred in the box, lose the first and the last —
+comms-mail's sender warnings, the reader's signed/encrypted lines, and
+Settings' "Not available: …" all did, at ordinary widths.
+comms-mail sets the mark alone (`NewIconLabel(icon, "")`) beside a
+wrapping label of its own in a row (mailui/icons.go, `iconLine`).
+**Fix asked for:** measure at the width the text will have —
+`wrapW = c.MaxW - 2 - iconSide - iconGap` when there is an icon.
+
+Found 2026-10-04; the same in 0.23.3 and 0.23.4 (measure :140–156, paint
+:205–214).
 
 ## Resolved
 

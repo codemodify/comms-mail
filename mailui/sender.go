@@ -31,11 +31,7 @@ func (p *senderPart) clear() {
 
 func (p *senderPart) show(c mailcore.SenderCheck) {
 	p.view.ClearChildren()
-	line := func(icon style.ToolIcon, text string) {
-		l := widgets.NewIconLabel(icon, text)
-		l.Wrap = true
-		p.view.Add(l)
-	}
+	line := func(icon style.ToolIcon, text string) { p.view.Add(iconLine(icon, text)) }
 	for _, w := range c.Warnings {
 		line(style.IconWarning, w)
 	}

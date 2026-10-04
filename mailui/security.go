@@ -42,9 +42,7 @@ func (p *securityPart) clear() {
 }
 
 func (p *securityPart) line(icon style.ToolIcon, text string) {
-	l := widgets.NewIconLabel(icon, text)
-	l.Wrap = true
-	p.lines.Add(l)
+	p.lines.Add(iconLine(icon, text))
 }
 
 // show lays out what secretvault said of the message.

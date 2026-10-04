@@ -153,11 +153,24 @@ func open(s *session, a *app.Application, id mailcore.MessageID) {
 // securityLines are the reading pane's security lines: their icons and
 // texts.
 func securityLines(r *reader) (icons []style.ToolIcon, texts []string) {
-	widget.Walk(r.sec.lines, func(c widget.Component) {
-		if l, ok := c.(*widgets.Label); ok {
-			icons = append(icons, l.Icon)
-			texts = append(texts, l.Text)
+	return iconLines(r.sec.lines)
+}
+
+// iconLines are root's lines of text, each with the mark before it (an
+// iconLine: a mark alone, then its text), IconNone for a line with none.
+func iconLines(root widget.Component) (icons []style.ToolIcon, texts []string) {
+	mark := style.IconNone
+	widget.Walk(root, func(c widget.Component) {
+		l, ok := c.(*widgets.Label)
+		if !ok {
+			return
 		}
+		if l.Text == "" && l.Icon != style.IconNone {
+			mark = l.Icon
+			return
+		}
+		icons, texts = append(icons, mark), append(texts, l.Text)
+		mark = style.IconNone
 	})
 	return
 }
@@ -413,14 +426,7 @@ func TestSenderWarningsInTheReadingPane(t *testing.T) {
 	for _, m := range s.rows {
 		ids[m.Subject] = m.ID
 	}
-	lines := func() (icons []style.ToolIcon, texts []string) {
-		widget.Walk(s.rd.sender.view, func(c widget.Component) {
-			if l, ok := c.(*widgets.Label); ok {
-				icons, texts = append(icons, l.Icon), append(texts, l.Text)
-			}
-		})
-		return
-	}
+	lines := func() (icons []style.ToolIcon, texts []string) { return iconLines(s.rd.sender.view) }
 	open(s, a, ids["Your account"])
 	icons, texts := lines()
 	joined := strings.Join(texts, " | ")

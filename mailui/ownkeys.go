@@ -91,11 +91,7 @@ func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Compo
 func addressKeys(a *app.Application, cli *mailcore.Client, ak mailcore.AddressKeys,
 	work func(*widgets.Button, string, func() (mailcore.OwnKeys, error))) widget.Component {
 	col := widgets.NewColumn(widgets.NewLabel(ak.Address)).WithGap(3)
-	line := func(icon style.ToolIcon, text string) {
-		l := widgets.NewIconLabel(icon, text)
-		l.Wrap = true
-		col.Add(l)
-	}
+	line := func(icon style.ToolIcon, text string) { col.Add(iconLine(icon, text)) }
 	var buttons []widget.Component
 	if k := ak.PGP; k != nil {
 		text := "OpenPGP key " + groupFingerprint(k.Fingerprint)

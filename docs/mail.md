@@ -544,8 +544,8 @@ secretvault, which does that work itself (see the security primer).
   keyring in use, `SecretsStatus.keyringBackend`: Secret Service, macOS
   Keychain, Windows Credential Manager — **Secret Vault**, **Encrypted
   file (Argon2id hashing + AES-256-GCM encryption)** and **Plain file
-  (open to anyone)**; the place in use is picked and says ", in use
-  now". The two files show their full paths under their names, as the
+  (open to anyone)**; the place in use is picked, with a green check
+  after its name. The two files show their full paths under their names, as the
   daemon has them (`SecretsStatus.encryptedFile` / `plainFile`), in a
   read-only box that can be selected and copied and is as tall as the
   path wrapped to its width. A place that cannot be used here says why.

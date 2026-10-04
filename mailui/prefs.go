@@ -547,8 +547,7 @@ func passwordsSection(a *app.Application, win *app.Window, cli *mailcore.Client)
 			if !st.Locked {
 				text, icon = "It cannot be read now: "+st.Problem, style.IconWarning
 			}
-			l := widgets.NewIconLabel(icon, text)
-			l.Wrap = true
+			l := iconLine(icon, text)
 			unlockText := "Unlock…"
 			if st.Store == mailcore.StoreSecretVault {
 				// secretvault shows its own prompt; comms-mail never sees
