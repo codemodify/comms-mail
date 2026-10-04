@@ -25,6 +25,9 @@ const kcPrefix = "comms-mail:b64:"
 
 func keyringName() string { return "the macOS Keychain" }
 
+// keyringBackend is the keyring's own name.
+func keyringBackend() string { return "macOS Keychain" }
+
 func keyringReady() error {
 	if _, err := exec.LookPath(kcTool); err != nil {
 		return errors.New("the macOS security tool is missing")

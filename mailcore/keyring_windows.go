@@ -48,6 +48,9 @@ type credential struct {
 
 func keyringName() string { return "the Windows Credential Manager" }
 
+// keyringBackend is the keyring's own name.
+func keyringBackend() string { return "Windows Credential Manager" }
+
 func keyringReady() error { return advapi32.Load() }
 
 func keyringGet(name string) (string, bool, error) {

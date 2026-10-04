@@ -534,7 +534,10 @@ type SecretsStatus struct {
 	// their key beside them, or the plain store's tokens file).
 	PlainTokens bool `json:"plainTokens,omitempty"`
 	// The desktop keyring: what it is here, and whether it can be used.
-	KeyringName      string `json:"keyringName"`
+	KeyringName string `json:"keyringName"`
+	// KeyringBackend is the keyring's own name: Secret Service, the macOS
+	// Keychain, the Windows Credential Manager ("" where there is none).
+	KeyringBackend   string `json:"keyringBackend,omitempty"`
 	KeyringAvailable bool   `json:"keyringAvailable"`
 	KeyringProblem   string `json:"keyringProblem,omitempty"`
 	// SecretVaultAvailable: codemodify/secretvault's daemon answers here;
@@ -685,7 +688,7 @@ func (s *LocalStore) withSecrets(id string, a AccountConfig) AccountConfig {
 // SecretsStatus reports where the secrets are and whether they can be read.
 func (s *LocalStore) SecretsStatus() SecretsStatus {
 	kind := s.secretKind()
-	st := SecretsStatus{Supported: true, Store: kind, KeyringName: keyringName(),
+	st := SecretsStatus{Supported: true, Store: kind, KeyringName: keyringName(), KeyringBackend: keyringBackend(),
 		PlainFile: absPath(ConfigPath()), EncryptedFile: absPath(s.vaultOf().path)}
 	if err := s.storeFor(kind).Ready(); err == nil {
 		st.Ready = true

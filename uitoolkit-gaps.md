@@ -13,7 +13,7 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30,
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
-#2 (declined and settled), #29 (a design change) and #47 (found
+#2 (declined and settled), #29 (a design change), #47 and #48 (found
 2026-10-04). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
@@ -120,6 +120,32 @@ after each look (mailui/theme.go, `noWindowMenu`), which works because
 from the app pinning it as `SetTitleBarPrefs` pins the layout.
 
 Found checking 0.23.3; the same in 0.23.4.
+
+### 48. No read-only text that can be selected and fits its text
+Settings › Security › Passwords shows the encrypted and plain files'
+paths as text to select and copy, not edit. None of the three candidates
+does it alone:
+
+- `Label` cannot be selected at all.
+- `TextField` has no read-only mode. `Accept` refuses typing, pastes and
+  a selection's deletion (`replaceSel`), but Backspace and Delete with
+  nothing selected change `Text` directly (widgets/textfield.go:684 and
+  :701 in 0.23.3, :680 and :697 in 0.23.4), and so does
+  `IMEDeleteSurrounding`.
+- `NewTextView` is read-only and selectable (Ctrl+A, Ctrl+C), but is
+  `MinRows` tall whatever it holds (`TextArea.Measure`,
+  widgets/textarea.go:176 / :174): a path wider than the box wraps onto
+  a second line hidden behind a scroll bar.
+
+comms-mail wraps a `NewTextView` in a component that lays the view out
+at the width it is measured at, counts `Lines()`, sets `MinRows`, and
+puts the view back in its own box, since a parent's probe can measure
+after the layout (mailui/vault.go, `fitText`).
+**Fix asked for:** a selectable `Label` (`Selectable`), or a
+`TextField.ReadOnly`, and a `TextArea` that can be as tall as its text
+(`FitRows`, Qt's `sizeHint` from the document, GTK's natural height).
+
+Found 2026-10-04 against 0.23.3; the same in 0.23.4.
 
 ## Resolved
 

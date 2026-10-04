@@ -574,7 +574,7 @@ func passwordsSection(a *app.Application, win *app.Window, cli *mailcore.Client)
 		c.first.OnSubmit = func(string) { apply.OnClick() }
 		c.again.OnSubmit = func(string) { apply.OnClick() }
 		// The places scroll; the passphrase fields and Apply stay in view.
-		scroll := widgets.NewScrollView(widgets.NewColumn(wrapLabel(passwordsIntro(st)), c.list).WithGap(14))
+		scroll := widgets.NewScrollView(c.list)
 		page.AddFlex(scroll, 1)
 		page.Add(c.passBox)
 		page.Add(foldRow(apply))
@@ -583,19 +583,4 @@ func passwordsSection(a *app.Application, win *app.Window, cli *mailcore.Client)
 	}
 	show(st)
 	return page, refresh
-}
-
-// passwordsIntro says what choosing does, or, before a place is chosen,
-// what is wrong with where they are.
-func passwordsIntro(st mailcore.SecretsStatus) string {
-	if st.Store != "" {
-		return switchIntro
-	}
-	switch {
-	case len(st.PlainAccounts) > 0:
-		return "Your mail passwords are saved as readable text in mail.json, where any program running as you can read them. Choose a safer place for them."
-	case st.PlainTokens:
-		return "Your Google or Microsoft sign-ins are saved in files whose key is kept beside them. Choose a safer place for them."
-	}
-	return "No passwords are saved yet. Choose where comms-mail should keep them."
 }

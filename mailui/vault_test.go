@@ -12,6 +12,7 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
+	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
@@ -120,7 +121,7 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 	if keep.Enabled() {
 		t.Fatal("Keep is on with nothing picked")
 	}
-	if radios["secretvault"].Enabled() {
+	if radios["Secret Vault"].Enabled() {
 		t.Fatal("secretvault can be picked, and is not running here")
 	}
 	if shownFields(fields) != 0 {
@@ -189,10 +190,10 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 	}
 	w := newWindowFrom(t, a, func() { openStoreChooser(a, cli, accountIntro, st, nil) })
 	radios, _, buttons := chooserParts(w)
-	if !radios["secretvault"].Enabled() {
+	if !radios["Secret Vault"].Enabled() {
 		t.Fatal("secretvault cannot be picked")
 	}
-	radios["secretvault"].SetSelected(true)
+	radios["Secret Vault"].SetSelected(true)
 	a.PumpOnce()
 	if _, fields, _ := chooserParts(w); shownFields(fields) != 0 {
 		t.Fatal("picking secretvault asks comms-mail for a passphrase")
@@ -227,7 +228,7 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 	}
 	btn, text := unlockButton()
 	// (A hidden button is not walked.)
-	if !strings.Contains(text, "asks you before letting comms-mail read") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
+	if !strings.Contains(text, "Store passwords in SV (secretvault)") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
 		t.Fatalf("Settings, unlocked (unlock shown %v):\n%s", btn != nil && btn.Visible(), text)
 	}
 
@@ -363,8 +364,8 @@ func TestChooserTextFitsWhatIsSaved(t *testing.T) {
 	}
 }
 
-// With no accounts, the window starting asks nothing, and Settings says
-// no passwords are saved yet — and offers the choice with that text.
+// With no accounts, the window starting asks nothing, and Settings offers
+// the places with none of them in use.
 func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(mailcore.EnvConfig, filepath.Join(dir, "mail.json"))
@@ -401,15 +402,19 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 		t.Fatal("the window asked where to keep passwords when none are saved")
 	}
 
+	// Settings offers the places, none of them in use.
 	section, _ := passwordsSection(a, nil, cli)
-	var texts []string
+	var radios []string
 	widget.Walk(section, func(c widget.Component) {
-		if l, ok := c.(*widgets.Label); ok {
-			texts = append(texts, l.Text)
+		if rb, ok := c.(*widgets.RadioButton); ok {
+			radios = append(radios, rb.Text)
+			if rb.Selected {
+				t.Errorf("%s is picked", rb.Text)
+			}
 		}
 	})
-	if joined := strings.Join(texts, "\n"); !strings.Contains(joined, "No passwords are saved yet.") {
-		t.Fatalf("Settings says:\n%s", joined)
+	if strings.Join(radios, "|") != "System Keyring|Secret Vault|Encrypted file|Plain file" {
+		t.Fatalf("Settings offers %q", radios)
 	}
 }
 
@@ -462,19 +467,41 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 		})
 		return p
 	}
-	firstLineIs := func(texts []string, path string) bool {
-		for _, s := range texts {
-			if strings.HasPrefix(s, path+"\n") {
-				return true
-			}
-		}
-		return false
-	}
 	vaultPath := filepath.Join(dir, "secrets", "vault.json")
 	configPath, _ := filepath.Abs(mailcore.ConfigPath())
 	p := look()
-	if len(p.radios) != 4 || !firstLineIs(p.texts, vaultPath) || !firstLineIs(p.texts, configPath) {
-		t.Fatalf("radios %d; texts:\n%s", len(p.radios), strings.Join(p.texts, "\n---\n"))
+	// Each place: its name, a file's path as text that can be selected
+	// but not edited, then what it means; no text over them.
+	want := []string{
+		"radio System Keyring", "text Delegate to OS provided keyring. Current backend: Secret Service",
+		"radio Secret Vault", "text Store passwords in SV (secretvault)",
+		"radio Encrypted file", "path " + vaultPath, "text Encrypted with: Argon2id hashing + AES-256-GCM encryption",
+		"radio Plain file", "path " + configPath, "text Password is stored open to anyone",
+	}
+	got := placesSay(page)
+	for i, w := range want {
+		if i >= len(got) || !strings.HasPrefix(got[i], w) {
+			t.Fatalf("the places say:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+		}
+	}
+	if len(p.radios) != 4 {
+		t.Fatalf("radios %v", p.radios)
+	}
+	first := ""
+	widget.Walk(page, func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.Label:
+			if first == "" {
+				first = "text " + v.Text
+			}
+		case *widgets.RadioButton:
+			if first == "" {
+				first = "radio"
+			}
+		}
+	})
+	if first != "radio" {
+		t.Fatalf("the page starts with %q", first)
 	}
 	if p.buttons["Change where…"] != nil || p.buttons["Apply"] == nil || p.buttons["Apply"].Enabled() {
 		t.Fatalf("buttons %v", p.buttons)
@@ -482,11 +509,24 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	if len(p.fields) != 0 {
 		t.Fatal("passphrase fields before the encrypted file is picked")
 	}
-	// The window that asks says the same.
+	// The path is selected and copied, never changed.
+	var path *widgets.TextArea
+	widget.Walk(page, func(c widget.Component) {
+		if v, ok := c.(*widgets.TextArea); ok && v.Text == vaultPath {
+			path = v
+		}
+	})
+	path.KeyPress(widget.KeyEvent{Key: platform.KeyA, Mods: platform.ModCtrl})
+	path.TextInput('x')
+	path.KeyPress(widget.KeyEvent{Key: platform.KeyBackspace})
+	if path.SelectedText() != vaultPath || path.Text != vaultPath {
+		t.Fatalf("the path: %q selected, %q now", path.SelectedText(), path.Text)
+	}
+	// The window that asks says the same, under its own words.
 	st, _ := cli.SecretsStatus()
 	ask := newWindowFrom(t, a, func() { openStoreChooser(a, cli, switchIntro, st, nil) })
-	if !strings.Contains(labelTexts(ask), vaultPath+"\n") {
-		t.Fatalf("the window says:\n%s", labelTexts(ask))
+	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[4:7], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
+		t.Fatalf("the window says:\n%s", got)
 	}
 	ask.Close()
 
@@ -516,5 +556,65 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	inUse.SetSelected(true)
 	if p.buttons["Apply"].Enabled() {
 		t.Fatal("Apply is on with the place in use picked")
+	}
+}
+
+// placesSay is what the choice of places says, in order from the first
+// place: "radio <name>", "path <file>" for a read-only text, "text <label>".
+func placesSay(root widget.Component) []string {
+	var out []string
+	widget.Walk(root, func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.RadioButton:
+			out = append(out, "radio "+strings.TrimSuffix(v.Text, " (in use now)"))
+		case *widgets.TextArea:
+			if v.ReadOnly {
+				out = append(out, "path "+v.Text)
+			}
+		case *widgets.Label:
+			if len(out) > 0 || strings.TrimSpace(v.Text) != "" {
+				out = append(out, "text "+v.Text)
+			}
+		}
+	})
+	// From the first place on: what comes before it is the window's own.
+	for i, s := range out {
+		if strings.HasPrefix(s, "radio ") {
+			return out[i:]
+		}
+	}
+	return nil
+}
+
+// A file's path shows whole: its box is as tall as the path wrapped to its
+// width, nothing scrolled away, and a parent measuring it again after the
+// layout (probing how narrow it can go) leaves it as it was.
+func TestPathViewShowsAllOfIt(t *testing.T) {
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Path", Width: 260, Height: 300, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	path := "/home/someone/.data/comms-mail/secrets/vault.json"
+	pv := pathView(path)
+	w.SetContent(widgets.NewColumn(pv))
+	a.PumpOnce()
+	var view *widgets.TextArea
+	widget.Walk(pv, func(c widget.Component) {
+		if v, ok := c.(*widgets.TextArea); ok {
+			view = v
+		}
+	})
+	if view == nil || !view.ReadOnly || view.Text != path {
+		t.Fatal("not a read-only view of the path")
+	}
+	if len(view.Lines()) < 2 || view.MaxOffset() > 0 {
+		t.Fatalf("%d lines, %v hidden", len(view.Lines()), view.MaxOffset())
+	}
+	before := view.Bounds()
+	pv.Measure(layout.Constraints{MaxW: 40, MaxH: -1})
+	if view.Bounds() != before {
+		t.Fatalf("a probe moved the view from %v to %v", before, view.Bounds())
 	}
 }

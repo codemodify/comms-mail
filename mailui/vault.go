@@ -4,7 +4,9 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
+	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit/app"
+	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
@@ -59,34 +61,72 @@ const laterNote = "You can set this up later, or switch to another place at any 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
 
-// storeOption is one of the places in the chooser.
+// storeOption is one of the places in the chooser; path is the file it
+// keeps them in, for the two that are files.
 type storeOption struct {
-	kind, title, text string
-	available         bool
+	kind, title, text, path string
+	available               bool
 }
 
 func storeOptions(st mailcore.SecretsStatus) []storeOption {
-	keyring := "Your system's own password store — here, " + st.KeyringName + ". The desktop unlocks it when you log in, so there is no extra passphrase."
+	keyring := "Delegate to OS provided keyring."
+	if st.KeyringBackend != "" {
+		keyring += " Current backend: " + st.KeyringBackend
+	}
 	if !st.KeyringAvailable {
 		keyring += "\nNot available: " + st.KeyringProblem
 	}
-	vault := "Your own secretvault. It asks you before letting comms-mail read anything, and while it is locked comms-mail waits, holding no passwords. It also checks, decrypts, signs and encrypts mail."
+	vault := "Store passwords in SV (secretvault)"
 	if !st.SecretVaultAvailable {
 		vault += "\nNot available: " + st.SecretVaultProblem
 	}
-	// The files' own paths come first: they are where the passwords are.
-	file := func(path, text string) string {
-		if path == "" {
-			return text
-		}
-		return path + "\n" + text
-	}
 	return []storeOption{
-		{mailcore.StoreKeyring, "Desktop keyring", keyring, st.KeyringAvailable},
-		{mailcore.StoreSecretVault, "secretvault", vault, st.SecretVaultAvailable},
-		{mailcore.StoreEncrypted, "Encrypted file", file(st.EncryptedFile, "A file only your passphrase opens (Argon2id, AES-256-GCM). comms-mail asks for the passphrase once each time it starts. "+forgetText), true},
-		{mailcore.StorePlain, "Plain file", file(st.PlainFile, "Passwords stay readable in mail.json, as before: any program running as you can read them."), true},
+		{mailcore.StoreKeyring, "System Keyring", keyring, "", st.KeyringAvailable},
+		{mailcore.StoreSecretVault, "Secret Vault", vault, "", st.SecretVaultAvailable},
+		{mailcore.StoreEncrypted, "Encrypted file", "Encrypted with: Argon2id hashing + AES-256-GCM encryption", st.EncryptedFile, true},
+		{mailcore.StorePlain, "Plain file", "Password is stored open to anyone", st.PlainFile, true},
 	}
+}
+
+// pathView is a file's path as text that can be selected and copied, not
+// edited, all of it in view.
+func pathView(path string) widget.Component { return newFitText(path) }
+
+// fitText is a read-only text view as tall as its text wrapped to the width
+// it is given: a TextArea is MinRows tall whatever it holds, and scrolls
+// the rest.
+type fitText struct {
+	widget.Base
+	view *widgets.TextArea
+}
+
+func newFitText(text string) *fitText {
+	f := &fitText{view: widgets.NewTextView(text, "")}
+	f.view.MinRows = 1
+	f.Init(f)
+	f.Add(f.view)
+	return f
+}
+
+func (f *fitText) Measure(c layout.Constraints) paintengine2d.Point {
+	// The view wraps at the width it is laid out at: laid out at this one,
+	// with room for every line, it says how many there are. With no width
+	// to keep to, the text is one line.
+	f.view.MinRows = 1
+	if c.HasMaxW() {
+		f.view.Arrange(paintengine2d.XYWH(0, 0, c.MaxW, 1<<14))
+		f.view.MinRows = max(1, len(f.view.Lines()))
+		// A measure can come after the layout (a parent probing how
+		// narrow it can go): the view goes back to the box it was given.
+		b := f.Bounds()
+		f.view.Arrange(paintengine2d.XYWH(0, 0, b.Dx(), b.Dy()))
+	}
+	return f.view.Measure(c)
+}
+
+func (f *fitText) Arrange(r paintengine2d.Rect) {
+	f.SetBounds(r)
+	f.view.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
 }
 
 // storeChoices is the choice of where the secrets are kept: each place
@@ -112,6 +152,7 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 	c.first = widgets.NewPasswordField("", nil)
 	c.again = widgets.NewPasswordField("", nil)
 	c.passBox = widgets.NewColumn(
+		wrapLabel(forgetText),
 		widgets.NewLabel("Passphrase (at least 8 characters)"), c.first,
 		widgets.NewLabel("Type it again"), c.again,
 	).WithGap(6)
@@ -132,7 +173,12 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 		inUse := o.kind == st.Store
 		rb.SetEnabled(o.available && (!inUse || showInUse))
 		c.radios[i] = rb
-		details := widgets.NewColumn(wrapLabel(o.text)).WithGap(6)
+		// A file's path is its first row.
+		details := widgets.NewColumn().WithGap(6)
+		if o.path != "" {
+			details.Add(pathView(o.path))
+		}
+		details.Add(wrapLabel(o.text))
 		if extra := under[o.kind]; extra != nil {
 			details.Add(extra)
 		}

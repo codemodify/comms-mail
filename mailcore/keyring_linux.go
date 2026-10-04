@@ -54,6 +54,9 @@ type ssConn struct {
 
 func keyringName() string { return "the desktop keyring (Secret Service)" }
 
+// keyringBackend is the keyring's own name.
+func keyringBackend() string { return "Secret Service" }
+
 func ssOpen() (*ssConn, error) {
 	if os.Getenv("DBUS_SESSION_BUS_ADDRESS") == "" && os.Getenv("XDG_RUNTIME_DIR") == "" {
 		return nil, errors.New("no desktop session bus to reach a keyring on")
