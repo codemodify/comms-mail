@@ -225,7 +225,7 @@ func TestSecurityTopics(t *testing.T) {
 	for i := 0; i < list.Count; i++ {
 		topics = append(topics, list.ItemText(i))
 	}
-	if strings.Join(topics, "|") != "Passwords|Keys|Remote images" {
+	if strings.Join(topics, "|") != "Passwords|Keys|Remote images|Educate" {
 		t.Fatalf("topics %q", topics)
 	}
 	// shows is what the right-hand side says: its labels and buttons, and

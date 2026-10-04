@@ -414,7 +414,8 @@ type securityTopic struct {
 }
 
 // prefsSecurity is Settings' Security tab: its topics on the left —
-// Passwords, Keys, Remote images — and the one picked on the right. shown
+// Passwords, Keys, Remote images, Educate — and the one picked on the
+// right. shown
 // is for the tab showing: the page on show asks again, since the store may
 // have locked or a key been made in secretvault itself meanwhile.
 func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) (tab widget.Component, shown func()) {
@@ -425,7 +426,8 @@ func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, on
 	keys, refreshKeys := keysSection(a, cli)
 	topics = append(topics,
 		securityTopic{"Keys", widgets.NewScrollView(keys), refreshKeys},
-		securityTopic{"Remote images", remoteImagesSection(win, cli, onChange), nil})
+		securityTopic{"Remote images", remoteImagesSection(win, cli, onChange), nil},
+		securityTopic{"Educate", educateSection(), nil})
 
 	pages := widgets.NewStack()
 	for _, t := range topics {
