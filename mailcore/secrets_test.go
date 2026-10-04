@@ -106,10 +106,11 @@ func TestSwitchingStores(t *testing.T) {
 		t.Fatal("the plain tokens file stayed")
 	}
 	checkSecretsWork(t, st, "encrypted again")
-	if err := st.UseStore(StoreSecretVault, ""); !errors.Is(err, errSecretVaultMissing) {
+	// No secretvault daemon runs here (tests point its socket nowhere).
+	if err := st.UseStore(StoreSecretVault, ""); err == nil || !strings.Contains(err.Error(), "not running") {
 		t.Fatalf("secretvault: %v", err)
 	}
-	if s := st.SecretsStatus(); s.SecretVaultAvailable || s.Store != StoreEncrypted {
+	if s := st.SecretsStatus(); s.SecretVaultAvailable || s.Store != StoreEncrypted || !strings.Contains(s.SecretVaultProblem, "not running") {
 		t.Fatalf("status %+v", s)
 	}
 }

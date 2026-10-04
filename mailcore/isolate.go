@@ -42,6 +42,9 @@ func IsolateTestEnv(dir string) error {
 	// a bus address that leads nowhere (a test that needs a keyring starts
 	// a private bus with a fake one).
 	_ = os.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(run, "no-session-bus"))
+	// And secretvault's socket to the user's real vault: nowhere, unless
+	// a test starts a fake one.
+	_ = os.Setenv("SECRETVAULT_SOCK", filepath.Join(run, "no-secretvault.sock"))
 	vaultKDF = testVaultKDF
 	return nil
 }
@@ -81,6 +84,7 @@ func IsolateTestEnvTB(t envTB) {
 	t.Setenv(EnvSMTPHost, "")
 	t.Setenv(EnvXOAuth, "")
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path="+filepath.Join(run, "no-session-bus"))
+	t.Setenv("SECRETVAULT_SOCK", filepath.Join(run, "no-secretvault.sock"))
 	vaultKDF = testVaultKDF
 }
 

@@ -20,7 +20,7 @@ and tray live in [`mailui`](../mailui).
 | One fail-closed `tlsMode` (`ssl` / `starttls` / `plain`) | A `starttls` server that stops offering STARTTLS is now an **error**, not a silent cleartext login. `"tls": true` on port 143/110/587 now upgrades instead of going cleartext |
 | No plaintext credentials to a remote host | An account deliberately on a custom cleartext port must say `"tlsMode": "plain"`, and even then only loopback will authenticate |
 | `compose.send` takes attachment **bytes** | `attachPaths` is gone from the wire; the daemon no longer opens client-supplied paths. `Client.SendIdent` still takes paths and reads them UI-side |
-| A choice of where secrets live | The desktop keyring, an encrypted file, or `mail.json` (and, later, secretvault); choosing one moves every password and token there, and `master.key`, `*.tok` and the old `secret-tool` entry go |
+| A choice of where secrets live | The desktop keyring, secretvault, an encrypted file, or `mail.json`; choosing one moves every password and token there, and `master.key`, `*.tok` and the old `secret-tool` entry go |
 | `Bcc` is no longer written into the message | Blind recipients still receive it; they are just no longer disclosed |
 | Moves re-key on `COPYUID` | Cache entries change id after a move; a server without UIDPLUS drops the entry until the next sync |
 | Deletion reconciliation without QRESYNC | Messages deleted elsewhere finally disappear from the cache |
@@ -132,7 +132,7 @@ var DesktopNotifier func(title, body string)
 
 ## Real IMAP or POP3 + SMTP (primary path)
 
-`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept where you chose — the desktop keyring, an encrypted file, or `mail.json` (see [Where passwords are kept](#where-passwords-are-kept)). OAuth sign-ins are kept there too. Optional `passEnv` / `UITK_MAIL_PASS` still work when no password is saved.
+`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept where you chose — the desktop keyring, secretvault, an encrypted file, or `mail.json` (see [Where passwords are kept](#where-passwords-are-kept)). OAuth sign-ins are kept there too. Optional `passEnv` / `UITK_MAIL_PASS` still work when no password is saved.
 
 ### Connection security (`tlsMode`)
 
@@ -519,13 +519,14 @@ created by hand with a looser umask.
 ### Where passwords are kept
 
 comms-mail keeps every secret it needs — account passwords and OAuth
-sign-ins (later the private keys for PGP and S/MIME) — in one of four
-places, chosen by you (`"secretStore"` in `mail.json`):
+sign-ins — in one of four places, chosen by you (`"secretStore"` in
+`mail.json`). PGP and S/MIME keys are not among them: those stay in
+secretvault, which does that work itself (see the security primer).
 
 | Store | Where | Unlocking |
 | --- | --- | --- |
 | **Desktop keyring** | The system's own: the freedesktop Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC), the Keychain on macOS, the Credential Manager on Windows. Items are labelled `comms-mail: <name>` (attributes `application=comms-mail`, `name=…`). | The desktop unlocks it at login; a locked one shows its own prompt. |
-| **secretvault** | [codemodify/secretvault](https://github.com/codemodify/secretvault) — listed, **not available yet**; `TODO(secretvault)` in `mailcore/secrets.go` is where it plugs in. | — |
+| **secretvault** | [codemodify/secretvault](https://github.com/codemodify/secretvault), the owner's own store, reached through its daemon's socket (`$SECRETVAULT_SOCK`, else `$XDG_RUNTIME_DIR/secretvault/secretvaultd.sock`) with its JSON-RPC protocol; comms-mail links none of its code. Items `comms-mail/pass/<account>/<imap\|pop\|smtp>` (kind `password`) and `comms-mail/oauth/<account>` (kind `api-key`) in its default vault, labelled for its own windows. | secretvault's: it asks before letting `comms-maild` read, and remembers. While it is locked, comms-maild holds no secret — what it read is dropped and its sessions closed — and waits; it asks secretvault to unlock only when you do (Fetch, or Settings › Privacy › **Unlock secretvault…**). |
 | **Encrypted file** | `~/.data/comms-mail/secrets/vault.json` (mode `0600`): AES-256-GCM under a key from your passphrase (Argon2id; the salt and cost are bound into the encryption, so they cannot be swapped for weaker ones). | Your passphrase, once each time comms-maild starts. |
 | **Plain file** | Passwords in `mail.json`, as comms-mail always kept them; OAuth tokens in `oauth-tokens.json` beside it (both `0600`). Readable by any program running as you. | — |
 
@@ -541,10 +542,13 @@ places, chosen by you (`"secretStore"` in `mail.json`):
   the old token files, `master.key`, and the copy of that key older builds
   put in the keyring through `secret-tool`.
 - **Locked.** While the store in use cannot be read — the encrypted file
-  not yet unlocked, the keyring locked — the daemon connects to **no
-  server** (it never tries a login without its password): mail already
-  downloaded shows, a message you send waits in the Outbox, and accounts
-  cannot be changed. The window unlocks at start and on Fetch.
+  not yet unlocked, the keyring or secretvault locked, secretvault told
+  no — the daemon connects to **no server** (it never tries a login
+  without its password): mail already downloaded shows, a message you
+  send waits in the Outbox, and accounts cannot be changed. The window
+  unlocks at start and on Fetch; for secretvault it waits at start, and
+  sync resumes by itself when secretvault unlocks (or starts, if it was
+  not running yet).
 - **The passphrase** (encrypted file): at least 8 characters; Settings ›
   Privacy › **Change passphrase…**; **Forgot it…** on the unlock window
   starts over — every saved secret is deleted, no store is chosen, the
@@ -554,8 +558,9 @@ places, chosen by you (`"secretStore"` in `mail.json`):
 `secrets.status`, `secrets.use` (`{store, passphrase}`), `secrets.unlock`,
 `vault.change` and `vault.reset` are the daemon's side of this. A store
 that keeps no secrets (the demo) reports `supported: false`, and the window
-asks nothing. Tests never reach your real keyring: they run the keyring
-code against a fake Secret Service on a private D-Bus.
+asks nothing. Tests never reach your real keyring or secretvault: they
+run the keyring code against a fake Secret Service on a private D-Bus, and
+the secretvault code against a stand-in daemon (`internal/svtest`).
 
 ## Folders
 

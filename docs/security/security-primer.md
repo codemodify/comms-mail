@@ -306,6 +306,8 @@ Still to do:
 >
 > - **Engine:** PGP and S/MIME only through secretvault, the owner's own secret store. It has its own OpenPGP and CMS code (no GnuPG) and keeps the private keys in its daemon, which verifies, decrypts, signs and encrypts whole messages. comms-mail writes no crypto of its own, and has PGP and S/MIME only when secretvault is the chosen store. This replaces Proton's `go-crypto` and comms-mail's own CMS above.
 > - **Unlock:** while secretvault is locked (screen lock, sleep, logout), comms-mail's daemon holds no secrets and waits for it to unlock. Which programs it lets in without asking is secretvault's to decide.
+> - **Drafts of encrypted mail:** kept on this machine only, never uploaded to the server's Drafts folder.
+> - **Signing:** on by default whenever there is a key for the From address.
 
 The choices as they were laid out, with the recommendation each had:
 

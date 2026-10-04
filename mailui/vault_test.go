@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codemodify/comms-mail/internal/svtest"
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
@@ -120,7 +121,7 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 		t.Fatal("Keep is on with nothing picked")
 	}
 	if radios["secretvault"].Enabled() {
-		t.Fatal("secretvault can be picked, and is not there yet")
+		t.Fatal("secretvault can be picked, and is not running here")
 	}
 	if shownFields(fields) != 0 {
 		t.Fatal("passphrase fields show before the encrypted file is picked")
@@ -170,6 +171,107 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 	a.PumpOnce()
 	if len(a.Windows()) != before {
 		t.Fatal("an unlocked store was asked about again")
+	}
+}
+
+// With secretvault running, the window offers it, asks comms-mail for no
+// passphrase, and moves the passwords there; Settings says what that
+// means. When the vault locks, Settings offers to unlock it — secretvault
+// asks, not comms-mail — and a window starting while it is locked waits
+// rather than asking.
+func TestChoosingSecretVaultInTheWindow(t *testing.T) {
+	sv := svtest.Start(t, false)
+	cli, _ := vaultDaemon(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	st, _ := cli.SecretsStatus()
+	if !st.SecretVaultAvailable {
+		t.Fatalf("secretvault runs, and is not offered: %+v", st)
+	}
+	w := newWindowFrom(t, a, func() { openStoreChooser(a, cli, accountIntro, st, nil) })
+	radios, _, buttons := chooserParts(w)
+	if !radios["secretvault"].Enabled() {
+		t.Fatal("secretvault cannot be picked")
+	}
+	radios["secretvault"].SetSelected(true)
+	a.PumpOnce()
+	if _, fields, _ := chooserParts(w); shownFields(fields) != 0 {
+		t.Fatal("picking secretvault asks comms-mail for a passphrase")
+	}
+	buttons["OK"].OnClick()
+	a.PumpOnce()
+	if !w.Closed() {
+		t.Fatal("the window stayed after the secrets moved")
+	}
+	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StoreSecretVault || !st.Ready || st.PlainSecrets {
+		t.Fatalf("after: %+v", st)
+	}
+	if _, ok := sv.Item("comms-mail/pass/home/imap"); !ok {
+		t.Fatal("the password is not in secretvault")
+	}
+
+	unlockButton := func() (*widgets.Button, string) {
+		section := passphraseSection(a, cli)
+		var btn *widgets.Button
+		var texts []string
+		widget.Walk(section, func(c widget.Component) {
+			switch v := c.(type) {
+			case *widgets.Button:
+				if v.Text == "Unlock secretvault…" {
+					btn = v
+				}
+			case *widgets.Label:
+				texts = append(texts, v.Text)
+			}
+		})
+		return btn, strings.Join(texts, "\n")
+	}
+	btn, text := unlockButton()
+	// (A hidden button is not walked.)
+	if !strings.Contains(text, "asks you before letting comms-mail read them") || btn != nil && btn.Visible() {
+		t.Fatalf("Settings, unlocked (unlock shown %v):\n%s", btn != nil && btn.Visible(), text)
+	}
+
+	locked := func() bool {
+		st, _ := cli.SecretsStatus()
+		return st.Locked
+	}
+	sv.Lock()
+	for end := time.Now().Add(2 * time.Second); !locked() && time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+	}
+	if !locked() {
+		t.Fatal("the lock was not noticed")
+	}
+
+	// A window starting now waits: no prompt, and secretvault is not asked.
+	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1100, Height: 720, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(a, main, cli, AppOptions{})
+	main.SetContent(s.build())
+	before := len(a.Windows())
+	s.checkVault()
+	a.PumpOnce()
+	if len(a.Windows()) != before || sv.Unlocks() != 0 {
+		t.Fatal("a window starting with secretvault locked asked to unlock it")
+	}
+
+	// Settings asks secretvault to unlock, which shows its own prompt.
+	btn, text = unlockButton()
+	if btn == nil || !btn.Visible() || !strings.Contains(text, "locked now") {
+		t.Fatalf("Settings, locked:\n%s", text)
+	}
+	btn.OnClick()
+	for end := time.Now().Add(2 * time.Second); sv.Unlocks() == 0 && time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+		a.PumpOnce()
+	}
+	if sv.Unlocks() != 1 {
+		t.Fatalf("Unlock asked secretvault %d times", sv.Unlocks())
+	}
+	for end := time.Now().Add(2 * time.Second); locked() && time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+	}
+	if st, _ := cli.SecretsStatus(); !st.Ready {
+		t.Fatalf("after Unlock: %+v", st)
 	}
 }
 

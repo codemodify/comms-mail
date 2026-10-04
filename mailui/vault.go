@@ -69,9 +69,13 @@ func storeOptions(st mailcore.SecretsStatus) []storeOption {
 	if !st.KeyringAvailable {
 		keyring += "\nNot available: " + st.KeyringProblem
 	}
+	vault := "Your own secretvault. It asks you before letting comms-mail read anything, and while it is locked comms-mail waits, holding no passwords. It also checks, decrypts, signs and encrypts mail."
+	if !st.SecretVaultAvailable {
+		vault += "\nNot available: " + st.SecretVaultProblem
+	}
 	return []storeOption{
 		{mailcore.StoreKeyring, "Desktop keyring", keyring, st.KeyringAvailable},
-		{mailcore.StoreSecretVault, "secretvault", "codemodify/secretvault. Not available yet.", st.SecretVaultAvailable},
+		{mailcore.StoreSecretVault, "secretvault", vault, st.SecretVaultAvailable},
 		{mailcore.StoreEncrypted, "Encrypted file", "A file only your passphrase opens (Argon2id, AES-256-GCM). comms-mail asks for the passphrase once each time it starts. " + forgetText, true},
 		{mailcore.StorePlain, "Plain file", "Passwords stay readable in mail.json, as before: any program running as you can read them.", true},
 	}
@@ -329,7 +333,9 @@ func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window)
 }
 
 // unlockStore opens the store in use for this run: the encrypted file
-// asks for its passphrase, the desktop keyring shows its own prompt.
+// asks for its passphrase, the desktop keyring and secretvault show their
+// own prompts (comms-mail never sees secretvault's passphrase). For
+// secretvault it is also how to be asked again after saying no.
 func unlockStore(a *app.Application, cli *mailcore.Client, st mailcore.SecretsStatus, win *app.Window, then func()) *app.Window {
 	if st.Store == mailcore.StoreEncrypted {
 		return openPassphrase(a, cli, passUnlock, then)
@@ -337,7 +343,11 @@ func unlockStore(a *app.Application, cli *mailcore.Client, st mailcore.SecretsSt
 	runAsync(a, func() (any, error) { return nil, cli.UnlockSecrets("") }, func(_ any, err error) {
 		if err != nil {
 			if win != nil {
-				widgets.Warn(win.Content(), "Keyring", "The desktop keyring stayed locked, so comms-mail cannot connect: "+err.Error(), nil)
+				title, text := "Keyring", "The desktop keyring stayed locked, so comms-mail cannot connect: "
+				if st.Store == mailcore.StoreSecretVault {
+					title, text = "secretvault", "secretvault stayed locked, so comms-mail is waiting: "
+				}
+				widgets.Warn(win.Content(), title, text+err.Error(), nil)
 			}
 			return
 		}
@@ -382,6 +392,10 @@ func (s *session) checkVault() {
 		st := v.(mailcore.SecretsStatus)
 		switch {
 		case !st.Supported:
+		case st.Locked && st.Store == mailcore.StoreSecretVault:
+			// comms-mail waits for secretvault rather than asking it to
+			// unlock; Fetch, or Settings › Privacy, asks.
+			s.mark("Waiting for secretvault to unlock")
 		case st.Locked:
 			s.promptUnlock()
 		case st.Store == "" && st.PlainSecrets:

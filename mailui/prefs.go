@@ -440,7 +440,7 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		return nil
 	}
 	note := wrapLabel("")
-	var move, change *widgets.Button
+	var move, change, unlock *widgets.Button
 	show := func(st mailcore.SecretsStatus) {
 		text := "Your saved passwords and sign-ins are kept in " + mailcore.StoreLabel(st.Store) + "."
 		switch st.Store {
@@ -457,6 +457,8 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 			text += " comms-mail asks for its passphrase once each time it starts."
 		case mailcore.StoreKeyring:
 			text += " The desktop unlocks it when you log in."
+		case mailcore.StoreSecretVault:
+			text += " It asks you before letting comms-mail read them, and while it is locked comms-mail holds none of them and waits."
 		case mailcore.StorePlain:
 			text += " Any program running as you can read them."
 		}
@@ -472,6 +474,8 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		}
 		move.Invalidate()
 		change.SetVisible(st.Store == mailcore.StoreEncrypted)
+		// secretvault: unlocking it, or being asked again after a no.
+		unlock.SetVisible(st.Store == mailcore.StoreSecretVault && !st.Ready && (st.Locked || st.Problem != ""))
 	}
 	refresh := func() {
 		if cur, err := cli.SecretsStatus(); err == nil {
@@ -490,6 +494,17 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		openStoreChooser(a, cli, intro, cur, refresh)
 	})
 	change = newButton("Change passphrase…", func() { openPassphrase(a, cli, passChange, refresh) })
+	unlock = newButton("Unlock secretvault…", nil)
+	unlock.OnClick = func() {
+		// secretvault shows its own prompt; comms-mail never sees the
+		// passphrase.
+		runAsync(a, func() (any, error) { return nil, cli.UnlockSecrets("") }, func(_ any, err error) {
+			if err != nil {
+				widgets.Warn(unlock, "secretvault", "secretvault stayed locked, so comms-mail is waiting: "+err.Error(), nil)
+			}
+			refresh()
+		})
+	}
 	show(st)
-	return widgets.NewColumn(widgets.NewTitle("Passwords"), note, foldRow(move, change)).WithGap(8)
+	return widgets.NewColumn(widgets.NewTitle("Passwords"), note, foldRow(move, change, unlock)).WithGap(8)
 }

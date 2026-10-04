@@ -67,12 +67,12 @@ new ones turn up.
 - **OAuth (Gmail / Microsoft 365)** — decided 2026-09-28: the owner's own
   client ID while comms-mail has one user (works today). A built-in
   registration only when others use it (Google verification + CASA).
-- **secretvault** — its API is built (a Go client with only its own
-  protocol package as a dependency), but it is not published yet: GitHub's
-  `dev` holds the initial commit only. Once it is, `secretVaultStore` in
-  `mailcore/secrets.go` (a stub today) keeps passwords and OAuth tokens
-  there. While secretvault is locked, comms-maild holds no secrets and
-  waits for it to unlock (decided 2026-10-03).
+- **secretvault** — passwords and OAuth sign-ins can be kept there (done
+  2026-10-03): comms-maild speaks its socket protocol, links none of its
+  code, and needs nothing published. Next: reading signed / encrypted mail
+  (`mail.inspect`), then Sign / Encrypt when writing (`mail.compose`),
+  then keys in Settings. comms-mail uses secretvault's *default* vault; a
+  setting for another is not there yet.
 - **Keyring on macOS and Windows** — written (Keychain through the
   security tool, Credential Manager through advapi32) and compiled, not
   yet run on those systems.
@@ -92,10 +92,15 @@ new ones turn up.
   `go-crypto` and our own CMS). Sending is `ComposeMail` with Sign /
   Encrypt in the Write window. Without secretvault as the store there is
   no PGP or S/MIME.
-- **Asked of secretvault** — publishing it; S/MIME roots beyond an
-  organisation's own CA (a public CA's certificate does not verify as
-  trusted today); a check before Send of which recipients can be
-  encrypted to.
+- **Asked of secretvault** — S/MIME roots beyond an organisation's own CA
+  (a public CA's certificate does not verify as trusted today); a check
+  before Send of which recipients can be encrypted to; an Autocrypt header
+  on outgoing mail; encrypting to yourself only (for drafts). Publishing
+  it is not needed: comms-mail talks to its daemon, not its code.
+- **Drafts of encrypted mail** — kept on this machine only, never uploaded
+  to the server's Drafts (decided 2026-10-03).
+- **Signing** — on by default whenever there is a key for the From
+  address (decided 2026-10-03).
 - **Search inside encrypted mail** — a setting, off by default: decrypted
   text stays out of mail.db and the search index unless it is on.
 - **Passphrase fields that never hold a string** — uitoolkit 0.22 has a

@@ -19,7 +19,9 @@ import (
 //
 //   - keyring: the desktop's own (Secret Service on Linux, the Keychain on
 //     macOS, the Credential Manager on Windows), unlocked at login.
-//   - secretvault: codemodify/secretvault — listed, not available yet.
+//   - secretvault: codemodify/secretvault, the owner's own (secretvault.go):
+//     it asks before letting comms-mail read, and while it is locked
+//     comms-maild holds nothing and waits.
 //   - encrypted: a file only the owner's passphrase opens (vault.go).
 //   - plain: passwords in mail.json as they always were, OAuth tokens in
 //     oauth-tokens.json beside it; readable by anything running as the
@@ -36,10 +38,6 @@ const (
 	StoreEncrypted   = "encrypted"
 	StorePlain       = "plain"
 )
-
-// errSecretVaultMissing: codemodify/secretvault has no API to talk to yet.
-// TODO(secretvault): wire it in (secretVaultStore) once it has one.
-var errSecretVaultMissing = errors.New("secretvault is not available yet")
 
 // StoreLabel is how the window names a store.
 func StoreLabel(kind string) string {
@@ -513,19 +511,6 @@ func (legacyStore) Forget() error {
 	return nil
 }
 
-// ---- secretvault ----
-
-// secretVaultStore is codemodify/secretvault. TODO(secretvault): talk to
-// it once it has an API; until then it is listed and not available.
-type secretVaultStore struct{}
-
-func (secretVaultStore) Kind() string                              { return StoreSecretVault }
-func (secretVaultStore) Ready() error                              { return errSecretVaultMissing }
-func (secretVaultStore) Get(string) (string, bool, error)          { return "", false, errSecretVaultMissing }
-func (secretVaultStore) Update(map[string]string, ...string) error { return errSecretVaultMissing }
-func (secretVaultStore) Names() ([]string, error)                  { return nil, errSecretVaultMissing }
-func (secretVaultStore) Forget() error                             { return errSecretVaultMissing }
-
 // ---- the store in LocalStore ----
 
 // SecretsStatus is what the window needs to ask the right question.
@@ -552,8 +537,10 @@ type SecretsStatus struct {
 	KeyringName      string `json:"keyringName"`
 	KeyringAvailable bool   `json:"keyringAvailable"`
 	KeyringProblem   string `json:"keyringProblem,omitempty"`
-	// SecretVaultAvailable: codemodify/secretvault can be used.
-	SecretVaultAvailable bool `json:"secretVaultAvailable"`
+	// SecretVaultAvailable: codemodify/secretvault's daemon answers here;
+	// SecretVaultProblem says why not.
+	SecretVaultAvailable bool   `json:"secretVaultAvailable"`
+	SecretVaultProblem   string `json:"secretVaultProblem,omitempty"`
 }
 
 // accountKeyID is the id an account's secrets are filed under.
@@ -589,6 +576,42 @@ func (s *LocalStore) initSecretKind() {
 	}
 	s.kind.Store(kind)
 	setActiveStore(s.storeFor(kind))
+	if kind == StoreSecretVault {
+		s.watchSecretVault()
+	}
+}
+
+// watchSecretVault makes the daemon follow secretvault: when its vault
+// locks, comms-maild drops its sessions — each keeps a password to
+// reconnect with — and its watchers find the store locked and wait; when
+// it unlocks, push restarts, a sync runs and the Outbox goes.
+func (s *LocalStore) watchSecretVault() {
+	theSecretVault.watch(func() {
+		if s.secretKind() != StoreSecretVault {
+			return
+		}
+		s.mu.Lock()
+		var drop []*imapClient
+		for _, pool := range []map[string]*imapClient{s.clients, s.fgClients} {
+			for id, c := range pool {
+				drop = append(drop, c)
+				delete(pool, id)
+			}
+		}
+		s.mu.Unlock()
+		for _, c := range drop {
+			go c.close()
+		}
+		s.restartPush()
+		Logf("secrets: secretvault is locked; waiting for it to unlock")
+		s.Emit(StoreEvent{Reason: "vault"})
+	}, func() {
+		if s.secretKind() != StoreSecretVault {
+			return
+		}
+		Logf("secrets: secretvault is unlocked")
+		s.afterUnlock()
+	})
 }
 
 func (s *LocalStore) storeFor(kind string) secretStore {
@@ -596,7 +619,7 @@ func (s *LocalStore) storeFor(kind string) secretStore {
 	case StoreKeyring:
 		return theKeyring
 	case StoreSecretVault:
-		return secretVaultStore{}
+		return secretVaultStore{theSecretVault}
 	case StoreEncrypted:
 		return encryptedStore{s.vaultOf()}
 	case StorePlain:
@@ -682,6 +705,11 @@ func (s *LocalStore) SecretsStatus() SecretsStatus {
 	default:
 		st.KeyringProblem = err.Error()
 	}
+	if err := theSecretVault.available(); err == nil {
+		st.SecretVaultAvailable = true
+	} else {
+		st.SecretVaultProblem = err.Error()
+	}
 	return st
 }
 
@@ -691,9 +719,7 @@ func (s *LocalStore) SecretsStatus() SecretsStatus {
 // failure part-way leaves them where they were.
 func (s *LocalStore) UseStore(kind, passphrase string) error {
 	switch kind {
-	case StoreKeyring, StoreEncrypted, StorePlain:
-	case StoreSecretVault:
-		return errSecretVaultMissing
+	case StoreKeyring, StoreSecretVault, StoreEncrypted, StorePlain:
 	default:
 		return fmt.Errorf("mail: no secret store %q", kind)
 	}
@@ -743,6 +769,20 @@ func (s *LocalStore) UseStore(kind, passphrase string) error {
 		if err := (plainStore{}).Update(values); err != nil {
 			return err
 		}
+	case StoreSecretVault:
+		sv := secretVaultStore{theSecretVault}
+		// The person is choosing it now, so a locked vault is unlocked
+		// (secretvault asks) rather than waited for.
+		if err := sv.Ready(); errors.Is(err, ErrLocked) {
+			if err := sv.unlock(); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+		if err := sv.Update(values); err != nil {
+			return err
+		}
 	}
 
 	// The choice is recorded; mail.json keeps passwords only for the
@@ -764,6 +804,9 @@ func (s *LocalStore) UseStore(kind, passphrase string) error {
 	}
 	s.mu.Unlock()
 	setActiveStore(s.storeFor(kind))
+	if kind == StoreSecretVault {
+		s.watchSecretVault()
+	}
 	if err != nil {
 		return err
 	}
@@ -778,9 +821,13 @@ func (s *LocalStore) UseStore(kind, passphrase string) error {
 }
 
 // UnlockSecrets opens the store for this run: the encrypted file with the
-// passphrase, the desktop keyring with its own prompt.
+// passphrase, the desktop keyring and secretvault each with its own prompt.
 func (s *LocalStore) UnlockSecrets(passphrase string) error {
 	switch s.secretKind() {
+	case StoreSecretVault:
+		// Unlocking (or asking again after a no) lets the daemon connect
+		// through the vault's watcher (watchSecretVault).
+		return secretVaultStore{theSecretVault}.unlock()
 	case StoreEncrypted:
 		v := s.vaultOf()
 		if !v.Unlocked() {

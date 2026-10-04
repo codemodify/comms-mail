@@ -284,11 +284,16 @@ func TestKeyringSecretService(t *testing.T) {
 		t.Fatalf("get while locked: %v", err)
 	}
 	// A dismissed prompt leaves it locked; an answered one unlocks it.
-	f.dismiss = true
+	setDismiss := func(on bool) { // the prompt reads it on its own goroutine
+		f.mu.Lock()
+		f.dismiss = on
+		f.mu.Unlock()
+	}
+	setDismiss(true)
 	if err := keyringUnlock(); err == nil {
 		t.Fatal("a dismissed prompt unlocked the keyring")
 	}
-	f.dismiss = false
+	setDismiss(false)
 	if err := keyringUnlock(); err != nil {
 		t.Fatal(err)
 	}

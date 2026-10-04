@@ -52,6 +52,7 @@ var actionIcons = map[string]style.ToolIcon{
 	"test connection":        style.IconCheck,
 	"run now":                style.IconSync,
 	"unlock":                 style.IconLock,
+	"unlock secretvault":     style.IconLock,
 	"more":                   style.IconArrowDown,
 	"less":                   style.IconArrowUp,
 }
