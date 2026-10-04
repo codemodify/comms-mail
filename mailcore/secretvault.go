@@ -561,7 +561,7 @@ func (s secretVaultStore) fail(err error) error {
 		}
 		return ErrLocked
 	case svCodeDenied, svCodeCanceled:
-		refused := errors.New("secretvault did not let comms-mail read its passwords; it asks again after the vault next unlocks, or from Settings › Privacy")
+		refused := errors.New("secretvault did not let comms-mail read its passwords; it asks again after the vault next unlocks, or from Settings › Security › Passwords")
 		v.mu.Lock()
 		v.refused = refused
 		v.mu.Unlock()

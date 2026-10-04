@@ -190,3 +190,80 @@ func TestLogoIcons(t *testing.T) {
 		}
 	}
 }
+
+// Settings › Security: its topics — Passwords, Keys, Remote images — in a
+// sidebar on the left, and only the one picked on the right; no Privacy or
+// Keys tab of their own. Keys asks secretvault again whenever it shows, so
+// a key made in secretvault meanwhile is there when the tab is opened
+// again.
+func TestSecurityTopics(t *testing.T) {
+	s, _, sv, _ := securityDaemon(t)
+	if _, err := s.cli.PutAccount(mailcore.AccountConfig{ID: "home", Address: "ada@example.com",
+		IMAP: mailcore.ServerConfig{Host: "127.0.0.1:1", TLSMode: "ssl"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.cli.AllowRemoteImages("news@example.com", true); err != nil {
+		t.Fatal(err)
+	}
+	a, _, _, tv := openSettingsOn(t, s.cli)
+	for _, title := range tv.Bar().Titles {
+		if title == "Privacy" || title == "Keys" {
+			t.Errorf("a %s tab", title)
+		}
+	}
+	page := selectTab(a, tv, "Security")
+	var list *widgets.ListView
+	widget.Walk(page, func(c widget.Component) {
+		if v, ok := c.(*widgets.ListView); ok {
+			list = v
+		}
+	})
+	if list == nil || !list.Sidebar {
+		t.Fatal("no sidebar of topics")
+	}
+	var topics []string
+	for i := 0; i < list.Count; i++ {
+		topics = append(topics, list.ItemText(i))
+	}
+	if strings.Join(topics, "|") != "Passwords|Keys|Remote images" {
+		t.Fatalf("topics %q", topics)
+	}
+	// shows is what the right-hand side says: its labels and buttons, and
+	// "(table)" for a table.
+	shows := func() string {
+		var out []string
+		widget.Walk(page, func(c widget.Component) {
+			switch v := c.(type) {
+			case *widgets.Label:
+				out = append(out, v.Text)
+			case *widgets.Button:
+				out = append(out, v.Text)
+			case *widgets.TableView:
+				out = append(out, "(table)")
+			}
+		})
+		return strings.Join(out, "\n")
+	}
+	pick := func(i int) string {
+		list.Selected = i
+		list.OnSelect(i)
+		a.PumpOnce()
+		return shows()
+	}
+	for i, want := range []struct{ has, hasNot string }{
+		{"Change where…", "OpenPGP"},
+		{"No OpenPGP key", "Change where…"},
+		{"(table)", "OpenPGP"},
+	} {
+		if got := pick(i); !strings.Contains(got, want.has) || strings.Contains(got, want.hasNot) {
+			t.Fatalf("%s shows:\n%s", topics[i], got)
+		}
+	}
+	pick(1)
+	sv.OwnKeys("ada@example.com")
+	selectTab(a, tv, "Accounts")
+	selectTab(a, tv, "Security")
+	if got := shows(); !strings.Contains(got, "OpenPGP key ") || strings.Contains(got, "No OpenPGP key") {
+		t.Fatalf("Keys did not ask again:\n%s", got)
+	}
+}

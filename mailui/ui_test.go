@@ -1685,8 +1685,8 @@ func TestMailSettingsTabs(t *testing.T) {
 	// place to see and manage them; Appearance when comms-mail got a theme
 	// of its own, over the one every uitoolkit app shares; Keys with
 	// signing and encrypting through secretvault.
-	if strings.Join(got, ",") != "Accounts,Signatures,Tags,Filters,Privacy,Keys,Appearance" {
-		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Filters, Privacy, Keys, Appearance", got)
+	if strings.Join(got, ",") != "Accounts,Signatures,Tags,Filters,Security,Appearance" {
+		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Filters, Security, Appearance", got)
 	}
 	for _, name := range []string{"Notify", "VIP", "Identities"} {
 		if containsLabel(got, name) {

@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-// Your own keys, as Settings › Privacy shows them: for each address you
-// send from, the OpenPGP key and the S/MIME certificates secretvault holds
-// for it. Making a key and bringing in a .p12 are secretvault's work:
-// comms-mail asks it to, and never holds a private key. It asks only about
-// those addresses (pgp.public by address, smime.list), never for a list of
-// what else the vault holds.
+// Your own keys, as Settings › Security › Keys shows them: for each
+// address you send from, the OpenPGP key and the S/MIME certificates
+// secretvault holds for it. Making a key and bringing in a .p12 are
+// secretvault's work: comms-mail asks it to, and never holds a private
+// key. It asks only about those addresses (pgp.public by address,
+// smime.list), never for a list of what else the vault holds.
 
 // OwnKeys is what Settings shows.
 type OwnKeys struct {
@@ -81,7 +81,7 @@ func (s *LocalStore) ownAddresses() []string {
 // never asks secretvault to unlock.
 func (s *LocalStore) OwnKeys() OwnKeys {
 	if s.secretKind() != StoreSecretVault {
-		return OwnKeys{Why: "secretvault keeps your keys: choose it in Settings › Privacy."}
+		return OwnKeys{Why: "secretvault keeps your keys: choose it in Settings › Security › Passwords."}
 	}
 	out := OwnKeys{Available: true}
 	switch err := (secretVaultStore{theSecretVault}).Ready(); {
@@ -208,7 +208,7 @@ func (s *LocalStore) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
 // person asked for this, so a locked one is said, not waited for.
 func (s *LocalStore) secretVaultOpen() error {
 	if s.secretKind() != StoreSecretVault {
-		return errors.New("secretvault keeps your keys: choose it in Settings › Privacy first")
+		return errors.New("secretvault keeps your keys: choose it in Settings › Security › Passwords first")
 	}
 	if err := (secretVaultStore{theSecretVault}).Ready(); err != nil {
 		if errors.Is(err, ErrLocked) {

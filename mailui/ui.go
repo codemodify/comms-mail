@@ -71,6 +71,7 @@ func MailApp(a *app.Application, win *app.Window) widget.Component {
 
 // Open builds the Mail chrome against a comms-maild Client (no Store / IMAP).
 func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOptions) widget.Component {
+	noWindowMenu(a)
 	s := newSession(a, win, cli, opts)
 	root := s.build()
 	s.attachTray()

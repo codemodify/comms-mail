@@ -15,7 +15,7 @@ import (
 // Where comms-mail keeps its secrets — account passwords and OAuth tokens
 // (later the private keys for PGP and S/MIME). The owner chooses one of
 // four stores, and can move everything from one to another (Settings ›
-// Privacy):
+// Security › Passwords):
 //
 //   - keyring: the desktop's own (Secret Service on Linux, the Keychain on
 //     macOS, the Credential Manager on Windows), unlocked at login.

@@ -14,7 +14,7 @@ import (
 // secrets.go): the desktop keyring, secretvault, an encrypted file, or a
 // plain file. The window asks when it finds passwords readable in
 // mail.json and before the first account is saved, unlocks the store at
-// start, and Settings › Privacy moves everything to another store.
+// start, and Settings › Security › Passwords moves everything to another store.
 
 // forgetText is what a forgotten passphrase costs.
 const forgetText = "If you forget the passphrase, the saved passwords cannot be recovered: you would type each account's password again."
@@ -53,7 +53,7 @@ func plainIntro(st mailcore.SecretsStatus) string {
 const accountIntro = "Before comms-mail saves this account's password, choose where your passwords are kept."
 
 // laterNote is under the choices when they are first offered.
-const laterNote = "You can set this up later, or switch to another place at any time, with Change where… on the Privacy tab in Settings."
+const laterNote = "You can set this up later, or switch to another place at any time, with Change where… under Security › Passwords in Settings."
 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
@@ -394,7 +394,7 @@ func (s *session) checkVault() {
 		case !st.Supported:
 		case st.Locked && st.Store == mailcore.StoreSecretVault:
 			// comms-mail waits for secretvault rather than asking it to
-			// unlock; Fetch, or Settings › Privacy, asks.
+			// unlock; Fetch, or Settings › Security › Passwords, asks.
 			s.mark("Waiting for secretvault to unlock")
 		case st.Locked:
 			s.promptUnlock()
@@ -403,7 +403,7 @@ func (s *session) checkVault() {
 		case st.Problem != "":
 			widgets.Warn(s.win.Content(), "Passwords",
 				"comms-mail cannot read your saved passwords from "+mailcore.StoreLabel(st.Store)+": "+st.Problem+
-					"\n\nThe Privacy tab in Settings can move them elsewhere once it can reach them again.", nil)
+					"\n\nSecurity › Passwords in Settings can move them elsewhere once it can reach them again.", nil)
 		}
 	})
 }

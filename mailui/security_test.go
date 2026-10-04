@@ -292,9 +292,9 @@ func sectionParts(c widget.Component) (texts []string, buttons map[string]*widge
 	return
 }
 
-// Settings › Privacy shows your keys for each address you send from, and
-// makes an OpenPGP key with secretvault; the .p12 password is asked in a
-// field that holds bytes, and handed over once.
+// Settings › Security › Keys shows your keys for each address you send
+// from, and makes an OpenPGP key with secretvault; the .p12 password is
+// asked in a field that holds bytes, and handed over once.
 func TestYourKeysInSettings(t *testing.T) {
 	s, a, sv, _ := securityDaemon(t)
 	if _, err := s.cli.PutAccount(mailcore.AccountConfig{ID: "home", Address: "ada@example.com",

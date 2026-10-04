@@ -199,8 +199,9 @@ func onePixelPNG(t *testing.T) []byte {
 	return b.Bytes()
 }
 
-// Settings → Privacy lists the trusted senders and takes one back.
-func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
+// Settings › Security › Remote images lists the trusted senders and
+// takes one back.
+func TestRemoteImagesRemovesATrustedSender(t *testing.T) {
 	cli := demoClient(t)
 	if err := cli.AllowRemoteImages("news@example.com", true); err != nil {
 		t.Fatal(err)
@@ -212,7 +213,7 @@ func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
 	}
 	defer w.Close()
 	changed := 0
-	col := prefsPrivacy(a, w, cli, func() { changed++ })
+	col := remoteImagesSection(w, cli, func() { changed++ })
 	w.SetContent(col)
 	a.PumpOnce()
 	var remove *widgets.Button
@@ -228,7 +229,7 @@ func TestPrivacyTabRemovesATrustedSender(t *testing.T) {
 		}
 	})
 	if table == nil || table.RowCount != 1 || remove == nil || !remove.Enabled() {
-		t.Fatalf("privacy tab: table %v remove %v", table, remove)
+		t.Fatalf("remote images: table %v remove %v", table, remove)
 	}
 	remove.OnClick()
 	if got, _ := cli.RemoteImageSenders(); len(got) != 0 || table.RowCount != 0 || changed != 1 || remove.Enabled() {

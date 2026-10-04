@@ -163,7 +163,7 @@ func recognised(raw []byte) (MessageSecurity, Message) {
 
 // whyNoSecretVault is what the reading pane says of protected mail while
 // another store is in use.
-const whyNoSecretVault = "secretvault checks signed and encrypted mail: choose it in Settings › Privacy to read this one."
+const whyNoSecretVault = "secretvault checks signed and encrypted mail: choose it in Settings › Security › Passwords to read this one."
 
 // MessageSecurityOf is MessageSecurity for a store that keeps no secrets
 // (the demo): what the structure says, checked by nobody.

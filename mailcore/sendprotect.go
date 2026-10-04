@@ -51,7 +51,7 @@ type SigningKeys struct {
 // secretvault to unlock.
 func (s *LocalStore) SigningKeys(from string) SigningKeys {
 	if s.secretKind() != StoreSecretVault {
-		return SigningKeys{Why: "secretvault signs and encrypts mail: choose it in Settings › Privacy."}
+		return SigningKeys{Why: "secretvault signs and encrypts mail: choose it in Settings › Security › Passwords."}
 	}
 	out := SigningKeys{Available: true}
 	switch err := (secretVaultStore{theSecretVault}).Ready(); {
@@ -118,7 +118,7 @@ func (s *LocalStore) protect(raw []byte, msg Message) ([]byte, error) {
 	}
 	if s.secretKind() != StoreSecretVault {
 		if p.Sign || p.Encrypt {
-			return nil, errors.New("signing and encrypting are secretvault's: choose it in Settings › Privacy, or send without them")
+			return nil, errors.New("signing and encrypting are secretvault's: choose it in Settings › Security › Passwords, or send without them")
 		}
 		return raw, nil // signing only if there is a key, and there is none
 	}

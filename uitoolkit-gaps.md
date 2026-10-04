@@ -13,8 +13,8 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30,
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
-#2 (declined and settled) and #29 (a design change). Nothing new was
-found checking 0.23.3. What comms-mail uses for each closed item is under
+#2 (declined and settled), #29 (a design change) and #47 (found
+2026-10-04). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 ## Open
@@ -95,6 +95,31 @@ still the open design change.
 **Unchanged in 0.23.2.**
 
 **Unchanged in 0.23.3.**
+
+### 47. An app cannot turn the window-menu button off for itself
+comms-mail wants no window-menu button (KWin's **M** at the left end of
+its captions) on any of its windows. There are two switches, and neither
+is the app's:
+
+- `Application.SetHideWindowMenu` is the *user's* look.json
+  `"hideWindowMenu"`: `ApplyAppearance` (app/desktopprefs.go:151) sets it
+  back from the file every time it applies one — every change uitoolkit's
+  Settings makes to look.json, with `WatchLook` — and `ThemeOverride`,
+  the app's own level of the cascade, has no field for it.
+- `Window.SetCaptionButtonVisible(platform.CaptionMenu, false)` is per
+  window, so every window an app opens has to remember it, and windows
+  the toolkit opens for it are out of reach. Where the desktop can keep a
+  window above, `keepAboveInMenuSlot` (app/frame.go:562) has already put
+  keep-above in the slot by the time the hidden button is asked about.
+
+comms-mail calls `SetHideWindowMenu(true)` and again from `OnLookChange`
+after each look (mailui/theme.go, `noWindowMenu`), which works because
+`ApplyAppearance` always ends in `SetLook`, whose hooks run last.
+**Fix asked for:** an app-level choice the file does not overwrite — a
+`HideWindowMenu` on `ThemeOverride` / `Options`, or `SetHideWindowMenu`
+from the app pinning it as `SetTitleBarPrefs` pins the layout.
+
+Found checking 0.23.3; the same in 0.23.4.
 
 ## Resolved
 

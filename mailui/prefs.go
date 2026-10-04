@@ -37,8 +37,7 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 	accountsTab := prefsAccounts(a, win, cli, onChange)
 	tagsTab := prefsTags(a, win, cli, onChange)
 	sigTab := prefsSignatures(a, win, cli)
-	privacyTab := prefsPrivacy(a, win, cli, onChange)
-	keysTab, refreshKeys := keysSection(a, cli)
+	securityTab, securityShown := prefsSecurity(a, win, cli, onChange)
 	filtersTab := prefsFilters(a, win, cli)
 	appearanceTab := prefsAppearance(a)
 
@@ -47,16 +46,13 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 		widgets.Tab{Title: "Signatures", Content: widgets.NewPad(10, sigTab)},
 		widgets.Tab{Title: "Tags", Content: widgets.NewPad(10, tagsTab)},
 		widgets.Tab{Title: "Filters", Content: widgets.NewPad(10, filtersTab)},
-		widgets.Tab{Title: "Privacy", Content: widgets.NewPad(10, privacyTab)},
-		widgets.Tab{Title: "Keys", Content: widgets.NewPad(10, widgets.NewScrollView(keysTab))},
+		widgets.Tab{Title: "Security", Content: widgets.NewPad(10, securityTab)},
 		widgets.Tab{Title: "Appearance", Content: widgets.NewPad(10, appearanceTab)},
 	)
-	// Your keys are asked of secretvault again each time the tab shows:
-	// the store may have changed, a key been made in secretvault itself.
-	keysIndex := len(tabs.Bar().Titles) - 2
+	securityIndex := len(tabs.Bar().Titles) - 2
 	tabs.OnChange = func(i int) {
-		if i == keysIndex {
-			refreshKeys()
+		if i == securityIndex {
+			securityShown()
 		}
 	}
 	// The tabs start at the top; Close is at the right under them.
@@ -407,9 +403,69 @@ func prefsSignatures(a *app.Application, win *app.Window, cli *mailcore.Client) 
 // saved.
 const signatureSaveDelay = 600 * time.Millisecond
 
-// prefsPrivacy lists the senders whose remote images load without asking
-// (given with Always in the reading pane), and takes them back.
-func prefsPrivacy(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+// securityTopic is one of Security's topics: its name in the list, its
+// page, and what asks again each time the page shows (nil: nothing).
+type securityTopic struct {
+	name  string
+	page  widget.Component
+	shown func()
+}
+
+// prefsSecurity is Settings' Security tab: its topics on the left —
+// Passwords, Keys, Remote images — and the one picked on the right. shown
+// is for the tab showing: the page on show asks again, since the store may
+// have locked or a key been made in secretvault itself meanwhile.
+func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) (tab widget.Component, shown func()) {
+	var topics []securityTopic
+	if pass, refresh := passwordsSection(a, cli); pass != nil {
+		topics = append(topics, securityTopic{"Passwords", widgets.NewScrollView(pass), refresh})
+	}
+	keys, refreshKeys := keysSection(a, cli)
+	topics = append(topics,
+		securityTopic{"Keys", widgets.NewScrollView(keys), refreshKeys},
+		securityTopic{"Remote images", remoteImagesSection(win, cli, onChange), nil})
+
+	pages := widgets.NewStack()
+	for _, t := range topics {
+		pages.Add(t.page)
+	}
+	cur := 0
+	show := func(i int) {
+		cur = i
+		for j, t := range topics {
+			t.page.SetVisible(j == i)
+		}
+		pages.RequestLayout()
+		pages.Invalidate()
+	}
+	shown = func() {
+		if f := topics[cur].shown; f != nil {
+			f()
+		}
+	}
+	list := widgets.NewListView(len(topics), func(i int) string {
+		if i < 0 || i >= len(topics) {
+			return ""
+		}
+		return topics[i].name
+	}, func(i int) {
+		if i < 0 || i >= len(topics) || i == cur {
+			return
+		}
+		show(i)
+		shown()
+	})
+	list.Sidebar = true
+	list.Selected = 0
+	show(0) // each page asked once as it was made
+	split := widgets.NewSplitter(widgets.SplitColumns, list, widgets.NewPad(4, pages))
+	split.Ratio = 0.25
+	return split, shown
+}
+
+// remoteImagesSection lists the senders whose remote images load without
+// asking (given with Always in the reading pane), and takes them back.
+func remoteImagesSection(win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	senders, _ := cli.RemoteImageSenders()
 	var table *widgets.TableView
 	var remove *widgets.Button
@@ -439,7 +495,7 @@ func prefsPrivacy(a *app.Application, win *app.Window, cli *mailcore.Client, onC
 			return
 		}
 		if err := cli.AllowRemoteImages(senders[i], false); err != nil {
-			widgets.Warn(win.Content(), "Privacy", err.Error(), nil)
+			widgets.Warn(win.Content(), "Remote images", err.Error(), nil)
 			return
 		}
 		refresh()
@@ -451,30 +507,21 @@ func prefsPrivacy(a *app.Application, win *app.Window, cli *mailcore.Client, onC
 		table.Selected = 0
 	}
 	remove.SetEnabled(len(senders) > 0)
-	col := widgets.NewColumn()
-	if pass := passphraseSection(a, cli); pass != nil {
-		col.Add(pass)
-		col.Add(widgets.NewSeparator())
-	}
-	for _, c := range []widget.Component{
-		widgets.NewTitle("Remote images"),
+	col := widgets.NewColumn(
 		wrapLabel("Images on the web are not loaded unless you ask: loading one tells the sender you opened the message, and from where. These senders' images load without asking (Always, in the reading pane). Remove one to be asked again."),
-	} {
-		col.Add(c)
-	}
+		table, widgets.NewRow(remove).WithGap(8)).WithGap(8)
 	col.AddFlex(table, 1)
-	col.Add(widgets.NewRow(remove).WithGap(8))
-	return col.WithGap(8)
+	return col
 }
 
-// passphraseSection is Privacy's say on where the saved passwords and
+// passwordsSection is Security's say on where the saved passwords and
 // sign-ins are kept: the store in use, moving them to another, and the
 // encrypted file's passphrase. None for a store that keeps no secrets
-// (the demo).
-func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Component {
+// (the demo). refresh asks the daemon again.
+func passwordsSection(a *app.Application, cli *mailcore.Client) (section widget.Component, refresh func()) {
 	st, err := cli.SecretsStatus()
 	if err != nil || !st.Supported {
-		return nil
+		return nil, nil
 	}
 	note := wrapLabel("")
 	var move, change, unlock *widgets.Button
@@ -514,7 +561,7 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		// secretvault: unlocking it, or being asked again after a no.
 		unlock.SetVisible(st.Store == mailcore.StoreSecretVault && !st.Ready && (st.Locked || st.Problem != ""))
 	}
-	refresh := func() {
+	refresh = func() {
 		if cur, err := cli.SecretsStatus(); err == nil {
 			show(cur)
 		}
@@ -543,5 +590,5 @@ func passphraseSection(a *app.Application, cli *mailcore.Client) widget.Componen
 		})
 	}
 	show(st)
-	return widgets.NewColumn(widgets.NewTitle("Passwords"), note, foldRow(move, change, unlock)).WithGap(8)
+	return widgets.NewColumn(note, foldRow(move, change, unlock)).WithGap(8), refresh
 }

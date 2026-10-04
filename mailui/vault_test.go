@@ -210,7 +210,7 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 	}
 
 	unlockButton := func() (*widgets.Button, string) {
-		section := passphraseSection(a, cli)
+		section, _ := passwordsSection(a, cli)
 		var btn *widgets.Button
 		var texts []string
 		widget.Walk(section, func(c widget.Component) {
@@ -401,7 +401,7 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 		t.Fatal("the window asked where to keep passwords when none are saved")
 	}
 
-	section := passphraseSection(a, cli)
+	section, _ := passwordsSection(a, cli)
 	var texts []string
 	widget.Walk(section, func(c widget.Component) {
 		if l, ok := c.(*widgets.Label); ok {

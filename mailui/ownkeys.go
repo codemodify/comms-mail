@@ -13,11 +13,11 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// keysSection is Settings' Keys tab: for each address you send from, the
-// OpenPGP key and S/MIME certificates secretvault holds, and making one or
-// bringing one in. secretvault makes and keeps them; comms-mail never
-// holds a private key. With another store it says secretvault keeps them.
-// refresh asks secretvault again.
+// keysSection is Settings › Security › Keys: for each address you send
+// from, the OpenPGP key and S/MIME certificates secretvault holds, and
+// making one or bringing one in. secretvault makes and keeps them;
+// comms-mail never holds a private key. With another store it says
+// secretvault keeps them. refresh asks secretvault again.
 func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Component, refresh func()) {
 	list := widgets.NewColumn().WithGap(10)
 	note := wrapLabel("")
@@ -27,7 +27,7 @@ func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Compo
 		note.SetVisible(text != "")
 	}
 	say("")
-	col := widgets.NewColumn(widgets.NewTitle("Your keys"),
+	col := widgets.NewColumn(
 		wrapLabel("secretvault keeps the keys that sign and decrypt your mail: comms-mail asks it to, and never holds a private key."),
 		note, list).WithGap(8)
 
