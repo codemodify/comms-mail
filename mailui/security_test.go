@@ -366,3 +366,69 @@ func TestYourKeysInSettings(t *testing.T) {
 		t.Fatalf("without secretvault:\n%s", joined)
 	}
 }
+
+// A forged sender is said under From: the server's failed check, and the
+// name that shows another address. Nothing is said of a sender with
+// nothing to say.
+func TestSenderWarningsInTheReadingPane(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(mailcore.EnvConfig, filepath.Join(dir, "mail.json"))
+	st, err := mailcore.NewLocalStoreDir(mailcore.MailConfig{}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mails := t.TempDir()
+	for name, raw := range map[string]string{
+		"a.eml": "Authentication-Results: mail.local; dmarc=fail header.from=paypal.com\nFrom: \"service@paypal.com\" <x@evil.biz>\nTo: ada@example.com\nSubject: Your account\n\nLog in now.\n",
+		"b.eml": "Authentication-Results: mail.local; dmarc=pass header.from=example.org\nFrom: Ann <ann@example.org>\nTo: ada@example.com\nSubject: Lunch\n\nNoon?\n",
+	} {
+		if err := os.WriteFile(filepath.Join(mails, name), []byte(strings.ReplaceAll(raw, "\n", "\r\n")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.ImportLocalMail([]mailcore.LocalMailStore{{Source: "Folder", Name: "Inbox", Path: mails, Kind: mailcore.StoreEML}}); err != nil {
+		t.Fatal(err)
+	}
+	sock, stop, err := mailcore.StartStore(context.Background(), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	cli, err := mailcore.DialWait(sock, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(a, main, cli, AppOptions{})
+	main.SetContent(s.build())
+	folders, _ := cli.ListFolders(mailcore.LocalAccountID)
+	s.selectFolder(folders[0].ID)
+	s.waitIdle()
+	ids := map[string]mailcore.MessageID{}
+	for _, m := range s.rows {
+		ids[m.Subject] = m.ID
+	}
+	lines := func() (icons []style.ToolIcon, texts []string) {
+		widget.Walk(s.rd.sender.view, func(c widget.Component) {
+			if l, ok := c.(*widgets.Label); ok {
+				icons, texts = append(icons, l.Icon), append(texts, l.Text)
+			}
+		})
+		return
+	}
+	open(s, a, ids["Your account"])
+	icons, texts := lines()
+	joined := strings.Join(texts, " | ")
+	if len(texts) != 2 || icons[0] != style.IconWarning || !strings.Contains(joined, "DMARC") || !strings.Contains(joined, "The name shows service@paypal.com") {
+		t.Fatalf("forged: %v %q", icons, texts)
+	}
+	open(s, a, ids["Lunch"])
+	if _, texts := lines(); len(texts) != 0 || s.rd.sender.view.Visible() {
+		t.Fatalf("a sender with nothing to say: %q", texts)
+	}
+}

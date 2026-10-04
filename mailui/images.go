@@ -115,13 +115,26 @@ func (p *htmlPane) loadImages() {
 	if len(missing) == 0 {
 		return
 	}
+	// Always — this sender's images load without asking — holds only for
+	// a message the receiving server confirmed came from the sender's
+	// domain: a forged sender must not be able to borrow it.
 	sender := strings.ToLower(mailcore.ExtractAddr(m.From))
+	confirmed := m.Auth == mailcore.AuthPass
 	p.always.Tip = "Load remote images in every message from " + sender
-	p.always.SetVisible(strings.Contains(sender, "@"))
-	if s.imgSenders[sender] {
+	p.always.SetVisible(strings.Contains(sender, "@") && confirmed)
+	switch {
+	case s.imgSenders[sender] && confirmed:
 		p.fetchRemote(missing)
+	case s.imgSenders[sender]:
+		p.notice.SetText(remoteImagesNotice + " " + unconfirmedImagesNote)
+	default:
+		p.notice.SetText(remoteImagesNotice)
 	}
 }
+
+// unconfirmedImagesNote is why a sender whose images always load did not
+// have them load this time.
+const unconfirmedImagesNote = "This sender's images load by themselves only when your mail server confirms the message came from them, and it did not confirm this one."
 
 // rerender draws the HTML again, now that more of its images are in —
 // unless another message is showing by now.

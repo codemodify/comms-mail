@@ -656,6 +656,16 @@ func (s *LocalStore) GetMessage(id MessageID) (Message, bool) {
 			}
 		}
 	}
+	if m.Auth == "" && (m.Body != "" || m.HTML != "" || m.Encrypted) {
+		// Cached before the server's verdict on the sender was read: read
+		// it from the raw message's header, once (the cache keeps it).
+		if raw := s.readRawLocked(m); len(raw) > 0 {
+			if verdict, why, ok := authFromRaw(raw, m.From); ok {
+				s.Messages[i].Auth, s.Messages[i].AuthWhy = verdict, why
+				m.Auth, m.AuthWhy = verdict, why
+			}
+		}
+	}
 	if m.Body != "" || m.HTML != "" || m.Encrypted {
 		s.mu.Unlock()
 		return m, true

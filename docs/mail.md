@@ -301,7 +301,11 @@ address actually dialled — at most 100 images of 8 MB each and 48 MB in
 all, 15 s each, no cookies, no proxy, not while working offline. PNG, JPEG,
 GIF and WebP are drawn; pictures seen once are kept for the session.
 **Settings → Privacy** lists the senders trusted with Always and takes
-them back. A message opened in a tab has the same views.
+them back. Always holds only for a message your mail server confirmed came
+from its sender (*Who sent it*, below): a forged From cannot borrow it, the
+button is not offered for an unconfirmed message, and the line says why a
+trusted sender's images did not load. A message opened in a tab has the
+same views.
 
 A link is followed on a click, after a confirmation showing the real target
 so link text cannot disguise where it goes; a `mailto:` opens a
@@ -561,6 +565,38 @@ that keeps no secrets (the demo) reports `supported: false`, and the window
 asks nothing. Tests never reach your real keyring or secretvault: they
 run the keyring code against a fake Secret Service on a private D-Bus, and
 the secretvault code against a stand-in daemon (`internal/svtest`).
+
+## Who sent it
+
+Under From, the reading pane says what is worth knowing about the sender,
+and nothing for a sender with nothing to say (`messages.sender`):
+
+- **Your mail server's check of the sender's domain.** On arrival your
+  provider checks SPF, DKIM and DMARC and writes the outcome into an
+  `Authentication-Results` header. comms-mail reads the **topmost** one —
+  the one your provider added last; headers further down came with the
+  message and a sender can write any it likes. DMARC decides when it is
+  there (and Microsoft 365's `compauth` counts as it); otherwise a DKIM
+  signature for the From domain passes, and a failed DKIM or SPF fails. A
+  failure is a warning: *Your mail server could not confirm this is from
+  paypal.com: it failed paypal.com's own sender policy (DMARC).* The
+  verdict is kept with the message (`auth`), and read from the raw message
+  for one cached before.
+- **A name that shows another address or domain** — `"service@paypal.com"
+  <x@evil.biz>`, `PayPal.com Support <…@evil.biz>`.
+- **A name you know on an address you do not** — the name of someone you
+  write to, on another address than theirs.
+- **A look-alike domain** — one letter off a domain you write to, or the
+  same once look-alike letters are read alike (`rn`/`m`, `0`/`o`, `1`/`l`,
+  a dropped hyphen); and **another alphabet** — an international domain
+  whose letters can imitate familiar ones, shown in both forms.
+- **Replies that go elsewhere** — a Reply-To on another domain, as a note
+  (mailing lists do it too).
+
+"Someone you write to" means the recipients of what you have sent, your
+saved contacts and your own addresses — never everyone who has written to
+you, which a forger would be. These checks prove the domain at most, never
+the person: that is what signatures are for (below).
 
 ## Signed and encrypted mail
 

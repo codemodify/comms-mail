@@ -28,8 +28,10 @@ type reader struct {
 
 	subj                      *widgets.Label
 	from, to, cc, date, extra *widgets.Label
-	// sec is what secretvault says of a signed or encrypted message
+	// sender is what is worth knowing about who sent it (sender.go), under
+	// From; sec what secretvault says of a signed or encrypted message
 	// (security.go).
+	sender *senderPart
 	sec    *securityPart
 	invite *inviteCard
 	// retry is offered when the message could not be loaded; onRetry is
@@ -84,6 +86,7 @@ func newReader(s *session) *reader {
 	r.cc.SetVisible(false)
 	r.date = widgets.NewLabel("")
 	r.extra = widgets.NewLabel("")
+	r.sender = newSenderPart()
 	r.sec = newSecurityPart()
 	r.sec.unlock.OnClick = r.unlockSecretVault
 	r.invite = newInviteCard(s)
@@ -140,7 +143,7 @@ func newReader(s *session) *reader {
 		}
 	}
 
-	head := widgets.NewColumn(r.subj, r.from, r.to, r.cc, r.date, r.extra, r.sec.view,
+	head := widgets.NewColumn(r.subj, r.from, r.sender.view, r.to, r.cc, r.date, r.extra, r.sec.view,
 		r.invite.view, r.actions, r.attStrip, r.retry).WithGap(3).WithPad(10)
 	// The header grows with what the message carries (an invitation,
 	// attachments) but always leaves the body room for a few lines: past
@@ -159,6 +162,7 @@ func (r *reader) showHeaders(m mailcore.Message) {
 		r.sourceID = ""
 		r.source.SetText("")
 		r.sec.clear()
+		r.sender.clear()
 	} else if !hasBody(m) {
 		m.Body, m.HTML = r.msg.Body, r.msg.HTML
 	}
@@ -212,6 +216,7 @@ func (r *reader) showBody(m mailcore.Message) {
 	if m.Signed || m.Encrypted || m.Autocrypt {
 		r.loadSecurity(m)
 	}
+	r.loadSender(m)
 	r.syncActions()
 	if r.tabs.Selected() == readerTabSource {
 		r.loadSource()
@@ -238,6 +243,7 @@ func (r *reader) clear() {
 	}
 	r.cc.SetVisible(false)
 	r.sec.clear()
+	r.sender.clear()
 	r.attNames = nil
 	r.syncAttachPane()
 	r.invite.clear()

@@ -79,6 +79,8 @@ const (
 	// MethodComposeKeys says whether secretvault can sign as a From
 	// address (SigningKeys).
 	MethodComposeKeys = "compose.keys"
+	// MethodMessagesSender checks a message's sender (SenderCheck).
+	MethodMessagesSender = "messages.sender"
 	// Your own keys, in secretvault (OwnKeys, MakePGPKey, ImportSMIME).
 	MethodKeysList        = "keys.list"
 	MethodKeysMakePGP     = "keys.makePGP"

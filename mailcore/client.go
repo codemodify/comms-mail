@@ -313,6 +313,14 @@ func (c *Client) GetSource(id MessageID) (string, error) {
 	return r.RFC822, nil
 }
 
+// SenderCheck checks message id's sender: the server's verdict on its
+// domain, and look-alikes of the people you write to.
+func (c *Client) SenderCheck(id MessageID) (SenderCheck, error) {
+	var r SenderCheck
+	err := c.call(MethodMessagesSender, messageIDParams{ID: id}, &r)
+	return r, err
+}
+
 // OwnKeys are your keys in secretvault, for each address you send from.
 func (c *Client) OwnKeys() (OwnKeys, error) {
 	var r OwnKeys

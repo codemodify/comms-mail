@@ -295,3 +295,35 @@ func TestMarkdownRendersTablesQuotesAndRules(t *testing.T) {
 		t.Fatalf("blocks by kind %v", kinds)
 	}
 }
+
+// Always holds only for a message the mail server confirmed came from its
+// sender: a forged sender cannot borrow it, and it is not offered for one.
+func TestAlwaysImagesNeedAConfirmedSender(t *testing.T) {
+	s, a, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	m, ok, err := s.cli.GetMessage(mailcore.DemoNewsletterID)
+	if err != nil || !ok {
+		t.Fatalf("newsletter %v %v", ok, err)
+	}
+	s.imgSenders = map[string]bool{"weekly@news.example": true}
+
+	forged := m
+	forged.Auth, forged.AuthWhy = mailcore.AuthFail, "dmarc"
+	s.showHeaders(forged)
+	s.showBody(forged)
+	s.waitIdle()
+	a.PumpOnce()
+	p := s.rd.md
+	if p.always.Visible() || !p.bar.Visible() || !strings.Contains(p.notice.Text, "did not confirm") || strings.Contains(p.notice.Text, "Loading") {
+		t.Fatalf("unconfirmed: always %v, bar %v, notice %q", p.always.Visible(), p.bar.Visible(), p.notice.Text)
+	}
+
+	s.imgSenders = map[string]bool{}
+	confirmed := m
+	confirmed.ID = "confirmed"
+	confirmed.Auth = mailcore.AuthPass
+	p.show(confirmed)
+	if !p.always.Visible() || strings.Contains(p.notice.Text, "did not confirm") {
+		t.Fatalf("confirmed: always %v, notice %q", p.always.Visible(), p.notice.Text)
+	}
+}

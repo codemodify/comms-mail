@@ -252,6 +252,12 @@ type Message struct {
 	Signed    bool `json:"signed,omitempty"`
 	Encrypted bool `json:"encrypted,omitempty"`
 	Autocrypt bool `json:"autocrypt,omitempty"`
+	// Auth is the receiving server's verdict on the sender's domain, from
+	// the topmost Authentication-Results header: "pass", "fail" or "none"
+	// ("" for a message cached before it was read); AuthWhy names the
+	// check that failed (sender.go).
+	Auth    string `json:"auth,omitempty"`
+	AuthWhy string `json:"authWhy,omitempty"`
 	// Protect is how the writer asked the message to go — signed,
 	// encrypted — while it is a draft and while it waits in the Outbox
 	// (sendprotect.go). It is never part of what is sent.

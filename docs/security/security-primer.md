@@ -244,23 +244,23 @@ Read from the code on 28 September 2026, and updated the same day as fixes lande
 
 | Area | What comms-mail does | State |
 |---|---|---|
-| PGP | Not supported. An encrypted PGP message shows an empty body with `encrypted.asc` as an attachment. | **Missing** |
-| S/MIME | Not supported. An S/MIME-encrypted message (`smime.p7m`) shows its binary contents as the message text. | **Missing** |
-| Signed mail | Shows normally, with `signature.asc` or `smime.p7s` as an attachment. Never checked. | **Missing** |
+| PGP | Through secretvault, which keeps your keys: messages are verified and decrypted when read, signed and encrypted when sent; Settings › Keys makes a key (since 3 October 2026). | In place |
+| S/MIME | Through secretvault: verified and decrypted when read, signed and encrypted when sent; Settings › Keys imports a `.p12`. Only an organisation's own CA is trusted so far (asked of secretvault). | In place |
+| Signed mail | Checked by secretvault when read: who signed it and how far that is verified, under the header. The signature is no longer listed as an attachment. | In place |
 
 ### Who sent it
 
 | Area | What comms-mail does | State |
 |---|---|---|
-| SPF, DKIM, DMARC | The server's results are never read or shown. | **Missing** |
-| Look-alike senders | No warning for a display name that does not match its address, or for a Reply-To that differs from From. The list shows only the display name. | **Missing** |
+| SPF, DKIM, DMARC | The topmost `Authentication-Results` (your provider's) is read: a failed check is a warning under From, and "Always show images" holds only for messages that passed. | In place |
+| Look-alike senders | Warnings under From for a name that shows another address or domain, a contact's name on another address, a domain that looks like one you write to or uses another alphabet; a note for a Reply-To on another domain. The list still shows only the display name. | In place |
 
 ### Reading
 
 | Area | What comms-mail does | State |
 |---|---|---|
 | Scripts | Never run: the HTML view has no script engine, and scripts, styles and frames are stripped first. | In place |
-| Remote images | Blocked until you ask; Always for a sender. The sender allow-list trusts the From address, which can be forged. | In place |
+| Remote images | Blocked until you ask; Always for a sender, which holds only for messages your mail server confirmed came from them, so a forged From cannot borrow it. | In place |
 | Image fetching | Only public addresses (the check is made on the address actually connected to), size and count limits, no cookies. | In place |
 | Links | A confirmation shows the real destination first. | In place |
 | Attachments | Launchers, scripts, installers and HTML are refused by file name; everything else goes to the desktop's opener. Opened copies are removed after a day, printed pages after an hour. | In place |

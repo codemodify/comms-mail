@@ -78,9 +78,10 @@ new ones turn up.
   yet run on those systems.
 
 ## Security (decided 2026-09-28, revised 2026-10-03; docs/security/security-primer.md)
-- **Sender warnings** — `Authentication-Results` (SPF/DKIM/DMARC) failures,
-  look-alike display names, Reply-To on another domain; "Always show
-  images" only for senders who passed.
+- **Sender warnings** — done 2026-10-03 (docs/mail.md, Who sent it). Left:
+  the message list still shows only the display name and has no mark for
+  a failed check or a look-alike; the topmost `Authentication-Results` is
+  trusted as the provider's without checking its server name.
 - **Reading and sending signed / encrypted mail** — done 2026-10-03
   (docs/mail.md, Signed and encrypted mail). Left: attachments *inside* an
   encrypted message are not listed or opened yet, nor carried by a

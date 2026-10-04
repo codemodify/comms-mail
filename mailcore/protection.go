@@ -420,6 +420,8 @@ func contentMessage(raw []byte, inline bool, outer Message) *Message {
 	// What the outer message says of itself stays: the inner part of a
 	// PGP/MIME or S/MIME message usually has no From, To or Date.
 	m.From, m.To, m.Cc, m.Date = firstNonEmpty(m.From, outer.From), firstNonEmpty(m.To, outer.To), firstNonEmpty(m.Cc, outer.Cc), outer.Date
+	// The server's verdict on the sender is the outer message's.
+	m.Auth, m.AuthWhy = outer.Auth, outer.AuthWhy
 	if m.Subject == "" {
 		m.Subject = outer.Subject
 	}
