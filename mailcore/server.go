@@ -334,6 +334,29 @@ func (s *Server) dispatch(req Request) Response {
 				result = sourceResult{ID: p.ID, RFC822: rawAsText(raw)}
 			}
 		}
+	case MethodKeysList:
+		if ls, ok := s.Store.(*LocalStore); ok {
+			result = ls.OwnKeys()
+		} else {
+			result = OwnKeys{}
+		}
+	case MethodKeysMakePGP, MethodKeysImportSMIME:
+		ls, ok := s.Store.(*LocalStore)
+		if !ok {
+			err = fmt.Errorf("mail: this store keeps no keys")
+			break
+		}
+		if req.Method == MethodKeysMakePGP {
+			var p makePGPParams
+			if p, err = decodeParams[makePGPParams](req.Params); err == nil {
+				result, err = ls.MakePGPKey(p.Address)
+			}
+		} else {
+			var p importSMIMEParams
+			if p, err = decodeParams[importSMIMEParams](req.Params); err == nil {
+				result, err = ls.ImportSMIME(p.PKCS12, p.Password)
+			}
+		}
 	case MethodComposeKeys:
 		var p composeKeysParams
 		p, err = decodeParams[composeKeysParams](req.Params)

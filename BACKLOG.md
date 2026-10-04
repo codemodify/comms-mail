@@ -91,9 +91,9 @@ new ones turn up.
 - **PGP and S/MIME** — only through secretvault, which keeps the private
   keys and signs and decrypts in its own daemon: comms-mail writes no
   crypto of its own (decided 2026-10-03; this replaces building in Proton
-  `go-crypto` and our own CMS). Next: your keys in Settings (generate an
-  OpenPGP key, import a `.p12`). Without secretvault as the store there is
-  no PGP or S/MIME.
+  `go-crypto` and our own CMS). Your keys are in Settings › Keys (made,
+  imported and kept by secretvault; done 2026-10-03). Without secretvault
+  as the store there is no PGP or S/MIME.
 - **Asked of secretvault** — S/MIME roots beyond an organisation's own CA
   (a public CA's certificate does not verify as trusted today); a check
   before Send of which recipients can be encrypted to; an Autocrypt header

@@ -186,7 +186,8 @@ func callTimeout(method string) time.Duration {
 	case MethodSyncRun, MethodMessagesFetch, MethodOutboxFlush, MethodStatusSet:
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
-		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw, MethodMessagesSecurity, MethodComposeKeys:
+		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw, MethodMessagesSecurity, MethodComposeKeys,
+		MethodKeysList, MethodKeysMakePGP, MethodKeysImportSMIME:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
@@ -310,6 +311,29 @@ func (c *Client) GetSource(id MessageID) (string, error) {
 		return "", err
 	}
 	return r.RFC822, nil
+}
+
+// OwnKeys are your keys in secretvault, for each address you send from.
+func (c *Client) OwnKeys() (OwnKeys, error) {
+	var r OwnKeys
+	err := c.call(MethodKeysList, nil, &r)
+	return r, err
+}
+
+// MakePGPKey has secretvault make an OpenPGP key for address.
+func (c *Client) MakePGPKey(address string) (OwnKeys, error) {
+	var r OwnKeys
+	err := c.call(MethodKeysMakePGP, makePGPParams{Address: address}, &r)
+	return r, err
+}
+
+// ImportSMIME hands a .p12 file and its password to secretvault. The
+// password is wiped once sent.
+func (c *Client) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
+	defer clear(password)
+	var r OwnKeys
+	err := c.call(MethodKeysImportSMIME, importSMIMEParams{PKCS12: pkcs12, Password: password}, &r)
+	return r, err
 }
 
 // SigningKeys says whether secretvault can sign as from (and whether it

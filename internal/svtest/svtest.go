@@ -78,6 +78,32 @@ type Vault struct {
 	ownPGP   map[string]bool // addresses with an OpenPGP key of the person's
 	composed []Composed
 	refuse   string // mail.compose refuses, with this
+
+	generated []Generated
+	certs     []map[string]any // smime.list's answer
+	p12Pass   string           // the password a .p12 opens with
+	p12Emails []string         // and the addresses its certificate names
+}
+
+// Generated is one pgp.generate asked.
+type Generated struct {
+	Name   string   `json:"name"`
+	Emails []string `json:"emails"`
+}
+
+// P12 is the .p12 file smime.import takes: password opens it, and its
+// certificate names emails.
+func (v *Vault) P12(password string, emails ...string) {
+	v.mu.Lock()
+	v.p12Pass, v.p12Emails = password, emails
+	v.mu.Unlock()
+}
+
+// Generates are the pgp.generate calls answered.
+func (v *Vault) Generates() []Generated {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]Generated(nil), v.generated...)
 }
 
 // Composed is one mail.compose asked.
@@ -355,6 +381,44 @@ func (v *Vault) serve(c net.Conn) {
 				out = fn(p.Message, p.Decrypt)
 			}
 			reply(m.ID, out, 0, "")
+		case "pgp.generate":
+			if locked {
+				reply(m.ID, nil, codeLocked, "the vault is locked")
+				continue
+			}
+			var g Generated
+			_ = json.Unmarshal(m.Params, &g)
+			v.mu.Lock()
+			v.generated = append(v.generated, g)
+			if v.ownPGP == nil {
+				v.ownPGP = map[string]bool{}
+			}
+			for _, e := range g.Emails {
+				v.ownPGP[strings.ToLower(e)] = true
+			}
+			v.mu.Unlock()
+			reply(m.ID, map[string]any{"fingerprint": "NEWKEY0123456789"}, 0, "")
+		case "smime.import":
+			if locked {
+				reply(m.ID, nil, codeLocked, "the vault is locked")
+				continue
+			}
+			var imp struct {
+				PKCS12   []byte `json:"pkcs12"`
+				Password []byte `json:"password"`
+			}
+			_ = json.Unmarshal(m.Params, &imp)
+			v.mu.Lock()
+			if string(imp.Password) != v.p12Pass || len(imp.PKCS12) == 0 {
+				v.mu.Unlock()
+				reply(m.ID, nil, -32004, "that password does not open the file")
+				continue
+			}
+			cert := map[string]any{"subject": "CN=Ada", "issuer": "CN=Example CA,O=Example", "emails": v.p12Emails,
+				"sha256": "CERT", "not_after": time.Date(2027, 10, 1, 0, 0, 0, 0, time.UTC)}
+			v.certs = append(v.certs, cert)
+			v.mu.Unlock()
+			reply(m.ID, cert, 0, "")
 		case "pgp.public", "smime.list", "mail.compose":
 			if locked {
 				reply(m.ID, nil, codeLocked, "the vault is locked")
@@ -368,11 +432,16 @@ func (v *Vault) serve(c net.Conn) {
 			v.mu.Unlock()
 			switch {
 			case m.Method == "smime.list":
-				reply(m.ID, []any{}, 0, "")
+				v.mu.Lock()
+				certs := append([]map[string]any{}, v.certs...)
+				v.mu.Unlock()
+				reply(m.ID, certs, 0, "")
 			case m.Method == "pgp.public" && !own:
 				reply(m.ID, nil, codeNotFound, "no OpenPGP key in vault \"personal\" is "+p.Key)
 			case m.Method == "pgp.public":
-				reply(m.ID, map[string]any{"fingerprint": "OWNKEY", "user_ids": []string{p.Key}}, 0, "")
+				reply(m.ID, map[string]any{"fingerprint": "0WNKEY0123456789ABCD", "user_ids": []string{p.Key},
+					"created":    time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC),
+					"public_key": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nxjMEstandin\n-----END PGP PUBLIC KEY BLOCK-----\n"}, 0, "")
 			case refuse != "":
 				reply(m.ID, nil, -32000, refuse)
 			default:

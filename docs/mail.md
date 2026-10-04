@@ -605,6 +605,24 @@ reads it.
   the line says so, with **Unlock secretvault…**, which asks secretvault
   to show its own prompt.
 
+Your keys — **Settings › Keys**:
+
+- For each address you send from (each identity's and account's), the
+  OpenPGP key and the S/MIME certificates secretvault holds for it.
+  comms-mail asks secretvault about those addresses only (`pgp.public`,
+  `smime.list`), never for a list of what else your vault holds, and
+  never holds a private key.
+- **Make an OpenPGP key** has secretvault make one for the address, under
+  the name you send as (`pgp.generate`); **Copy public key** puts its
+  public half on the clipboard, to give to the people who write to you.
+- **Import S/MIME…** brings in a certificate and its key from a `.p12` /
+  `.pfx` file: its password is asked in a field that holds bytes, never a
+  string, and the file and the password are handed to secretvault
+  (`smime.import`) and wiped.
+- While secretvault is locked the tab says so, with **Unlock
+  secretvault…**; with another store, that secretvault keeps the keys.
+  The tab asks secretvault again each time it is shown.
+
 Sending:
 
 - **Write has Sign and Encrypt** (the *Security* row, shown while

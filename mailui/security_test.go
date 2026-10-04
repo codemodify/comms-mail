@@ -277,3 +277,92 @@ func TestWritingSignedAndEncrypted(t *testing.T) {
 		t.Fatalf("no key: sign %v (enabled %v), encrypt %v, note %q", sign.Checked, sign.Enabled(), encrypt.Checked, note)
 	}
 }
+
+// sectionParts are a component's labels and buttons by text.
+func sectionParts(c widget.Component) (texts []string, buttons map[string]*widgets.Button) {
+	buttons = map[string]*widgets.Button{}
+	widget.Walk(c, func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.Label:
+			texts = append(texts, v.Text)
+		case *widgets.Button:
+			buttons[v.Text] = v
+		}
+	})
+	return
+}
+
+// Settings › Privacy shows your keys for each address you send from, and
+// makes an OpenPGP key with secretvault; the .p12 password is asked in a
+// field that holds bytes, and handed over once.
+func TestYourKeysInSettings(t *testing.T) {
+	s, a, sv, _ := securityDaemon(t)
+	if _, err := s.cli.PutAccount(mailcore.AccountConfig{ID: "home", Address: "ada@example.com",
+		IMAP: mailcore.ServerConfig{Host: "127.0.0.1:1", TLSMode: "ssl"}}); err != nil {
+		t.Fatal(err)
+	}
+	section, refresh := keysSection(a, s.cli)
+	prefs, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 560, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefs.SetContent(section)
+	a.PumpOnce()
+	texts, buttons := sectionParts(section)
+	joined := strings.Join(texts, "\n")
+	if !strings.Contains(joined, "ada@example.com") || !strings.Contains(joined, "No OpenPGP key") || !strings.Contains(joined, "No S/MIME certificate") {
+		t.Fatalf("Your keys says:\n%s", joined)
+	}
+	mk := buttons["Make an OpenPGP key"]
+	if mk == nil || buttons["Import S/MIME…"] == nil {
+		t.Fatalf("buttons %v", buttons)
+	}
+	mk.OnClick()
+	for i := 0; i < 3; i++ {
+		a.PumpOnce()
+	}
+	texts, buttons = sectionParts(section)
+	if joined = strings.Join(texts, "\n"); !strings.Contains(joined, "OpenPGP key 0WNK EY01 2345") || buttons["Copy public key"] == nil || len(sv.Generates()) != 1 {
+		t.Fatalf("after making one:\n%s\n%v", joined, buttons)
+	}
+
+	// The password dialog.
+	var got []byte
+	cancelled := false
+	askP12Password(section, "ada.p12", func(pw []byte) { got = pw }, func() { cancelled = true })
+	a.PumpOnce()
+	var field *widgets.SecretField
+	var ok *widgets.Button
+	widget.Walk(prefs.Overlay(), func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.SecretField:
+			field = v
+		case *widgets.Button:
+			if v.Text == "Import" {
+				ok = v
+			}
+		}
+	})
+	if field == nil || ok == nil {
+		t.Fatal("no secret field or Import in the password dialog")
+	}
+	field.SetBytes([]byte("open sesame"))
+	ok.OnClick()
+	if string(got) != "open sesame" || cancelled || prefs.Overlay() != nil {
+		t.Fatalf("got %q, cancelled %v", got, cancelled)
+	}
+	if b := field.Bytes(); len(b) != 0 {
+		t.Fatal("the field kept the password")
+	}
+
+	// Another store: secretvault keeps the keys, and the tab says so.
+	if err := s.cli.UseStore(mailcore.StorePlain, ""); err != nil {
+		t.Fatal(err)
+	}
+	refresh()
+	a.PumpOnce()
+	texts, buttons = sectionParts(section)
+	if joined = strings.Join(texts, "\n"); !strings.Contains(joined, "secretvault keeps your keys") || buttons["Make an OpenPGP key"] != nil {
+		t.Fatalf("without secretvault:\n%s", joined)
+	}
+}

@@ -78,7 +78,11 @@ const (
 	MethodMessagesSecurity = "messages.security"
 	// MethodComposeKeys says whether secretvault can sign as a From
 	// address (SigningKeys).
-	MethodComposeKeys     = "compose.keys"
+	MethodComposeKeys = "compose.keys"
+	// Your own keys, in secretvault (OwnKeys, MakePGPKey, ImportSMIME).
+	MethodKeysList        = "keys.list"
+	MethodKeysMakePGP     = "keys.makePGP"
+	MethodKeysImportSMIME = "keys.importSMIME"
 	MethodMessagesSearch  = "messages.search"
 	MethodSearchServer    = "messages.searchServer"
 	MethodContactsSuggest = "contacts.suggest"
@@ -224,6 +228,15 @@ type messagesListParams struct {
 
 type messageIDParams struct {
 	ID MessageID `json:"id"`
+}
+
+type makePGPParams struct {
+	Address string `json:"address"`
+}
+
+type importSMIMEParams struct {
+	PKCS12   []byte `json:"pkcs12"`
+	Password []byte `json:"password,omitempty"`
 }
 
 type composeKeysParams struct {
