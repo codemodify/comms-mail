@@ -8,6 +8,7 @@ import (
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
+	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
@@ -61,30 +62,24 @@ const laterNote = "You can set this up later, or switch to another place at any 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
 
-// storeOption is one of the places in the chooser; path is the file it
-// keeps them in, for the two that are files.
+// storeOption is one of the places in the chooser: its name, with what it
+// is in brackets; path is the file it keeps them in, for the two that are
+// files; problem why it cannot be used, when it cannot.
 type storeOption struct {
-	kind, title, text, path string
-	available               bool
+	kind, title, path, problem string
+	available                  bool
 }
 
 func storeOptions(st mailcore.SecretsStatus) []storeOption {
-	keyring := "Delegate to OS provided keyring."
+	keyring := "System Keyring"
 	if st.KeyringBackend != "" {
-		keyring += " Current backend: " + st.KeyringBackend
-	}
-	if !st.KeyringAvailable {
-		keyring += "\nNot available: " + st.KeyringProblem
-	}
-	vault := "Store passwords in SV (secretvault)"
-	if !st.SecretVaultAvailable {
-		vault += "\nNot available: " + st.SecretVaultProblem
+		keyring += " (" + st.KeyringBackend + ")"
 	}
 	return []storeOption{
-		{mailcore.StoreKeyring, "System Keyring", keyring, "", st.KeyringAvailable},
-		{mailcore.StoreSecretVault, "Secret Vault", vault, "", st.SecretVaultAvailable},
-		{mailcore.StoreEncrypted, "Encrypted file", "Encrypted with: Argon2id hashing + AES-256-GCM encryption", st.EncryptedFile, true},
-		{mailcore.StorePlain, "Plain file", "Password is stored open to anyone", st.PlainFile, true},
+		{mailcore.StoreKeyring, keyring, "", st.KeyringProblem, st.KeyringAvailable},
+		{mailcore.StoreSecretVault, "Secret Vault", "", st.SecretVaultProblem, st.SecretVaultAvailable},
+		{mailcore.StoreEncrypted, "Encrypted file (Argon2id hashing + AES-256-GCM encryption)", st.EncryptedFile, "", true},
+		{mailcore.StorePlain, "Plain file (open to anyone)", st.PlainFile, "", true},
 	}
 }
 
@@ -143,6 +138,10 @@ type storeChoices struct {
 	passBox *widgets.FlexBox
 	first   *widgets.TextField
 	again   *widgets.TextField
+	// vaultPick is secretvault's vault: its default (0) or the one named
+	// in vaultName (1).
+	vaultPick *widgets.RadioGroup
+	vaultName *widgets.TextField
 	// onPick runs after each pick.
 	onPick func()
 }
@@ -162,7 +161,7 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 	for i, o := range c.opts {
 		label := o.title
 		if o.kind == st.Store {
-			label += " (in use now)"
+			label += ", in use now"
 		}
 		rb := widgets.NewRadio(label, false, nil)
 		rb.OnChange = func(on bool) {
@@ -178,7 +177,14 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 		if o.path != "" {
 			details.Add(pathView(o.path))
 		}
-		details.Add(wrapLabel(o.text))
+		if !o.available && o.problem != "" {
+			l := widgets.NewIconLabel(style.IconWarning, "Not available: "+o.problem)
+			l.Wrap = true
+			details.Add(l)
+		}
+		if o.kind == mailcore.StoreSecretVault {
+			details.Add(c.vaultChoice(i, o.available))
+		}
 		if extra := under[o.kind]; extra != nil {
 			details.Add(extra)
 		}
@@ -189,6 +195,51 @@ func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string
 		}
 	}
 	return c
+}
+
+// vaultChoice is which of secretvault's vaults: its default, named when
+// known, or one named here. Choosing either picks Secret Vault (option
+// i).
+func (c *storeChoices) vaultChoice(i int, available bool) widget.Component {
+	def := "Default"
+	if c.st.SecretVaultDefault != "" {
+		def += " (" + c.st.SecretVaultDefault + ")"
+	}
+	sel := 0
+	if c.st.SecretVault != "" {
+		sel = 1
+	}
+	c.vaultName = widgets.NewTextField(c.st.SecretVault, "Vault name", nil)
+	c.vaultName.SetEnabled(available && sel == 1)
+	changed := func() {
+		if c.chosen != i {
+			c.radios[i].SetSelected(true) // picks it
+		} else if c.onPick != nil {
+			c.onPick()
+		}
+	}
+	c.vaultPick = widgets.NewRadioGroup([]string{def, "Custom"}, sel, func(n int) {
+		c.vaultName.SetEnabled(n == 1)
+		changed()
+	})
+	c.vaultName.OnInput = func(string) { changed() }
+	for _, rb := range c.vaultPick.Buttons() {
+		rb.SetEnabled(available)
+	}
+	return widgets.NewColumn(c.vaultPick, c.vaultName).WithGap(6)
+}
+
+// vault is the secretvault vault chosen: "" for its default.
+func (c *storeChoices) vault() string {
+	if c.vaultPick == nil || c.vaultPick.Selected() != 1 {
+		return ""
+	}
+	return strings.TrimSpace(c.vaultName.Text)
+}
+
+// customUnnamed is Custom chosen with no name typed.
+func (c *storeChoices) customUnnamed() bool {
+	return c.vaultPick != nil && c.vaultPick.Selected() == 1 && c.vault() == ""
 }
 
 // pick makes option i the choice.
@@ -206,9 +257,20 @@ func (c *storeChoices) pick(i int) {
 	}
 }
 
-// moving says a place other than the one in use is picked.
+// moving says a place other than the one in use is picked: another
+// store, or with secretvault another of its vaults.
 func (c *storeChoices) moving() bool {
-	return c.chosen >= 0 && c.opts[c.chosen].kind != c.st.Store
+	if c.chosen < 0 {
+		return false
+	}
+	kind := c.opts[c.chosen].kind
+	if kind == mailcore.StoreSecretVault && c.customUnnamed() {
+		return false // a name first
+	}
+	if kind != c.st.Store {
+		return true
+	}
+	return kind == mailcore.StoreSecretVault && c.vault() != c.st.SecretVault
 }
 
 // move takes everything to the place picked, asking for the encrypted
@@ -231,9 +293,13 @@ func (c *storeChoices) move(a *app.Application, cli *mailcore.Client, from widge
 			return
 		}
 	}
+	vault := ""
+	if kind == mailcore.StoreSecretVault {
+		vault = c.vault()
+	}
 	btn.SetEnabled(false)
 	runAsync(a, func() (any, error) {
-		return nil, cli.UseStore(kind, p)
+		return nil, cli.UseStoreIn(kind, p, vault)
 	}, func(_ any, err error) {
 		if err != nil {
 			btn.SetEnabled(true)

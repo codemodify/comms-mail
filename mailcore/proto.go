@@ -378,6 +378,7 @@ type applyRulesParams struct {
 
 type vaultParams struct {
 	Store      string `json:"store,omitempty"` // secrets.use: where to
+	Vault      string `json:"vault,omitempty"` // secrets.use: secretvault's vault ("" its default)
 	Passphrase string `json:"passphrase,omitempty"`
 	Next       string `json:"next,omitempty"` // vault.change: the new one
 }

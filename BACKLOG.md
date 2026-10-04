@@ -73,6 +73,21 @@ new ones turn up.
   (`mail.inspect`), then Sign / Encrypt when writing (`mail.compose`),
   then keys in Settings. comms-mail uses secretvault's *default* vault; a
   setting for another is not there yet.
+- **Asked of secretvault: making a vault for an app** — comms-mail can
+  keep its passwords in a named vault (Settings › Security › Passwords ›
+  Secret Vault › Custom) but cannot make one: `vault.create` is for
+  secretvault's own programs only (svd/handlers.go, `errOwnPrograms`) and
+  takes the new vault's passphrase from the caller. Wanted: an app may
+  ask for a vault by name, and secretvault asks the person — its own
+  prompt for the passphrase, as `vault.unlock` without a key does —
+  answering with the vault, or canceled/denied. Also: an item call on a
+  vault that does not exist answers `-32003`, the code of a missing
+  item; a code (or data) of its own would let a client tell them apart
+  without `vault.list` first.
+- **secretvault: keys and the passwords' vault** — signing, decrypting
+  and your keys use secretvault's default vault; with the passwords in
+  another, comms-mail follows that vault's lock for both, so a locked
+  passwords vault holds signing back too.
 - **Edit account: Test connection** — with the password left empty it
   checks only that the server answers; testing with the saved password
   needs the daemon to probe by account id.

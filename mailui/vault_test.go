@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -80,7 +81,7 @@ func chooserParts(w *app.Window) (radios map[string]*widgets.RadioButton, fields
 	fields, buttons = passFields(w)
 	widget.Walk(w.Content(), func(c widget.Component) {
 		if rb, ok := c.(*widgets.RadioButton); ok {
-			radios[strings.TrimSuffix(rb.Text, " (in use now)")] = rb
+			radios[placeTitle(rb.Text)] = rb
 		}
 	})
 	return
@@ -110,12 +111,12 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 	if !strings.Contains(labelTexts(w), laterNote) {
 		t.Fatal("the window does not say this can be changed later in Settings")
 	}
-	if len(radios) != 4 || keep == nil || buttons["Not now"] == nil {
-		t.Fatalf("the window: radios %v, buttons %v", radios, buttons)
+	if keep == nil || buttons["Not now"] == nil {
+		t.Fatalf("the window: buttons %v", buttons)
 	}
-	for title, rb := range radios {
-		if rb.Selected {
-			t.Fatalf("%s is picked beforehand", title)
+	for _, title := range places {
+		if rb := radios[title]; rb == nil || rb.Selected {
+			t.Fatalf("%s is not there, or picked beforehand: %v", title, radios)
 		}
 	}
 	if keep.Enabled() {
@@ -222,13 +223,15 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 				}
 			case *widgets.Label:
 				texts = append(texts, v.Text)
+			case *widgets.RadioButton:
+				texts = append(texts, v.Text)
 			}
 		})
 		return btn, strings.Join(texts, "\n")
 	}
 	btn, text := unlockButton()
 	// (A hidden button is not walked.)
-	if !strings.Contains(text, "Store passwords in SV (secretvault)") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
+	if !strings.Contains(text, "Secret Vault, in use now") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
 		t.Fatalf("Settings, unlocked (unlock shown %v):\n%s", btn != nil && btn.Visible(), text)
 	}
 
@@ -406,8 +409,8 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 	section, _ := passwordsSection(a, nil, cli)
 	var radios []string
 	widget.Walk(section, func(c widget.Component) {
-		if rb, ok := c.(*widgets.RadioButton); ok {
-			radios = append(radios, rb.Text)
+		if rb, ok := c.(*widgets.RadioButton); ok && slices.Contains(places, placeTitle(rb.Text)) {
+			radios = append(radios, placeTitle(rb.Text))
 			if rb.Selected {
 				t.Errorf("%s is picked", rb.Text)
 			}
@@ -446,21 +449,26 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	w.SetContent(page)
 	a.PumpOnce()
 	type parts struct {
-		radios  map[string]*widgets.RadioButton
-		buttons map[string]*widgets.Button
-		fields  []*widgets.TextField
-		texts   []string
+		radios    map[string]*widgets.RadioButton
+		buttons   map[string]*widgets.Button
+		fields    []*widgets.TextField // the passphrase's
+		vaultName *widgets.TextField
+		texts     []string
 	}
 	look := func() parts {
 		p := parts{radios: map[string]*widgets.RadioButton{}, buttons: map[string]*widgets.Button{}}
 		widget.Walk(page, func(c widget.Component) {
 			switch v := c.(type) {
 			case *widgets.RadioButton:
-				p.radios[v.Text] = v
+				p.radios[placeTitle(v.Text)] = v
 			case *widgets.Button:
 				p.buttons[v.Text] = v
 			case *widgets.TextField:
-				p.fields = append(p.fields, v)
+				if v.Placeholder == "Vault name" {
+					p.vaultName = v
+				} else {
+					p.fields = append(p.fields, v)
+				}
 			case *widgets.Label:
 				p.texts = append(p.texts, v.Text)
 			}
@@ -470,22 +478,29 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	vaultPath := filepath.Join(dir, "secrets", "vault.json")
 	configPath, _ := filepath.Abs(mailcore.ConfigPath())
 	p := look()
-	// Each place: its name, a file's path as text that can be selected
-	// but not edited, then what it means; no text over them.
+	// Each place: its name with what it is in brackets, and no more — a
+	// file's path as text that can be selected but not edited, why one
+	// cannot be used here (no keyring, no secretvault in tests), and
+	// secretvault's vault; no text over them.
 	want := []string{
-		"radio System Keyring", "text Delegate to OS provided keyring. Current backend: Secret Service",
-		"radio Secret Vault", "text Store passwords in SV (secretvault)",
-		"radio Encrypted file", "path " + vaultPath, "text Encrypted with: Argon2id hashing + AES-256-GCM encryption",
-		"radio Plain file", "path " + configPath, "text Password is stored open to anyone",
+		"radio System Keyring (Secret Service)", "text Not available: ",
+		"radio Secret Vault", "text Not available: ", "radio Default", "radio Custom",
+		"radio Encrypted file (Argon2id hashing + AES-256-GCM encryption)", "path " + vaultPath,
+		"radio Plain file (open to anyone)", "path " + configPath,
 	}
 	got := placesSay(page)
+	if len(got) != len(want) {
+		t.Fatalf("the places say:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
 	for i, w := range want {
-		if i >= len(got) || !strings.HasPrefix(got[i], w) {
+		if !strings.HasPrefix(got[i], w) {
 			t.Fatalf("the places say:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 		}
 	}
-	if len(p.radios) != 4 {
-		t.Fatalf("radios %v", p.radios)
+	for _, title := range places {
+		if p.radios[title] == nil {
+			t.Fatalf("no %s: %v", title, p.radios)
+		}
 	}
 	first := ""
 	widget.Walk(page, func(c widget.Component) {
@@ -525,7 +540,7 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	// The window that asks says the same, under its own words.
 	st, _ := cli.SecretsStatus()
 	ask := newWindowFrom(t, a, func() { openStoreChooser(a, cli, switchIntro, st, nil) })
-	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[4:7], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
+	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[6:], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
 		t.Fatalf("the window says:\n%s", got)
 	}
 	ask.Close()
@@ -544,8 +559,8 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 		t.Fatalf("after Apply: %+v", st)
 	}
 	p = look()
-	inUse := p.radios["Encrypted file (in use now)"]
-	if inUse == nil || !inUse.Selected || len(p.fields) != 0 || p.buttons["Change passphrase…"] == nil || p.buttons["Apply"].Enabled() {
+	inUse := p.radios["Encrypted file"]
+	if inUse == nil || !inUse.Selected || !strings.HasSuffix(inUse.Text, ", in use now") || len(p.fields) != 0 || p.buttons["Change passphrase…"] == nil || p.buttons["Apply"].Enabled() {
 		t.Fatalf("after the move: radios %v, %d fields, buttons %v", p.radios, len(p.fields), p.buttons)
 	}
 	// Picking another place offers Apply; the one in use again takes it back.
@@ -566,7 +581,7 @@ func placesSay(root widget.Component) []string {
 	widget.Walk(root, func(c widget.Component) {
 		switch v := c.(type) {
 		case *widgets.RadioButton:
-			out = append(out, "radio "+strings.TrimSuffix(v.Text, " (in use now)"))
+			out = append(out, "radio "+strings.TrimSuffix(v.Text, ", in use now"))
 		case *widgets.TextArea:
 			if v.ReadOnly {
 				out = append(out, "path "+v.Text)
@@ -616,5 +631,111 @@ func TestPathViewShowsAllOfIt(t *testing.T) {
 	pv.Measure(layout.Constraints{MaxW: 40, MaxH: -1})
 	if view.Bounds() != before {
 		t.Fatalf("a probe moved the view from %v to %v", before, view.Bounds())
+	}
+}
+
+// places are the places the passwords can be kept, by name.
+var places = []string{"System Keyring", "Secret Vault", "Encrypted file", "Plain file"}
+
+// placeTitle is a radio's name without what follows it: "Encrypted file"
+// of "Encrypted file (Argon2id …), in use now".
+func placeTitle(text string) string {
+	if i := strings.IndexAny(text, "(,"); i > 0 {
+		return strings.TrimSpace(text[:i])
+	}
+	return text
+}
+
+// Secret Vault's vault: its default (named) or one typed under Custom.
+// Custom with no name offers no Apply; a vault secretvault does not have
+// is said, with how to make it, and nothing moves; once it is there, Apply
+// moves the passwords into it and the page shows it in use.
+func TestPasswordsInANamedVault(t *testing.T) {
+	sv := svtest.Start(t, false)
+	cli, _ := vaultDaemon(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 900, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	page, _ := passwordsSection(a, w, cli)
+	w.SetContent(page)
+	a.PumpOnce()
+	type parts struct {
+		radios map[string]*widgets.RadioButton
+		vault  *widgets.RadioGroup // Default, Custom: a click selects through it
+		name   *widgets.TextField
+		apply  *widgets.Button
+	}
+	look := func() parts {
+		p := parts{radios: map[string]*widgets.RadioButton{}}
+		widget.Walk(page, func(c widget.Component) {
+			switch v := c.(type) {
+			case *widgets.RadioButton:
+				p.radios[placeTitle(v.Text)] = v
+			case *widgets.RadioGroup:
+				p.vault = v
+			case *widgets.TextField:
+				if v.Placeholder == "Vault name" {
+					p.name = v
+				}
+			case *widgets.Button:
+				if v.Text == "Apply" {
+					p.apply = v
+				}
+			}
+		})
+		return p
+	}
+	p := look()
+	if r := p.radios["Default"]; r == nil || r.Text != "Default (personal)" || !r.Selected || p.radios["Custom"].Selected || p.name.Enabled() {
+		t.Fatalf("the vault: %v, name on %v", p.radios, p.name.Enabled())
+	}
+	p.vault.Select(1)
+	a.PumpOnce()
+	if !p.radios["Secret Vault"].Selected || !p.name.Enabled() || p.apply.Enabled() {
+		t.Fatalf("Custom: Secret Vault picked %v, name on %v, Apply on %v", p.radios["Secret Vault"].Selected, p.name.Enabled(), p.apply.Enabled())
+	}
+	p.name.SetText("work")
+	p.name.OnInput("work")
+	if !p.apply.Enabled() {
+		t.Fatal("Apply is off with a vault named")
+	}
+	p.apply.OnClick()
+	a.PumpOnce()
+	said := ""
+	if ov := w.Overlay(); ov != nil {
+		widget.Walk(ov, func(c widget.Component) {
+			if l, ok := c.(*widgets.Label); ok {
+				said += l.Text + "\n"
+			}
+		})
+	}
+	if !strings.Contains(said, `no vault named "work"`) || !strings.Contains(said, "secretvault vault create --name work") {
+		t.Fatalf("a vault secretvault does not have:\n%s", said)
+	}
+	if st, _ := cli.SecretsStatus(); st.Store != "" {
+		t.Fatalf("something moved: %+v", st)
+	}
+	widget.DismissOverlay(w.Overlay())
+
+	sv.AddVault("work")
+	p.apply.OnClick()
+	a.PumpOnce()
+	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StoreSecretVault || st.SecretVault != "work" {
+		t.Fatalf("after Apply: %+v", st)
+	}
+	if _, ok := sv.ItemIn("work", "comms-mail/pass/home/imap"); !ok {
+		t.Fatal("the password is not in work")
+	}
+	p = look()
+	if r := p.radios["Secret Vault"]; !r.Selected || !strings.HasSuffix(r.Text, ", in use now") ||
+		!p.radios["Custom"].Selected || p.name.Text != "work" || p.apply.Enabled() {
+		t.Fatalf("the page after: %v, name %q, Apply %v", p.radios, p.name.Text, p.apply.Enabled())
+	}
+	p.vault.Select(0)
+	if !p.apply.Enabled() {
+		t.Fatal("back to the default vault offers no Apply")
 	}
 }

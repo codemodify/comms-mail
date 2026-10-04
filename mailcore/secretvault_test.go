@@ -1,6 +1,7 @@
 package mailcore
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -219,4 +220,88 @@ func TestSecretVaultStartsLater(t *testing.T) {
 	f.Unlock()
 	waitFor(t, "secretvault coming back was not noticed", func() bool { return st.SecretsStatus().Ready })
 	checkSecretsWork(t, st, "back")
+}
+
+// The secrets can be kept in a vault of secretvault's other than its
+// default, named in Settings. A vault secretvault does not have is said —
+// it lets only its own programs make one — and nothing moves; one it has
+// takes them, and the choice holds when the daemon starts again. Back to
+// the default moves them back and out of the named vault; the default by
+// its own name moves nothing, and deletes nothing.
+func TestSecretVaultNamedVault(t *testing.T) {
+	sv := startFakeSecretVault(t, false)
+	dir := t.TempDir()
+	t.Setenv(EnvConfig, filepath.Join(dir, "mail.json"))
+	st, err := NewLocalStoreDir(MailConfig{}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.PutAccount(AccountConfig{ID: "w", Address: "ada@example.com",
+		IMAP: ServerConfig{Host: "127.0.0.1:1", Pass: "open sesame"}}); err != nil {
+		t.Fatal(err)
+	}
+	const item = "comms-mail/pass/w/imap"
+	password := func(s *LocalStore) string {
+		got, _ := s.AccountConfig("w")
+		return s.withSecrets("w", got).IMAP.Pass
+	}
+
+	err = st.UseStoreIn(StoreSecretVault, "", "work")
+	if err == nil || !strings.Contains(err.Error(), `no vault named "work"`) || !strings.Contains(err.Error(), "secretvault vault create --name work") {
+		t.Fatalf("a vault secretvault does not have: %v", err)
+	}
+	if s := st.SecretsStatus(); s.Store != "" || !s.PlainSecrets {
+		t.Fatalf("something moved: %+v", s)
+	}
+	if _, ok := sv.Item(item); ok {
+		t.Fatal("the password went to the default vault")
+	}
+
+	sv.AddVault("work")
+	if err := st.UseStoreIn(StoreSecretVault, "", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sv.ItemIn("work", item); !ok {
+		t.Fatal("the password is not in work")
+	}
+	if _, ok := sv.Item(item); ok {
+		t.Fatal("the password is in the default vault too")
+	}
+	if s := st.SecretsStatus(); s.Store != StoreSecretVault || s.SecretVault != "work" || s.SecretVaultDefault != "personal" || !s.Ready {
+		t.Fatalf("status %+v", s)
+	}
+	if file, _ := LoadConfig(); file.SecretStore != StoreSecretVault || file.SecretVault != "work" {
+		t.Fatalf("mail.json: %q in %q", file.SecretStore, file.SecretVault)
+	}
+
+	// The daemon starting again reads them from work.
+	theSecretVault.reset()
+	file, _ := LoadConfig()
+	again, err := NewLocalStoreDir(file, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := password(again); got != "open sesame" {
+		t.Fatalf("after a restart the password is %q", got)
+	}
+
+	if err := again.UseStoreIn(StoreSecretVault, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sv.Item(item); !ok {
+		t.Fatal("the password did not come back to the default vault")
+	}
+	if _, ok := sv.ItemIn("work", item); ok {
+		t.Fatal("the password stayed in work")
+	}
+	if file, _ := LoadConfig(); file.SecretVault != "" {
+		t.Fatalf("mail.json still names %q", file.SecretVault)
+	}
+
+	if err := again.UseStoreIn(StoreSecretVault, "", "personal"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sv.Item(item); !ok || password(again) != "open sesame" {
+		t.Fatal("the default vault, named, lost the password")
+	}
 }

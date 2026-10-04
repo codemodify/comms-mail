@@ -530,7 +530,7 @@ secretvault, which does that work itself (see the security primer).
 | Store | Where | Unlocking |
 | --- | --- | --- |
 | **System Keyring** | The system's own: the freedesktop Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC), the Keychain on macOS, the Credential Manager on Windows. Items are labelled `comms-mail: <name>` (attributes `application=comms-mail`, `name=…`). | The desktop unlocks it at login; a locked one shows its own prompt. |
-| **Secret Vault** | [codemodify/secretvault](https://github.com/codemodify/secretvault), the owner's own store, reached through its daemon's socket (`$SECRETVAULT_SOCK`, else `$XDG_RUNTIME_DIR/secretvault/secretvaultd.sock`) with its JSON-RPC protocol; comms-mail links none of its code. Items `comms-mail/pass/<account>/<imap\|pop\|smtp>` (kind `password`) and `comms-mail/oauth/<account>` (kind `api-key`) in its default vault, labelled for its own windows. | secretvault's: it asks before letting `comms-maild` read, and remembers. While it is locked, comms-maild holds no secret — what it read is dropped and its sessions closed — and waits; it asks secretvault to unlock only when you do (Fetch, or Settings › Security › Passwords › **Unlock secretvault…**). |
+| **Secret Vault** | [codemodify/secretvault](https://github.com/codemodify/secretvault), the owner's own store, reached through its daemon's socket (`$SECRETVAULT_SOCK`, else `$XDG_RUNTIME_DIR/secretvault/secretvaultd.sock`) with its JSON-RPC protocol; comms-mail links none of its code. Items `comms-mail/pass/<account>/<imap\|pop\|smtp>` (kind `password`) and `comms-mail/oauth/<account>` (kind `api-key`) in its default vault, or the one named in Settings (mail.json `secretVault`), labelled for its own windows. Every item call names that vault, and the vault is looked up in `vault.list` first: secretvault answers an unknown vault with the same `-32003` as a missing item, which must not read as "no password saved". | secretvault's: it asks before letting `comms-maild` read, and remembers. While it is locked, comms-maild holds no secret — what it read is dropped and its sessions closed — and waits; it asks secretvault to unlock only when you do (Fetch, or Settings › Security › Passwords › **Unlock secretvault…**). |
 | **Encrypted file** | `~/.data/comms-mail/secrets/vault.json` (mode `0600`): AES-256-GCM under a key from your passphrase (Argon2id; the salt and cost are bound into the encryption, so they cannot be swapped for weaker ones). | Your passphrase, once each time comms-maild starts. |
 | **Plain file** | Passwords in `mail.json`, as comms-mail always kept them; OAuth tokens in `oauth-tokens.json` beside it (both `0600`). Readable by any program running as you. | — |
 
@@ -539,25 +539,41 @@ secretvault, which does that work itself (see the security primer).
   choice), and before the first account's password is saved. **Not now**
   leaves everything as it is.
 - **Settings › Security › Passwords** is the same choice, in the page
-  itself, with no text over it: each place with a line on what it is —
-  System Keyring says which keyring it uses (`SecretsStatus.keyringBackend`:
-  Secret Service, macOS Keychain, Windows Credential Manager) — and the
-  place in use picked. The encrypted and plain files show their full
-  paths first, as the daemon has them (`SecretsStatus.encryptedFile` /
-  `plainFile`), in a read-only box that can be selected and copied and
-  is as tall as the path wrapped to its width. The window that asks
-  shows the places the same way, under its own words. That a forgotten
-  passphrase cannot be recovered is said over the passphrase fields. Under it: that it is locked, with **Unlock…** (**Unlock
-  secretvault…** for secretvault, which shows its own prompt), and
-  **Change passphrase…** for the encrypted file. The places scroll; the
-  passphrase fields and **Apply** stay in view, and Apply is on only
-  while another place is picked.
+  itself, with no text over it. Each place is its name with what it is in
+  brackets, and no description: **System Keyring (Secret Service)** — the
+  keyring in use, `SecretsStatus.keyringBackend`: Secret Service, macOS
+  Keychain, Windows Credential Manager — **Secret Vault**, **Encrypted
+  file (Argon2id hashing + AES-256-GCM encryption)** and **Plain file
+  (open to anyone)**; the place in use is picked and says ", in use
+  now". The two files show their full paths under their names, as the
+  daemon has them (`SecretsStatus.encryptedFile` / `plainFile`), in a
+  read-only box that can be selected and copied and is as tall as the
+  path wrapped to its width. A place that cannot be used here says why.
+  Under Secret Vault: which of secretvault's vaults — **Default** (named,
+  `SecretsStatus.secretVaultDefault`) or **Custom** with the vault's name
+  (`SecretsStatus.secretVault`, mail.json `secretVault`). Under the place
+  in use: that it is locked, with **Unlock…** (**Unlock secretvault…**
+  for secretvault, which shows its own prompt), and **Change
+  passphrase…** for the encrypted file. That a forgotten passphrase
+  cannot be recovered is said over the passphrase fields. The places
+  scroll; the passphrase fields and **Apply** stay in view, and Apply is
+  on only while another place — or, with secretvault, another vault — is
+  picked (Custom needs a name). The window that asks shows the places the
+  same way, under its own words.
 - **Moving.** **Apply** there moves every secret to the place picked
   (the encrypted file's passphrase typed twice): they are written there
   first and taken out of the old place last (the encrypted file deleted,
   keyring items removed, or the passwords taken out of `mail.json`), so a
-  failure part-way leaves them where they were. Moving from an install before the choice also deletes
-  the old token files, `master.key`, and the copy of that key older builds
+  failure part-way leaves them where they were. From one of secretvault's
+  vaults to another is the same: written to the new vault, then deleted
+  from the old one; the default vault chosen by its own name moves and
+  deletes nothing. A vault secretvault does not have is said, with how to
+  make it, and nothing moves: secretvault lets only its own programs make
+  vaults (`vault.create`), and takes the new vault's passphrase from the
+  caller, which comms-mail must never hold — so it is made in secretvault
+  (File › New vault…, or `secretvault vault create --name …`) and then
+  chosen here. Moving from an install before the choice also deletes the
+  old token files, `master.key`, and the copy of that key older builds
   put in the keyring through `secret-tool`.
 - **Locked.** While the store in use cannot be read — the encrypted file
   not yet unlocked, the keyring or secretvault locked, secretvault told
@@ -573,7 +589,7 @@ secretvault, which does that work itself (see the security primer).
   accounts and their mail stay, and each account needs its password again.
 - The RPC log records these requests by name only, never a passphrase.
 
-`secrets.status`, `secrets.use` (`{store, passphrase}`), `secrets.unlock`,
+`secrets.status`, `secrets.use` (`{store, passphrase, vault}` — `vault` the secretvault vault, "" its default), `secrets.unlock`,
 `vault.change` and `vault.reset` are the daemon's side of this. A store
 that keeps no secrets (the demo) reports `supported: false`, and the window
 asks nothing. Tests never reach your real keyring or secretvault: they

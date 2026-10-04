@@ -544,6 +544,10 @@ type SecretsStatus struct {
 	// SecretVaultProblem says why not.
 	SecretVaultAvailable bool   `json:"secretVaultAvailable"`
 	SecretVaultProblem   string `json:"secretVaultProblem,omitempty"`
+	// SecretVault is the secretvault vault chosen for them ("" its default
+	// vault), SecretVaultDefault the name of secretvault's default vault.
+	SecretVault        string `json:"secretVault,omitempty"`
+	SecretVaultDefault string `json:"secretVaultDefault,omitempty"`
 	// PlainFile is where the plain store keeps the passwords (mail.json),
 	// EncryptedFile the encrypted file: the daemon's own paths.
 	PlainFile     string `json:"plainFile,omitempty"`
@@ -589,6 +593,7 @@ func (s *LocalStore) initSecretKind() {
 	if kind == "" && s.vaultOf().Exists() {
 		kind = StoreEncrypted
 	}
+	theSecretVault.setWant(s.cfg.SecretVault)
 	s.kind.Store(kind)
 	setActiveStore(s.storeFor(kind))
 	if kind == StoreSecretVault {
@@ -650,6 +655,10 @@ func keepsPlainPasswords(kind string) bool { return kind == "" || kind == StoreP
 // store (and before a choice is made).
 func (s *LocalStore) saveConfig(cfg MailConfig) error {
 	cfg.SecretStore = s.secretKind()
+	cfg.SecretVault = ""
+	if cfg.SecretStore == StoreSecretVault {
+		cfg.SecretVault = s.cfg.SecretVault
+	}
 	if !keepsPlainPasswords(cfg.SecretStore) {
 		for i := range cfg.Accounts {
 			a := &cfg.Accounts[i]
@@ -689,7 +698,8 @@ func (s *LocalStore) withSecrets(id string, a AccountConfig) AccountConfig {
 func (s *LocalStore) SecretsStatus() SecretsStatus {
 	kind := s.secretKind()
 	st := SecretsStatus{Supported: true, Store: kind, KeyringName: keyringName(), KeyringBackend: keyringBackend(),
-		PlainFile: absPath(ConfigPath()), EncryptedFile: absPath(s.vaultOf().path)}
+		SecretVault: s.secretVaultChoice(),
+		PlainFile:   absPath(ConfigPath()), EncryptedFile: absPath(s.vaultOf().path)}
 	if err := s.storeFor(kind).Ready(); err == nil {
 		st.Ready = true
 	} else if errors.Is(err, ErrLocked) {
@@ -723,6 +733,7 @@ func (s *LocalStore) SecretsStatus() SecretsStatus {
 	}
 	if err := theSecretVault.available(); err == nil {
 		st.SecretVaultAvailable = true
+		_, _, st.SecretVaultDefault = theSecretVault.current()
 	} else {
 		st.SecretVaultProblem = err.Error()
 	}
@@ -734,15 +745,30 @@ func (s *LocalStore) SecretsStatus() SecretsStatus {
 // written to the new store first and taken out of the old one last, so a
 // failure part-way leaves them where they were.
 func (s *LocalStore) UseStore(kind, passphrase string) error {
+	return s.UseStoreIn(kind, passphrase, "")
+}
+
+// UseStoreIn is UseStore, with vault the secretvault vault for the
+// secretvault store ("" for secretvault's default). Already with
+// secretvault, a different vault moves the secrets from one vault to the
+// other. A vault secretvault does not have is an error, and nothing moves.
+func (s *LocalStore) UseStoreIn(kind, passphrase, vault string) error {
 	switch kind {
 	case StoreKeyring, StoreSecretVault, StoreEncrypted, StorePlain:
 	default:
 		return fmt.Errorf("mail: no secret store %q", kind)
 	}
+	vault = strings.TrimSpace(vault)
+	if kind != StoreSecretVault {
+		vault = ""
+	}
 	s.moveMu.Lock()
 	defer s.moveMu.Unlock()
 	cur := s.secretKind()
 	if cur == kind {
+		if kind == StoreSecretVault && vault != s.secretVaultChoice() {
+			return s.moveSecretVault(vault)
+		}
 		return nil
 	}
 	src := s.storeFor(cur)
@@ -787,6 +813,9 @@ func (s *LocalStore) UseStore(kind, passphrase string) error {
 		}
 	case StoreSecretVault:
 		sv := secretVaultStore{theSecretVault}
+		if err := theSecretVault.useVault(vault); err != nil {
+			return err
+		}
 		// The person is choosing it now, so a locked vault is unlocked
 		// (secretvault asks) rather than waited for.
 		if err := sv.Ready(); errors.Is(err, ErrLocked) {
@@ -805,7 +834,7 @@ func (s *LocalStore) UseStore(kind, passphrase string) error {
 	// plain store.
 	s.mu.Lock()
 	s.kind.Store(kind)
-	s.cfg.SecretStore = kind
+	s.cfg.SecretStore, s.cfg.SecretVault = kind, vault
 	file, _ := LoadConfig()
 	err = s.saveConfig(file)
 	for i := range s.cfg.Accounts {
@@ -832,6 +861,80 @@ func (s *LocalStore) UseStore(kind, passphrase string) error {
 		Logf("secrets: clearing %s: %v", StoreLabel(cur), err)
 	}
 	Logf("secrets: now kept in %s", StoreLabel(kind))
+	s.afterUnlock()
+	return nil
+}
+
+// secretVaultChoice is the secretvault vault chosen ("" its default).
+func (s *LocalStore) secretVaultChoice() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cfg.SecretVault
+}
+
+// moveSecretVault moves comms-mail's secrets from the secretvault vault
+// they are in to the one named ("" for secretvault's default): written
+// there first, taken out of the old one last. Two names for one vault
+// (the default, by name) move nothing. s.moveMu is held.
+func (s *LocalStore) moveSecretVault(name string) error {
+	sv := secretVaultStore{theSecretVault}
+	if err := sv.Ready(); err != nil {
+		return fmt.Errorf("the secrets in %s cannot be read now: %w", StoreLabel(StoreSecretVault), err)
+	}
+	names, err := sv.Names()
+	if err != nil {
+		return err
+	}
+	values := map[string]string{}
+	for _, n := range names {
+		v, ok, err := sv.Get(n)
+		if err != nil {
+			return err
+		}
+		if ok && v != "" {
+			values[n] = v
+		}
+	}
+	from, fromWant, _ := theSecretVault.current()
+	if err := theSecretVault.useVault(name); err != nil {
+		return err
+	}
+	back := func() { _ = theSecretVault.useVault(fromWant) }
+	// The person is choosing it now: a locked vault is unlocked
+	// (secretvault asks) rather than waited for.
+	if err := sv.Ready(); errors.Is(err, ErrLocked) {
+		if err := sv.unlock(); err != nil {
+			back()
+			return err
+		}
+	} else if err != nil {
+		back()
+		return err
+	}
+	to, _, _ := theSecretVault.current()
+	if to != from {
+		if err := sv.Update(values); err != nil {
+			back()
+			return err
+		}
+	}
+	s.mu.Lock()
+	s.cfg.SecretVault = name
+	file, _ := LoadConfig()
+	err = s.saveConfig(file)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if to != from {
+		for _, n := range names {
+			if err := theSecretVault.deleteIn(from, n); err != nil {
+				Logf("secrets: clearing secretvault vault %s: %v", from, err)
+				break
+			}
+		}
+	}
+	Logf("secrets: now kept in secretvault vault %s", to)
 	s.afterUnlock()
 	return nil
 }

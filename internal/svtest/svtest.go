@@ -3,7 +3,10 @@
 // vault.unlock, item.get, item.list, item.put, item.delete, mail.inspect,
 // trust.seen, pgp.public, smime.list, mail.compose) and the notifications
 // it sends (vault.locked, vault.unlocked), with one vault named
-// "personal". It checks, signs, encrypts and decrypts nothing: a test says
+// "personal", the default, and any a test adds (AddVault), locked and
+// unlocked together; an item call names its vault or means the default,
+// and one naming a vault there is not is "not found", as secretvault
+// answers it. It checks, signs, encrypts and decrypts nothing: a test says
 // what mail.inspect answers and whose keys it holds, and mail.compose
 // wraps the message in a structure that reads as signed or encrypted. Only tests import it, so it is never in a binary, and
 // tests never reach the person's own secretvault.
@@ -12,6 +15,7 @@ package svtest
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -67,7 +71,8 @@ type Vault struct {
 	mu      sync.Mutex
 	locked  bool
 	deny    bool
-	items   map[string]Item
+	items   map[string]Item // the default vault's
+	vaults  map[string]map[string]Item
 	conns   []net.Conn
 	unlocks int
 	gets    int
@@ -214,6 +219,7 @@ func Start(t testing.TB, locked bool) *Vault {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	v := &Vault{t: t, path: filepath.Join(dir, "secretvaultd.sock"), locked: locked, items: map[string]Item{}}
+	v.vaults = map[string]map[string]Item{defaultVault: v.items}
 	v.Listen()
 	t.Setenv("SECRETVAULT_SOCK", v.path)
 	t.Cleanup(v.Stop)
@@ -281,12 +287,27 @@ func (v *Vault) Deny(on bool) {
 	v.mu.Unlock()
 }
 
-// Item is what the vault holds under name.
-func (v *Vault) Item(name string) (Item, bool) {
+// defaultVault is the stand-in's default vault.
+const defaultVault = "personal"
+
+// Item is what the default vault holds under name.
+func (v *Vault) Item(name string) (Item, bool) { return v.ItemIn(defaultVault, name) }
+
+// ItemIn is what vault holds under name.
+func (v *Vault) ItemIn(vault, name string) (Item, bool) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	it, ok := v.items[name]
+	it, ok := v.vaults[vault][name]
 	return it, ok
+}
+
+// AddVault is a vault made in secretvault, empty.
+func (v *Vault) AddVault(name string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.vaults[name] == nil {
+		v.vaults[name] = map[string]Item{}
+	}
 }
 
 // Unlocks counts vault.unlock asked; Gets counts item.get answered.
@@ -343,6 +364,7 @@ func (v *Vault) serve(c net.Conn) {
 			continue
 		}
 		var p struct {
+			Vault   string `json:"vault"`
 			Name    string `json:"name"`
 			Prefix  string `json:"prefix"`
 			Item    Item   `json:"item"`
@@ -360,13 +382,26 @@ func (v *Vault) serve(c net.Conn) {
 		case "client.hello":
 			reply(m.ID, map[string]string{"daemon": "secretvaultd", "version": "0.1.0", "caller": "comms-maild"}, 0, "")
 		case "vault.list":
-			reply(m.ID, []vaultInfo{{Name: "personal", Default: true, Locked: locked}}, 0, "")
+			v.mu.Lock()
+			var list []vaultInfo
+			for name := range v.vaults {
+				list = append(list, vaultInfo{Name: name, Default: name == defaultVault, Locked: locked})
+			}
+			v.mu.Unlock()
+			reply(m.ID, list, 0, "")
 		case "vault.unlock":
 			v.mu.Lock()
-			v.unlocks++
+			_, ok := v.vaults[vaultOr(p.Vault)]
+			if ok {
+				v.unlocks++
+			}
 			v.mu.Unlock()
+			if !ok {
+				reply(m.ID, nil, codeNotFound, fmt.Sprintf("there is no vault named %q", p.Vault))
+				continue
+			}
 			v.Unlock()
-			reply(m.ID, vaultInfo{Name: "personal", Default: true}, 0, "")
+			reply(m.ID, vaultInfo{Name: vaultOr(p.Vault), Default: vaultOr(p.Vault) == defaultVault}, 0, "")
 		case "mail.inspect":
 			if locked {
 				reply(m.ID, nil, codeLocked, "the vault is locked")
@@ -465,10 +500,16 @@ func (v *Vault) serve(c net.Conn) {
 				continue
 			}
 			v.mu.Lock()
+			items, there := v.vaults[vaultOr(p.Vault)]
+			if !there {
+				v.mu.Unlock()
+				reply(m.ID, nil, codeNotFound, fmt.Sprintf("there is no vault named %q", p.Vault))
+				continue
+			}
 			switch m.Method {
 			case "item.get":
 				v.gets++
-				it, ok := v.items[p.Name]
+				it, ok := items[p.Name]
 				v.mu.Unlock()
 				if !ok {
 					reply(m.ID, nil, codeNotFound, "not found")
@@ -477,7 +518,7 @@ func (v *Vault) serve(c net.Conn) {
 				reply(m.ID, entry{Item: it}, 0, "")
 			case "item.list":
 				var out []entry
-				for name, it := range v.items {
+				for name, it := range items {
 					if strings.HasPrefix(name, p.Prefix) {
 						out = append(out, entry{Item: Item{Kind: it.Kind, Name: it.Name}})
 					}
@@ -485,12 +526,12 @@ func (v *Vault) serve(c net.Conn) {
 				v.mu.Unlock()
 				reply(m.ID, out, 0, "")
 			case "item.put":
-				v.items[p.Item.Name] = p.Item
+				items[p.Item.Name] = p.Item
 				v.mu.Unlock()
 				reply(m.ID, entry{Item: Item{Kind: p.Item.Kind, Name: p.Item.Name}}, 0, "")
 			case "item.delete":
-				_, ok := v.items[p.Name]
-				delete(v.items, p.Name)
+				_, ok := items[p.Name]
+				delete(items, p.Name)
 				v.mu.Unlock()
 				if !ok {
 					reply(m.ID, nil, codeNotFound, "not found")
@@ -502,4 +543,12 @@ func (v *Vault) serve(c net.Conn) {
 			reply(m.ID, nil, -32601, "method not found")
 		}
 	}
+}
+
+// vaultOr is the vault an item call means: the one named, or the default.
+func vaultOr(name string) string {
+	if name == "" {
+		return defaultVault
+	}
+	return name
 }

@@ -480,7 +480,7 @@ func (s *Server) dispatch(req Request) Response {
 		if err == nil {
 			switch req.Method {
 			case MethodSecretsUse:
-				err = ls.UseStore(p.Store, p.Passphrase)
+				err = ls.UseStoreIn(p.Store, p.Passphrase, p.Vault)
 			case MethodSecretsUnlock:
 				err = ls.UnlockSecrets(p.Passphrase)
 			case MethodVaultChange:

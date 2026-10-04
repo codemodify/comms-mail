@@ -19,8 +19,12 @@ import (
 // comms-maild reaches it the way any program does — JSON-RPC 2.0, one
 // message per line, over its socket (secretvault's docs/clients.md) — and
 // links none of its code. comms-mail's secrets are items under
-// "comms-mail/" in the default vault: an account's password a "password"
-// item, an OAuth sign-in an "api-key" one.
+// "comms-mail/" in the vault chosen for them — secretvault's default, or
+// one named in Settings (mail.json "secretVault") — an account's password a
+// "password" item, an OAuth sign-in an "api-key" one. Every item call names
+// that vault: secretvault answers an unknown vault with the same "not
+// found" as a missing item, so the vault is looked up in vault.list first
+// and a missing one is said, never taken for no secrets.
 //
 // secretvault decides who may read them: the first time comms-maild asks,
 // it asks the person and remembers the answer. While the vault is locked —
@@ -309,16 +313,20 @@ func (c *svConn) close() { _ = c.conn.Close() }
 // ---- the vault, as comms-maild sees it ----
 
 // secretVault is comms-maild's one connection to secretvaultd and what it
-// knows: the default vault, whether it is locked, and what it has read
-// since it was last unlocked.
+// knows: the vault the secrets are in, whether it is locked, and what it
+// has read since it was last unlocked.
 type secretVault struct {
-	mu      sync.Mutex
-	conn    *svConn
-	vault   string // the default vault's name; "" until there is one
-	locked  bool
-	refused error // the person said no (or dismissed the question): until the next unlock
-	known   map[string]string
-	none    map[string]bool
+	mu   sync.Mutex
+	conn *svConn
+	// want is the vault chosen for comms-mail's secrets, "" for
+	// secretvault's default; vault is its name as found in vault.list, ""
+	// while there is none (no vault yet, or none of that name);
+	// defaultName is secretvault's default vault.
+	want, vault, defaultName string
+	locked                   bool
+	refused                  error // the person said no (or dismissed the question): until the next unlock
+	known                    map[string]string
+	none                     map[string]bool
 
 	onLock, onUnlock func()
 	watching         bool
@@ -350,23 +358,104 @@ func (v *secretVault) connect() (reachedNow bool, err error) {
 		c.close()
 		return false, err
 	}
-	name, locked := "", true
-	for _, vi := range vaults {
-		if vi.Default || len(vaults) == 1 {
-			name, locked = vi.Name, vi.Locked
-		}
-	}
 	v.mu.Lock()
 	if v.conn != nil && v.conn.alive() { // another goroutine won
 		v.mu.Unlock()
 		c.close()
 		return false, nil
 	}
-	v.conn, v.vault, v.locked = c, name, locked
+	v.conn = c
+	v.takeVault(vaults)
 	v.forgetLocked()
 	v.mu.Unlock()
 	go v.watchConn(c)
 	return true, nil
+}
+
+// pickVault finds want in vaults ("" for the default, or the only one).
+func pickVault(vaults []svVaultInfo, want string) (vi svVaultInfo, ok bool) {
+	for _, x := range vaults {
+		if want != "" && x.Name == want || want == "" && (x.Default || len(vaults) == 1) {
+			return x, true
+		}
+	}
+	return svVaultInfo{}, false
+}
+
+// takeVault takes the chosen vault, and the default's name, from a
+// vault.list answer (v.mu held).
+func (v *secretVault) takeVault(vaults []svVaultInfo) {
+	v.defaultName = ""
+	if d, ok := pickVault(vaults, ""); ok {
+		v.defaultName = d.Name
+	}
+	vi, ok := pickVault(vaults, v.want)
+	v.vault, v.locked = vi.Name, !ok || vi.Locked
+}
+
+// relist asks secretvault for its vaults again, for a vault not found
+// before (made since) or another one chosen.
+func (v *secretVault) relist() error {
+	var vaults []svVaultInfo
+	if err := v.call("vault.list", nil, &vaults); err != nil {
+		return err
+	}
+	v.mu.Lock()
+	before := v.vault
+	v.takeVault(vaults)
+	if v.vault != before {
+		v.forgetLocked()
+		v.refused = nil
+	}
+	v.mu.Unlock()
+	return nil
+}
+
+// useVault makes name the vault comms-mail's secrets are in ("" for
+// secretvault's default). A vault secretvault does not have is an error,
+// and changes nothing.
+func (v *secretVault) useVault(name string) error {
+	if _, err := v.connect(); err != nil {
+		return err
+	}
+	var vaults []svVaultInfo
+	if err := v.call("vault.list", nil, &vaults); err != nil {
+		return err
+	}
+	if _, ok := pickVault(vaults, name); !ok {
+		return missingVault(name)
+	}
+	v.mu.Lock()
+	v.want = name
+	v.takeVault(vaults)
+	v.forgetLocked()
+	v.refused = nil
+	v.mu.Unlock()
+	return nil
+}
+
+// setWant chooses the vault before anything is read (mail.json's choice,
+// at start).
+func (v *secretVault) setWant(name string) {
+	v.mu.Lock()
+	v.want = name
+	v.mu.Unlock()
+}
+
+// current is the vault the secrets are in now, and the one chosen.
+func (v *secretVault) current() (vault, want, defaultName string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.vault, v.want, v.defaultName
+}
+
+// missingVault says secretvault has no vault of that name; secretvault
+// lets only its own programs make one.
+func missingVault(name string) error {
+	if name == "" {
+		return errors.New("secretvault has no vault yet: make one in secretvault first")
+	}
+	return fmt.Errorf("secretvault has no vault named %q, and it lets only its own programs make one: make it in secretvault (File › New vault…, or: secretvault vault create --name %s), then Apply again", name, name)
 }
 
 // watchConn notices the daemon going away: everything read is dropped,
@@ -393,7 +482,7 @@ func (v *secretVault) note(method string, params json.RawMessage) {
 	var ev svVaultEvent
 	_ = json.Unmarshal(params, &ev)
 	v.mu.Lock()
-	if ev.Vault != "" && v.vault != "" && ev.Vault != v.vault {
+	if ev.Vault != "" && ev.Vault != v.vault {
 		v.mu.Unlock()
 		return
 	}
@@ -478,7 +567,7 @@ func (v *secretVault) reset() {
 	if v.stop != nil {
 		close(v.stop)
 	}
-	v.conn, v.vault, v.locked, v.refused = nil, "", false, nil
+	v.conn, v.want, v.vault, v.defaultName, v.locked, v.refused = nil, "", "", "", false, nil
 	v.onLock, v.onUnlock, v.watching, v.stop = nil, nil, false, nil
 	v.forgetLocked()
 	v.mu.Unlock()
@@ -521,10 +610,19 @@ func (s secretVaultStore) Ready() error {
 		return err
 	}
 	v.mu.Lock()
+	missing := v.vault == ""
+	v.mu.Unlock()
+	if missing {
+		// Made in secretvault since it was looked for, perhaps.
+		if err := v.relist(); err != nil {
+			return err
+		}
+	}
+	v.mu.Lock()
 	defer v.mu.Unlock()
 	switch {
 	case v.vault == "":
-		return errors.New("secretvault has no vault yet: make one in secretvault first")
+		return missingVault(v.want)
 	case v.locked:
 		return ErrLocked
 	case v.refused != nil:
@@ -588,7 +686,7 @@ func (s secretVaultStore) Get(name string) (string, bool, error) {
 	}
 	v.mu.Unlock()
 	var e svEntry
-	err := v.call("item.get", svItemRef{Name: svItemName(name)}, &e)
+	err := v.call("item.get", svItemRef{Vault: v.name(), Name: svItemName(name)}, &e)
 	if svCode(err) == svCodeNotFound {
 		v.mu.Lock()
 		v.none[name] = true
@@ -626,7 +724,7 @@ func (s secretVaultStore) Update(set map[string]string, del ...string) error {
 		kind, field, label := svPlace(name)
 		it := svItem{Kind: kind, Name: svItemName(name), Label: label,
 			Fields: []svField{{Name: field, Type: "concealed", Value: []byte(val)}}}
-		if err := v.call("item.put", map[string]any{"item": it}, nil); err != nil {
+		if err := v.call("item.put", map[string]any{"vault": v.name(), "item": it}, nil); err != nil {
 			return s.fail(err)
 		}
 		v.mu.Lock()
@@ -635,8 +733,7 @@ func (s secretVaultStore) Update(set map[string]string, del ...string) error {
 		v.mu.Unlock()
 	}
 	for _, name := range del {
-		err := v.call("item.delete", svItemRef{Name: svItemName(name)}, nil)
-		if err != nil && svCode(err) != svCodeNotFound {
+		if err := v.deleteIn(v.name(), name); err != nil {
 			return s.fail(err)
 		}
 		v.mu.Lock()
@@ -652,7 +749,7 @@ func (s secretVaultStore) Names() ([]string, error) {
 		return nil, err
 	}
 	var entries []svEntry
-	if err := s.v.call("item.list", map[string]string{"prefix": svItemPrefix}, &entries); err != nil {
+	if err := s.v.call("item.list", map[string]string{"vault": s.v.name(), "prefix": svItemPrefix}, &entries); err != nil {
 		return nil, s.fail(err)
 	}
 	var names []string
@@ -672,13 +769,31 @@ func (s secretVaultStore) Forget() error {
 	return s.Update(nil, names...)
 }
 
-// unlock asks secretvault to unlock its default vault, which it does with
-// its own prompt; comms-mail never sees the passphrase. It is also how
-// the person asks again after saying no. Whichever comes first — this
-// answer or secretvault's vault.unlocked — lets comms-maild connect, once.
+// name is the vault the secrets are in.
+func (v *secretVault) name() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.vault
+}
+
+// deleteIn takes one of comms-mail's secrets out of vault; one already
+// gone is no error.
+func (v *secretVault) deleteIn(vault, name string) error {
+	err := v.call("item.delete", svItemRef{Vault: vault, Name: svItemName(name)}, nil)
+	if err != nil && svCode(err) != svCodeNotFound {
+		return err
+	}
+	return nil
+}
+
+// unlock asks secretvault to unlock the vault the secrets are in, which it
+// does with its own prompt; comms-mail never sees the passphrase. It is
+// also how the person asks again after saying no. Whichever comes first —
+// this answer or secretvault's vault.unlocked — lets comms-maild connect,
+// once.
 func (s secretVaultStore) unlock() error {
 	v := s.v
-	if err := v.call("vault.unlock", map[string]string{}, nil); err != nil {
+	if err := v.call("vault.unlock", map[string]string{"vault": v.name()}, nil); err != nil {
 		if c := svCode(err); c == svCodeCanceled || c == svCodeDenied {
 			return errors.New("secretvault stayed locked")
 		}

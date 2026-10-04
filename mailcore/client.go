@@ -444,7 +444,13 @@ func (c *Client) SecretsStatus() (SecretsStatus, error) {
 // UseStore moves every saved secret to store (keyring, encrypted, plain)
 // and keeps them there from now on; passphrase locks the encrypted file.
 func (c *Client) UseStore(store, passphrase string) error {
-	return c.call(MethodSecretsUse, vaultParams{Store: store, Passphrase: passphrase}, nil)
+	return c.UseStoreIn(store, passphrase, "")
+}
+
+// UseStoreIn is UseStore, naming secretvault's vault for the secretvault
+// store ("" for its default vault).
+func (c *Client) UseStoreIn(store, passphrase, vault string) error {
+	return c.call(MethodSecretsUse, vaultParams{Store: store, Passphrase: passphrase, Vault: vault}, nil)
 }
 
 // UnlockSecrets unlocks the store for this run of the daemon: the

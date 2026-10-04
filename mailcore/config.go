@@ -32,6 +32,9 @@ type MailConfig struct {
 	// SecretStore is where passwords and tokens are kept (secrets.go):
 	// keyring, secretvault, encrypted or plain; empty before a choice.
 	SecretStore string `json:"secretStore,omitempty"`
+	// SecretVault is the secretvault vault they are kept in, with the
+	// secretvault store; empty for secretvault's default vault.
+	SecretVault string `json:"secretVault,omitempty"`
 }
 
 // AccountConfig is one IMAP or POP3 login plus SMTP submission.
