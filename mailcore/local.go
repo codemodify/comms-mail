@@ -178,7 +178,7 @@ func (s *LocalStore) ensureAccount(a AccountConfig) {
 	if len(a.Identities) > 0 {
 		for _, idn := range a.Identities {
 			idn.AccountID = id
-			s.identities = upsertIdentity(s.identities, idn)
+			s.identities = seedIdentity(s.identities, idn)
 		}
 	} else if !hasIdentityFor(s.identities, id) {
 		s.identities = append(s.identities, Identity{
@@ -212,6 +212,39 @@ func upsertIdentity(list []Identity, id Identity) []Identity {
 		}
 	}
 	return append(list, id)
+}
+
+// seedIdentity is upsertIdentity for an identity from an account's
+// settings, which mail.json keeps without the signature: the one written in
+// Settings › Signatures stays.
+func seedIdentity(list []Identity, id Identity) []Identity {
+	if id.ID == "" {
+		id.ID = slug(id.Address)
+	}
+	for _, x := range list {
+		if x.ID == id.ID {
+			id.Signature = x.Signature
+			break
+		}
+	}
+	return upsertIdentity(list, id)
+}
+
+// AccountConfig is account id's settings as mail.json keeps them.
+func (s *LocalStore) AccountConfig(id string) (AccountConfig, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.cfg.Accounts {
+		aid := a.ID
+		if aid == "" {
+			aid = slug(a.Address)
+		}
+		if aid == id {
+			a.ID = aid
+			return a, true
+		}
+	}
+	return AccountConfig{}, false
 }
 
 func (s *LocalStore) PutAccount(in AccountConfig) (Account, error) {

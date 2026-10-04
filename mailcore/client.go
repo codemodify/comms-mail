@@ -263,6 +263,14 @@ func (c *Client) PutAccount(cfg AccountConfig) (Account, error) {
 	return out, err
 }
 
+// AccountConfig is an account's settings, to edit them: everything but its
+// passwords, which a save that leaves them empty keeps.
+func (c *Client) AccountConfig(id string) (AccountConfig, error) {
+	var out AccountConfig
+	err := c.call(MethodAccountsGet, accountDelParams{ID: id}, &out)
+	return out, err
+}
+
 func (c *Client) DeleteAccount(id string) error {
 	return c.call(MethodAccountsDel, accountDelParams{ID: id}, nil)
 }

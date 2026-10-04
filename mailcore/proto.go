@@ -66,6 +66,7 @@ const (
 	MethodAccountsList   = "accounts.list"
 	MethodAccountsPut    = "accounts.put"
 	MethodAccountsDel    = "accounts.delete"
+	MethodAccountsGet    = "accounts.get"
 	MethodFoldersList    = "folders.list"
 	MethodFoldersGet     = "folders.get"
 	MethodFoldersCreate  = "folders.create"

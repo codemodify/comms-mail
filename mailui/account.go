@@ -19,14 +19,31 @@ const FirstRunPrompt = "There are no accounts, want to add one?"
 
 // OpenAddAccount opens the IMAP/POP3 / SMTP / OAuth setup window.
 func OpenAddAccount(a *app.Application, cli *mailcore.Client, onSaved func()) (*app.Window, error) {
+	return openAccountForm(a, cli, nil, onSaved)
+}
+
+// OpenEditAccount opens the same window on an account's settings, as
+// cli.AccountConfig gives them.
+func OpenEditAccount(a *app.Application, cli *mailcore.Client, base mailcore.AccountConfig, onSaved func()) (*app.Window, error) {
+	return openAccountForm(a, cli, &base, onSaved)
+}
+
+func openAccountForm(a *app.Application, cli *mailcore.Client, base *mailcore.AccountConfig, onSaved func()) (*app.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: "Add account", Width: 600, Height: 720, MinWidth: 460, MinHeight: 520,
+		Title: accountFormTitle(base), Width: 600, Height: 720, MinWidth: 460, MinHeight: 520,
 	})
 	if err != nil {
 		return nil, err
 	}
-	setContent(win, AddAccountAppOn(a, win, cli, onSaved))
+	setContent(win, accountFormOn(a, win, cli, base, onSaved))
 	return win, nil
+}
+
+func accountFormTitle(base *mailcore.AccountConfig) string {
+	if base != nil {
+		return "Edit account"
+	}
+	return "Add account"
 }
 
 // AddAccountApp is the first-run / File → Add Account form.
@@ -39,16 +56,38 @@ func AddAccountApp(win *app.Window, cli *mailcore.Client, onSaved func()) widget
 // widgets, so they are applied through a.Post; pass nil (tests, headless)
 // to apply them inline.
 func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, onSaved func()) widget.Component {
-	name := widgets.NewTextField("", "Display name", nil)
-	addr := widgets.NewTextField("", "you@example.com", nil)
-	incoming := widgets.NewTextField("imap.example.com:993", "imap.host:993 or pop.host:995", nil)
-	smtpHost := widgets.NewTextField("smtp.example.com:587", "smtp.host:587", nil)
-	user := widgets.NewTextField("", "Username (defaults to address)", nil)
-	pass := widgets.NewPasswordField("Password or app password", nil)
+	return accountFormOn(a, win, cli, nil, onSaved)
+}
+
+// EditAccountAppOn is the form on base, an account's settings: what it
+// does not show (connection security, sign-in, identities) stays as it
+// is, and so does a saved password while the password is left empty.
+func EditAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, base mailcore.AccountConfig, onSaved func()) widget.Component {
+	return accountFormOn(a, win, cli, &base, onSaved)
+}
+
+func accountFormOn(a *app.Application, win *app.Window, cli *mailcore.Client, base *mailcore.AccountConfig, onSaved func()) widget.Component {
+	editing := base != nil
+	title := accountFormTitle(base)
+	start := mailcore.AccountConfig{IMAP: mailcore.ServerConfig{Host: "imap.example.com:993"},
+		SMTP: mailcore.ServerConfig{Host: "smtp.example.com:587"}}
+	passHint := "Password or app password"
+	hintText := "Type an email — IMAP is guessed from the domain. Switch to POP3 or use Test connection."
+	if editing {
+		start = *base
+		passHint = "Leave empty to keep the saved password"
+		hintText = "Leave the password empty to keep the one saved."
+	}
+	name := widgets.NewTextField(start.Name, "Display name", nil)
+	addr := widgets.NewTextField(start.Address, "you@example.com", nil)
+	incoming := widgets.NewTextField(start.Incoming().Host, "imap.host:993 or pop.host:995", nil)
+	smtpHost := widgets.NewTextField(start.SMTP.Host, "smtp.host:587", nil)
+	user := widgets.NewTextField(start.Incoming().User, "Username (defaults to address)", nil)
+	pass := widgets.NewPasswordField(passHint, nil)
 	clientID := widgets.NewTextField("", "OAuth client id (required for Google/Microsoft)", nil)
 	clientSecret := widgets.NewPasswordField("OAuth client secret (optional for public clients)", nil)
 	inLabel := widgets.NewLabel("IMAP host")
-	hint := widgets.NewLabel("Type an email — IMAP is guessed from the domain. Switch to POP3 or use Test connection.")
+	hint := widgets.NewLabel(hintText)
 	oauthNote := widgets.NewLabel(
 		"Passwords and sign-ins are kept encrypted, locked with your passphrase.\n" +
 			"OAuth (Google / Microsoft) is IMAP + SMTP only.\n" +
@@ -158,6 +197,9 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		}()
 	}
 	maybeAutoDetect := func() {
+		if editing {
+			return // the hosts are known: Test connection checks them
+		}
 		email := strings.TrimSpace(addr.Text)
 		if !strings.Contains(email, "@") || strings.TrimSpace(pass.Text) == "" {
 			return
@@ -171,24 +213,52 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		})
 	}
 
-	proto = widgets.NewRadioGroup([]string{"IMAP", "POP3"}, 0, func(i int) {
+	first := 0
+	if start.IsPOP3() {
+		first = 1
+	}
+	proto = widgets.NewRadioGroup([]string{"IMAP", "POP3"}, first, func(i int) {
 		_ = i
 		updateIncomingLabel()
-		if !applyingProbe {
-			if strings.Contains(addr.Text, "@") {
-				applyGuess(addr.Text)
+		if applyingProbe {
+			return
+		}
+		// Editing, the account's own server for that protocol, if it has one.
+		if editing {
+			known := base.IMAP.Host
+			if selectedProto() == mailcore.ProtoPOP3 {
+				known = base.POP.Host
+			}
+			if known != "" {
+				incoming.SetText(known)
+				return
 			}
 		}
+		if strings.Contains(addr.Text, "@") {
+			applyGuess(addr.Text)
+		}
 	})
+	updateIncomingLabel()
 	addr.OnChange = func(s string) {
-		if strings.Contains(s, "@") {
+		if strings.Contains(s, "@") && !editing {
 			applyGuess(s)
 			maybeAutoDetect()
 		}
 	}
 	pass.OnChange = func(string) { maybeAutoDetect() }
 
-	savePass := func() {
+	formConfig := func() mailcore.AccountConfig {
+		if editing {
+			return editedAccount(*base, accountEdits{
+				Name:     strings.TrimSpace(name.Text),
+				Address:  strings.TrimSpace(addr.Text),
+				Protocol: selectedProto(),
+				Incoming: strings.TrimSpace(incoming.Text),
+				SMTP:     strings.TrimSpace(smtpHost.Text),
+				User:     strings.TrimSpace(user.Text),
+				Password: pass.Text,
+			})
+		}
 		host := strings.TrimSpace(incoming.Text)
 		cfg := mailcore.AccountConfig{
 			Name:     strings.TrimSpace(name.Text),
@@ -210,21 +280,26 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 		} else {
 			cfg.IMAP = in
 		}
+		return cfg
+	}
+	savePass := func() {
+		cfg := formConfig()
 		// The password is kept in the vault: a passphrase is set (or the
 		// daemon unlocked) first.
 		withVault(a, cli, win, accountIntro, func() {
 			acct, err := cli.PutAccount(cfg)
 			if err != nil {
-				widgets.Warn(win.Content(), "Add account", err.Error(), nil)
+				widgets.Warn(win.Content(), title, err.Error(), nil)
 				return
 			}
 			if onSaved != nil {
 				onSaved()
 			}
-			widgets.Info(win.Content(), "Account saved",
-				fmt.Sprintf("%s <%s>\nProtocol: %s\n\nIts password is locked with your passphrase. Fetch to connect.",
-					acct.Name, acct.Address, mailcore.ProtocolLabel(acct)),
-				func() { win.Close() })
+			msg := fmt.Sprintf("%s <%s>\nProtocol: %s", acct.Name, acct.Address, mailcore.ProtocolLabel(acct))
+			if !editing {
+				msg += "\n\nIts password is locked with your passphrase. Fetch to connect."
+			}
+			widgets.Info(win.Content(), "Account saved", msg, func() { win.Close() })
 		})
 	}
 
@@ -296,7 +371,7 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 	cancel := newButton("Cancel", func() { win.Close() })
 
 	form := widgets.NewColumn(
-		widgets.NewTitle("Add account"),
+		widgets.NewTitle(title),
 		labeled("Name", name),
 		labeled("Email", addr),
 		widgets.NewLabel("Incoming protocol"),
@@ -317,11 +392,56 @@ func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, 
 	signIn := foldRow(google, ms)
 	box := widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)
 	tools := widgets.NewPad(8, widgets.NewColumn(signIn, foldRow(device, test), box).WithGap(8))
-	chrome := widgets.NewTitleBar("Add account", "IMAP or POP3 · Test connection · typed password or OAuth · mail.json 0600")
+	chrome := widgets.NewTitleBar(title, "IMAP or POP3 · Test connection · typed password or OAuth · mail.json 0600")
 	scroll := widgets.NewScrollView(widgets.NewPad(12, form))
 	root := widgets.NewColumn(chrome, scroll, tools, status).WithGap(0)
 	root.AddFlex(scroll, 1)
 	return root
+}
+
+// accountEdits are what the account form holds.
+type accountEdits struct {
+	Name, Address, Protocol, Incoming, SMTP, User, Password string
+}
+
+// editedAccount is base with the form's edits. What the form does not show
+// stays: connection security (unless the host changed, when its port says
+// again), the sign-in method and the identities, whose name and address
+// follow the account's. An empty password keeps the saved one, which the
+// daemon puts back while the server and user are the same. Sending uses
+// the incoming login's password and user when it used them before.
+func editedAccount(base mailcore.AccountConfig, e accountEdits) mailcore.AccountConfig {
+	cfg := base
+	cfg.Name, cfg.Address, cfg.Protocol = e.Name, e.Address, e.Protocol
+	server := func(prev mailcore.ServerConfig, host, user, pass string) mailcore.ServerConfig {
+		next := prev
+		if !strings.EqualFold(strings.TrimSpace(prev.Host), host) {
+			next.TLSMode, next.TLS, next.StartTLS = "", nil, nil
+		}
+		next.Host, next.User, next.Pass = host, user, pass
+		return next
+	}
+	oldIn := base.Incoming()
+	if e.Protocol == mailcore.ProtoPOP3 {
+		cfg.POP = server(base.POP, e.Incoming, e.User, e.Password)
+	} else {
+		cfg.IMAP = server(base.IMAP, e.Incoming, e.User, e.Password)
+	}
+	smtpUser, smtpPass := base.SMTP.User, ""
+	if base.SMTP.User == "" || strings.EqualFold(base.SMTP.User, oldIn.User) {
+		smtpUser, smtpPass = e.User, e.Password
+	}
+	cfg.SMTP = server(base.SMTP, e.SMTP, smtpUser, smtpPass)
+	cfg.Identities = append([]mailcore.Identity(nil), base.Identities...)
+	for i, id := range cfg.Identities {
+		if strings.EqualFold(strings.TrimSpace(id.Address), strings.TrimSpace(base.Address)) {
+			cfg.Identities[i].Address = e.Address
+			if id.Name == base.Name {
+				cfg.Identities[i].Name = e.Name
+			}
+		}
+	}
+	return cfg
 }
 
 func labeled(title string, field widget.Component) widget.Component {

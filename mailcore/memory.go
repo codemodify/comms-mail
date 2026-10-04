@@ -25,6 +25,7 @@ type MemoryStore struct {
 	now        time.Time
 	feat       *featureHost
 	raw        map[MessageID][]byte
+	configs    map[string]AccountConfig // what PutAccount was given
 }
 
 // NewMemoryStore builds an empty store. now is used for Fetch timestamps
@@ -673,10 +674,33 @@ func (s *MemoryStore) PutAccount(in AccountConfig) (Account, error) {
 	}
 	for _, idn := range a.Identities {
 		idn.AccountID = a.ID
-		s.identities = upsertIdentity(s.identities, idn)
+		s.identities = seedIdentity(s.identities, idn)
 	}
+	if s.configs == nil {
+		s.configs = map[string]AccountConfig{}
+	}
+	s.configs[a.ID] = a
 	s.ensureSpecialsLocked(a.ID)
 	return acct, nil
+}
+
+// AccountConfig is account id's settings: as PutAccount was given them, or,
+// for the demo's own accounts, the hosts guessed from the address.
+func (s *MemoryStore) AccountConfig(id string) (AccountConfig, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.configs[id]; ok {
+		return a, true
+	}
+	for _, acct := range s.accounts {
+		if acct.ID == id {
+			g := GuessMailHosts(acct.Address)
+			return AccountConfig{ID: acct.ID, Name: acct.Name, Address: acct.Address,
+				Protocol: NormalizeProtocol(acct.Protocol),
+				IMAP:     ServerConfig{Host: g.IMAP}, POP: ServerConfig{Host: g.POP}, SMTP: ServerConfig{Host: g.SMTP}}, true
+		}
+	}
+	return AccountConfig{}, false
 }
 
 func (s *MemoryStore) DeleteAccount(id string) error {
@@ -699,6 +723,7 @@ func (s *MemoryStore) DeleteAccount(id string) error {
 		return fmt.Errorf("mail: no account %s", id)
 	}
 	s.accounts = accts
+	delete(s.configs, id)
 	idents := s.identities[:0]
 	for _, idn := range s.identities {
 		if idn.AccountID != id {

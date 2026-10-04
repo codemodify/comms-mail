@@ -258,6 +258,11 @@ func (s *Server) dispatch(req Request) Response {
 				s.broadcast(EventChanged, eventParams{Reason: "account"})
 			}
 		}
+	case MethodAccountsGet:
+		var p accountDelParams
+		if p, err = decodeParams[accountDelParams](req.Params); err == nil {
+			result, err = accountSettings(s.Store, p.id())
+		}
 	case MethodAccountsDel:
 		var p accountDelParams
 		p, err = decodeParams[accountDelParams](req.Params)

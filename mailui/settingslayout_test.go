@@ -10,7 +10,7 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// The Accounts tab's buttons — Add, Remove, Import — must be inside the
+// The Accounts tab's buttons — Add, Edit, Remove, Import — must be inside the
 // window at its smallest allowed size, so no one has to resize the window to
 // find Import (they did).
 func TestSettingsButtonsFitAtMinSize(t *testing.T) {
@@ -25,7 +25,7 @@ func TestSettingsButtonsFitAtMinSize(t *testing.T) {
 	w.SetContent(PrefsApp(a, w, cli, nil))
 	a.PumpOnce()
 
-	want := map[string]bool{"Add account…": false, "Remove account…": false, "Import…": false}
+	want := map[string]bool{"Add": false, "Edit": false, "Remove": false, "Import": false}
 	widget.Walk(w.Content(), func(c widget.Component) {
 		b, ok := c.(*widgets.Button)
 		if !ok {

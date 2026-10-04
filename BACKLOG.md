@@ -73,6 +73,9 @@ new ones turn up.
   (`mail.inspect`), then Sign / Encrypt when writing (`mail.compose`),
   then keys in Settings. comms-mail uses secretvault's *default* vault; a
   setting for another is not there yet.
+- **Edit account: Test connection** — with the password left empty it
+  checks only that the server answers; testing with the saved password
+  needs the daemon to probe by account id.
 - **Keyring on macOS and Windows** — written (Keychain through the
   security tool, Credential Manager through advapi32) and compiled, not
   yet run on those systems.

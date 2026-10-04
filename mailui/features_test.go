@@ -589,12 +589,12 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 	}
 	var remove *widgets.Button
 	widget.Walk(pw.Content(), func(c widget.Component) {
-		if b, ok := c.(*widgets.Button); ok && strings.Contains(b.Text, "Remove account") && b.OnClick != nil {
+		if b, ok := c.(*widgets.Button); ok && b.Text == "Remove" && b.OnClick != nil {
 			remove = b
 		}
 	})
 	if remove == nil {
-		t.Fatal("Settings missing Remove account")
+		t.Fatal("Settings missing Remove")
 	}
 	remove.OnClick()
 	a.PumpOnce()

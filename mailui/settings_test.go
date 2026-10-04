@@ -18,7 +18,12 @@ import (
 func openSettings(t *testing.T) (*app.Application, *app.Window, *mailcore.Client, *widgets.TabView) {
 	t.Helper()
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
-	cli := demoClient(t)
+	return openSettingsOn(t, demoClient(t))
+}
+
+// openSettingsOn is Settings over cli's daemon, 700×560.
+func openSettingsOn(t *testing.T, cli *mailcore.Client) (*app.Application, *app.Window, *mailcore.Client, *widgets.TabView) {
+	t.Helper()
 	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 560, Headless: true})
 	if err != nil {

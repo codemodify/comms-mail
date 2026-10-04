@@ -111,15 +111,31 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, on
 		}
 	}, nil)
 	table.Selected = 0
-	add := newButton("Add account…", func() {
-		_, _ = OpenAddAccount(a, cli, func() {
-			refresh()
-			if onChange != nil {
-				onChange()
+	saved := func() {
+		refresh()
+		if onChange != nil {
+			onChange()
+		}
+	}
+	add := newButton("Add", func() { _, _ = OpenAddAccount(a, cli, saved) })
+	add.Tip = "Set up an account"
+	editRow := func(i int) {
+		if i < 0 || i >= len(accounts) {
+			widgets.Warn(win.Content(), "Edit account", "Select an account first.", nil)
+			return
+		}
+		runAsync(a, func() (any, error) { return cli.AccountConfig(accounts[i].ID) }, func(v any, err error) {
+			if err != nil {
+				widgets.Warn(win.Content(), "Edit account", err.Error(), nil)
+				return
 			}
+			_, _ = OpenEditAccount(a, cli, v.(mailcore.AccountConfig), saved)
 		})
-	})
-	remove := newButton("Remove account…", func() {
+	}
+	edit := newButton("Edit", func() { editRow(table.Selected) })
+	edit.Tip = "Change the selected account's settings"
+	table.OnActivate = editRow
+	remove := newButton("Remove", func() {
 		i := table.Selected
 		if i < 0 || i >= len(accounts) {
 			widgets.Warn(win.Content(), "Remove account", "Select an account first.", nil)
@@ -131,24 +147,15 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, on
 				widgets.Warn(win.Content(), "Remove account", err.Error(), nil)
 				return
 			}
-			refresh()
-			if onChange != nil {
-				onChange()
-			}
+			saved()
 		})
 	})
-	importBtn := newButton("Import…", func() {
-		startImport(a, win, cli, accounts, func() {
-			refresh()
-			if onChange != nil {
-				onChange()
-			}
-		})
-	})
+	remove.Tip = "Remove the selected account"
+	importBtn := newButton("Import", func() { startImport(a, win, cli, accounts, saved) })
 	importBtn.Tip = "Bring accounts in from Thunderbird or KMail"
 	// The table gives up height (it scrolls) so the buttons keep theirs
 	// when a narrow window folds them onto a second line.
-	col := widgets.NewColumn(table, foldRow(add, remove, importBtn)).WithGap(8)
+	col := widgets.NewColumn(table, foldRow(add, edit, remove, importBtn)).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
 }

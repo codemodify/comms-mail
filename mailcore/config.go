@@ -321,6 +321,28 @@ func KeepExistingSecrets(a AccountConfig, existing []AccountConfig) AccountConfi
 	return a
 }
 
+// accountSettings is account id's settings as st keeps them, without
+// their passwords: what Settings › Accounts › Edit starts from.
+func accountSettings(st Store, id string) (AccountConfig, error) {
+	cs, ok := st.(interface {
+		AccountConfig(id string) (AccountConfig, bool)
+	})
+	if !ok {
+		return AccountConfig{}, fmt.Errorf("mail: accounts cannot be edited here")
+	}
+	id = strings.TrimSpace(id)
+	a, found := cs.AccountConfig(id)
+	if !found && id != LocalAccountID {
+		return AccountConfig{}, fmt.Errorf("mail: no account %s", id)
+	}
+	if !found || a.IsLocal() {
+		return AccountConfig{}, fmt.Errorf("%s has no server settings to edit", LocalAccountName)
+	}
+	a.IMAP.Pass, a.POP.Pass, a.SMTP.Pass = "", "", ""
+	a.Identities = append([]Identity(nil), a.Identities...)
+	return a, nil
+}
+
 // LeftBehind names the servers of a whose saved password was not carried
 // over because the server or user changed: they need the password again.
 func LeftBehind(a AccountConfig, existing []AccountConfig) []string {

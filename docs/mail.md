@@ -839,6 +839,7 @@ Notifications (no `id`): `mail.changed`, `mail.fetched`, `mail.synced`, `mail.no
 | `status.set` | `{online}` — Work Offline; going online flushes the outbox |
 | `accounts.list` | — |
 | `accounts.put` | AccountConfig (`protocol` `imap` or `pop3`; `password` stored in mail.json mode 0600; `passEnv` optional) |
+| `accounts.get` | `{id}` → the account's AccountConfig without its passwords, to edit; an `accounts.put` that leaves a password empty keeps the saved one while the server and user are the same |
 | `accounts.delete` | `{id}` — remove account from mail.json and the local cache (server mail is kept) |
 | `oauth.start` | `{provider, address, name?, clientId?, clientSecret?, flow?}` |
 | `oauth.poll` | `{sessionId}` |
@@ -931,6 +932,7 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
 
   Outlook (`.pst`) is not supported yet.
 - **Add account** — IMAP vs POP3 radios, domain auto-guess (including POP hosts), **Test connection** (and optional auto-detect after email+password), masked password field, or Sign in with Google / Microsoft (or device code; IMAP). Saved accounts show the protocol on Account Central and in Settings. `passEnv` remains an optional fallback.
+- **Edit account** — Settings → Accounts → **Edit** (or a double click on the account) opens the Add account form on its settings: name, address, protocol, hosts and user. The password is left empty and stays as saved unless one is typed; changing a server or user asks for its password again. What the form does not show — connection security (unless the host changes, when its port decides again), the sign-in method, identities and their signatures — stays as it was, and the identity with the account's name and address takes the new ones. A signature written in Settings › Signatures is kept when the account is saved again or the daemon restarts.
 - **Remove account** — File menu, Account Central, and Settings → Accounts. Confirm, then drop the account from `mail.json` and the local cache. The folder tree refreshes; if none remain, the first-run “add one?” prompt returns.
 - **Message / Source / Markdown tabs** — Message is the `text/plain` body (default) and Source the raw RFC822.
   - **Open HTML** (in the action row, for a message with an HTML part; nothing of the HTML is drawn in the window) opens the part as it was sent (only its transfer encoding and charset undone — styles, layout and remote images kept; `mailcore.OriginalHTML`), its inline `cid:` images embedded, opened as a temporary page (removed after an hour) under a Content-Security-Policy that blocks scripts, plugins, frames and forms, since a local file could run them. Loading its remote images tells the sender you opened it; the button's tip says so. A message without HTML has no Open HTML.
