@@ -81,15 +81,16 @@ new ones turn up.
 - **Sender warnings** — `Authentication-Results` (SPF/DKIM/DMARC) failures,
   look-alike display names, Reply-To on another domain; "Always show
   images" only for senders who passed.
-- **Recognise and check signed / encrypted mail** — PGP and S/MIME both,
-  through secretvault (`InspectMail`: every layer, protected headers,
-  Autocrypt, a verdict on each signer; keys a message carries are passed to
-  `KeySeen`). Encrypted mail says what it is (an S/MIME `smime.p7m` shows
-  as binary text today).
+- **Reading signed / encrypted mail** — done 2026-10-03 (docs/mail.md,
+  Signed and encrypted mail). Left: attachments *inside* an encrypted
+  message are not listed or opened yet; a reply to an encrypted message
+  quotes nothing yet (it comes with sending); Autocrypt keys reach
+  secretvault only when a message is opened, not as it arrives; the list
+  has no signed / encrypted mark.
 - **PGP and S/MIME** — only through secretvault, which keeps the private
   keys and signs and decrypts in its own daemon: comms-mail writes no
   crypto of its own (decided 2026-10-03; this replaces building in Proton
-  `go-crypto` and our own CMS). Sending is `ComposeMail` with Sign /
+  `go-crypto` and our own CMS). Next: sending, `mail.compose` with Sign /
   Encrypt in the Write window. Without secretvault as the store there is
   no PGP or S/MIME.
 - **Asked of secretvault** — S/MIME roots beyond an organisation's own CA

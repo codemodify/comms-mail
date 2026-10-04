@@ -103,6 +103,19 @@ func ParseRFC822(raw []byte, folder FolderID, accountID string) (Message, error)
 			Filename: params["name"],
 		})
 	}
+	out.Signed, out.Encrypted = recogniseProtection(media, params, out.Body)
+	out.Autocrypt = h.Get("Autocrypt") != ""
+	if out.Signed {
+		// A detached signature is the signing's, not an attachment.
+		dropSignatureParts(&out)
+	}
+	if out.Encrypted || isOpaqueSMIME(media) {
+		// What can be read here is ciphertext (or, for S/MIME's opaque
+		// signature, the text wrapped in it): none of it is a body to
+		// show or index, and its container is no attachment.
+		out.Body, out.HTML, out.Snippet = "", "", ""
+		out.HasAttach, out.Attachments = false, nil
+	}
 	if out.Snippet == "" {
 		out.Snippet = SnippetOf(DisplayBody(out))
 	}

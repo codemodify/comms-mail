@@ -562,6 +562,49 @@ asks nothing. Tests never reach your real keyring or secretvault: they
 run the keyring code against a fake Secret Service on a private D-Bus, and
 the secretvault code against a stand-in daemon (`internal/svtest`).
 
+## Signed and encrypted mail
+
+comms-mail tells signed and encrypted mail apart by its structure —
+PGP/MIME (`multipart/signed`, `multipart/encrypted`), S/MIME (detached
+`smime.p7s`, opaque or enveloped `smime.p7m`) and inline OpenPGP — and
+does nothing else with it itself. Checking a signature, judging whose key
+made it and decrypting are **secretvault**'s, which keeps your keys and
+contacts in its own daemon (`mail.inspect`). So PGP and S/MIME work while
+secretvault is the store in use (see *Where passwords are kept*); with
+another store, a signed or encrypted message says so and that secretvault
+reads it.
+
+- **As it arrives.** An encrypted message keeps no text: its ciphertext is
+  neither shown, nor kept as its body, nor indexed for search, and its
+  container (`encrypted.asc`, `smime.p7m`) is not listed as an attachment.
+  A detached signature (`signature.asc`, `smime.p7s`) is not either.
+  Messages cached by an older comms-mail are read again from their raw
+  source when opened.
+- **When you open one,** comms-maild hands the message, as received, to
+  secretvault (`messages.security`), and an encrypted one is decrypted
+  there — secretvault asks you the first time comms-maild wants to
+  decrypt. Under the header, a line for each layer:
+  - a check — *Signed by Alice, verified in person* (or vouched for by the
+    organisation, published by the address's domain, …);
+  - a question — the signature holds but whose key it is was never
+    verified, or the key is not among your contacts, or secretvault does
+    not have it;
+  - a warning or an error — the key belongs to someone else's address, the
+    message was changed after it was signed, or the signature cannot be
+    trusted (expired, revoked, untrusted root …);
+  - a lock — *Encrypted: opened with your key*, or why it was not.
+- **What secretvault decrypts** is shown in the Message and Markdown tabs
+  under the real subject (an encrypted message's outer subject is often
+  `...`), and held in that window only: it is never written to the cache
+  or the search index. The message you reply to or move stays the one
+  received.
+- **Keys a message carries** — an Autocrypt header, an S/MIME signer's
+  certificate — are passed to secretvault's contacts (`trust.seen`), which
+  records how each was seen; nothing is trusted for arriving.
+- **While secretvault is locked** nothing is checked and nobody is asked:
+  the line says so, with **Unlock secretvault…**, which asks secretvault
+  to show its own prompt.
+
 ## Folders
 
 Right-click a folder for **New Folder…** / **New Subfolder…** (each asks

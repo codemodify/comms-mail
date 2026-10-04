@@ -28,7 +28,10 @@ type reader struct {
 
 	subj                      *widgets.Label
 	from, to, cc, date, extra *widgets.Label
-	invite                    *inviteCard
+	// sec is what secretvault says of a signed or encrypted message
+	// (security.go).
+	sec    *securityPart
+	invite *inviteCard
 	// retry is offered when the message could not be loaded; onRetry is
 	// what it does.
 	retry   *widgets.FlexBox
@@ -81,6 +84,8 @@ func newReader(s *session) *reader {
 	r.cc.SetVisible(false)
 	r.date = widgets.NewLabel("")
 	r.extra = widgets.NewLabel("")
+	r.sec = newSecurityPart()
+	r.sec.unlock.OnClick = r.unlockSecretVault
 	r.invite = newInviteCard(s)
 
 	// Short labels: the row fits the narrowest reading pane (the header
@@ -135,7 +140,7 @@ func newReader(s *session) *reader {
 		}
 	}
 
-	head := widgets.NewColumn(r.subj, r.from, r.to, r.cc, r.date, r.extra,
+	head := widgets.NewColumn(r.subj, r.from, r.to, r.cc, r.date, r.extra, r.sec.view,
 		r.invite.view, r.actions, r.attStrip, r.retry).WithGap(3).WithPad(10)
 	// The header grows with what the message carries (an invitation,
 	// attachments) but always leaves the body room for a few lines: past
@@ -153,11 +158,14 @@ func (r *reader) showHeaders(m mailcore.Message) {
 		r.gen++
 		r.sourceID = ""
 		r.source.SetText("")
+		r.sec.clear()
 	} else if !hasBody(m) {
 		m.Body, m.HTML = r.msg.Body, r.msg.HTML
 	}
 	r.msg = m
-	r.subj.SetText(m.Subject)
+	if r.sec.id != m.ID || r.sec.content == nil || r.sec.content.Subject == "" {
+		r.subj.SetText(m.Subject)
+	}
 	r.from.SetText("From: " + m.From)
 	r.to.SetText("To: " + m.To)
 	r.cc.SetText("Cc: " + m.Cc)
@@ -190,11 +198,20 @@ func (r *reader) showBody(m mailcore.Message) {
 		r.showHeaders(m)
 	}
 	r.msg = m
-	r.text.Placeholder = "This message has no text"
-	r.text.SetText(mailcore.DisplayBody(m))
-	md := m
-	md.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(m))
-	r.md.show(md)
+	switch {
+	case r.sec.id == m.ID && r.sec.content != nil:
+		// Already decrypted: the text stays what secretvault opened.
+		r.showContent(*r.sec.content)
+	default:
+		r.text.Placeholder = "This message has no text"
+		r.text.SetText(mailcore.DisplayBody(m))
+		md := m
+		md.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(m))
+		r.md.show(md)
+	}
+	if m.Signed || m.Encrypted || m.Autocrypt {
+		r.loadSecurity(m)
+	}
 	r.syncActions()
 	if r.tabs.Selected() == readerTabSource {
 		r.loadSource()
@@ -220,6 +237,7 @@ func (r *reader) clear() {
 		l.SetText("")
 	}
 	r.cc.SetVisible(false)
+	r.sec.clear()
 	r.attNames = nil
 	r.syncAttachPane()
 	r.invite.clear()

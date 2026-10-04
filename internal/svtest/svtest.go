@@ -1,8 +1,9 @@
 // Package svtest is a stand-in secretvaultd for comms-mail's tests: its
 // socket, the methods comms-maild calls (client.hello, vault.list,
-// vault.unlock, item.get, item.list, item.put, item.delete) and the
-// notifications it sends (vault.locked, vault.unlocked), with one vault
-// named "personal". Only tests import it, so it is never in a binary, and
+// vault.unlock, item.get, item.list, item.put, item.delete, mail.inspect,
+// trust.seen) and the notifications it sends (vault.locked,
+// vault.unlocked), with one vault named "personal". It checks and
+// decrypts nothing: a test says what mail.inspect answers. Only tests import it, so it is never in a binary, and
 // tests never reach the person's own secretvault.
 package svtest
 
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Item is an item as stored.
@@ -67,6 +69,48 @@ type Vault struct {
 	conns   []net.Conn
 	unlocks int
 	gets    int
+
+	inspect  func(raw []byte, decrypt bool) any
+	inspects []Inspected
+	seen     []Seen
+}
+
+// Inspected is one mail.inspect asked.
+type Inspected struct {
+	Raw     []byte
+	Decrypt bool
+}
+
+// Seen is one key passed to trust.seen.
+type Seen struct {
+	Key     []byte    `json:"key"`
+	Address string    `json:"address"`
+	Time    time.Time `json:"time"`
+	Source  string    `json:"source"`
+	Name    string    `json:"name"`
+}
+
+// InspectWith makes mail.inspect answer what fn returns for the message
+// as received and whether decrypting was asked: secretvault's
+// MailInspectResult ({"report": …, "verdicts": …}). Without it, a report
+// of nothing found.
+func (v *Vault) InspectWith(fn func(raw []byte, decrypt bool) any) {
+	v.mu.Lock()
+	v.inspect = fn
+	v.mu.Unlock()
+}
+
+// Inspects are the mail.inspect calls answered; Seens the keys recorded.
+func (v *Vault) Inspects() []Inspected {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]Inspected(nil), v.inspects...)
+}
+
+func (v *Vault) Seens() []Seen {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]Seen(nil), v.seen...)
 }
 
 // Start runs one, its vault locked or not, and points SECRETVAULT_SOCK at
@@ -208,9 +252,11 @@ func (v *Vault) serve(c net.Conn) {
 			continue
 		}
 		var p struct {
-			Name   string `json:"name"`
-			Prefix string `json:"prefix"`
-			Item   Item   `json:"item"`
+			Name    string `json:"name"`
+			Prefix  string `json:"prefix"`
+			Item    Item   `json:"item"`
+			Message []byte `json:"message"`
+			Decrypt bool   `json:"decrypt"`
 		}
 		_ = json.Unmarshal(m.Params, &p)
 		v.mu.Lock()
@@ -227,6 +273,27 @@ func (v *Vault) serve(c net.Conn) {
 			v.mu.Unlock()
 			v.Unlock()
 			reply(m.ID, vaultInfo{Name: "personal", Default: true}, 0, "")
+		case "mail.inspect":
+			if locked {
+				reply(m.ID, nil, codeLocked, "the vault is locked")
+				continue
+			}
+			v.mu.Lock()
+			v.inspects = append(v.inspects, Inspected{Raw: p.Message, Decrypt: p.Decrypt})
+			fn := v.inspect
+			v.mu.Unlock()
+			var out any = map[string]any{"report": map[string]any{"signed": "none", "encrypted": "none"}}
+			if fn != nil {
+				out = fn(p.Message, p.Decrypt)
+			}
+			reply(m.ID, out, 0, "")
+		case "trust.seen":
+			var seen Seen
+			_ = json.Unmarshal(m.Params, &seen)
+			v.mu.Lock()
+			v.seen = append(v.seen, seen)
+			v.mu.Unlock()
+			reply(m.ID, map[string]any{"fingerprint": "SEEN"}, 0, "")
 		case "item.get", "item.list", "item.put", "item.delete":
 			if locked {
 				reply(m.ID, nil, codeLocked, "the vault is locked")

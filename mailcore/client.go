@@ -186,7 +186,7 @@ func callTimeout(method string) time.Duration {
 	case MethodSyncRun, MethodMessagesFetch, MethodOutboxFlush, MethodStatusSet:
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
-		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw:
+		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw, MethodMessagesSecurity:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
@@ -310,6 +310,15 @@ func (c *Client) GetSource(id MessageID) (string, error) {
 		return "", err
 	}
 	return r.RFC822, nil
+}
+
+// MessageSecurity has secretvault check message id and, with decrypt,
+// decrypt it (it may ask the person first). The decrypted content is the
+// caller's to hold, and is not cached here.
+func (c *Client) MessageSecurity(id MessageID, decrypt bool) (MessageSecurity, error) {
+	var r MessageSecurity
+	err := c.call(MethodMessagesSecurity, securityParams{ID: id, Decrypt: decrypt}, &r)
+	return r, err
 }
 
 func (c *Client) GetMessage(id MessageID) (Message, bool, error) {

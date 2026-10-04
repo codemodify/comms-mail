@@ -334,6 +334,19 @@ func (s *Server) dispatch(req Request) Response {
 				result = sourceResult{ID: p.ID, RFC822: rawAsText(raw)}
 			}
 		}
+	case MethodMessagesSecurity:
+		var p securityParams
+		p, err = decodeParams[securityParams](req.Params)
+		if err == nil {
+			if ls, ok := s.Store.(*LocalStore); ok {
+				result, err = ls.MessageSecurity(p.ID, p.Decrypt)
+			} else {
+				var raw []byte
+				if raw, err = s.Store.GetRaw(p.ID); err == nil {
+					result = MessageSecurityOf(raw)
+				}
+			}
+		}
 	case MethodMessagesRaw:
 		var p messageIDParams
 		p, err = decodeParams[messageIDParams](req.Params)

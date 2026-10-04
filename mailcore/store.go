@@ -243,6 +243,15 @@ type Message struct {
 	// Headers are the message's headers that a rule tests (List-Id, …),
 	// by canonical name, fetched for that and nothing else.
 	Headers map[string]string `json:"headers,omitempty"`
+	// Signed and Encrypted say how the message is protected, read from
+	// its structure (PGP/MIME, S/MIME, inline OpenPGP); Autocrypt, that
+	// it carries its sender's key. Nothing here is checked or opened:
+	// secretvault does that, when the message is read (MessageSecurity).
+	// An encrypted message keeps no body text, so its ciphertext is
+	// neither shown nor indexed.
+	Signed    bool `json:"signed,omitempty"`
+	Encrypted bool `json:"encrypted,omitempty"`
+	Autocrypt bool `json:"autocrypt,omitempty"`
 }
 
 func messageHasBody(m Message) bool {

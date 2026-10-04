@@ -61,26 +61,29 @@ const RPCVersion = "2.0"
 
 // Method names.
 const (
-	MethodPing            = "ping"
-	MethodStatusGet       = "status.get"
-	MethodAccountsList    = "accounts.list"
-	MethodAccountsPut     = "accounts.put"
-	MethodAccountsDel     = "accounts.delete"
-	MethodFoldersList     = "folders.list"
-	MethodFoldersGet      = "folders.get"
-	MethodFoldersCreate   = "folders.create"
-	MethodMessagesList    = "messages.list"
-	MethodMessagesGet     = "messages.get"
-	MethodMessagesSource  = "messages.getSource"
-	MethodMessagesRaw     = "messages.getRaw"
-	MethodMessagesSearch  = "messages.search"
-	MethodSearchServer    = "messages.searchServer"
-	MethodContactsSuggest = "contacts.suggest"
-	MethodFoldersDelete   = "folders.delete"
-	MethodFoldersRename   = "folders.rename"
-	MethodFoldersMove     = "folders.move"
-	MethodFoldersCompact  = "folders.compact"
-	MethodFoldersFocus    = "folders.focus"
+	MethodPing           = "ping"
+	MethodStatusGet      = "status.get"
+	MethodAccountsList   = "accounts.list"
+	MethodAccountsPut    = "accounts.put"
+	MethodAccountsDel    = "accounts.delete"
+	MethodFoldersList    = "folders.list"
+	MethodFoldersGet     = "folders.get"
+	MethodFoldersCreate  = "folders.create"
+	MethodMessagesList   = "messages.list"
+	MethodMessagesGet    = "messages.get"
+	MethodMessagesSource = "messages.getSource"
+	MethodMessagesRaw    = "messages.getRaw"
+	// MethodMessagesSecurity has secretvault check a signed or encrypted
+	// message, and decrypt it with decrypt (MessageSecurity).
+	MethodMessagesSecurity = "messages.security"
+	MethodMessagesSearch   = "messages.search"
+	MethodSearchServer     = "messages.searchServer"
+	MethodContactsSuggest  = "contacts.suggest"
+	MethodFoldersDelete    = "folders.delete"
+	MethodFoldersRename    = "folders.rename"
+	MethodFoldersMove      = "folders.move"
+	MethodFoldersCompact   = "folders.compact"
+	MethodFoldersFocus     = "folders.focus"
 	// Where secrets are kept (secrets.go), and the encrypted file's
 	// passphrase (vault.go).
 	MethodSecretsStatus   = "secrets.status"
@@ -218,6 +221,11 @@ type messagesListParams struct {
 
 type messageIDParams struct {
 	ID MessageID `json:"id"`
+}
+
+type securityParams struct {
+	ID      MessageID `json:"id"`
+	Decrypt bool      `json:"decrypt,omitempty"`
 }
 
 type searchParams struct {

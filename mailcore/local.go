@@ -645,7 +645,18 @@ func (s *LocalStore) GetMessage(id MessageID) (Message, bool) {
 		return Message{}, false
 	}
 	m := s.Messages[i].Clone()
-	if m.Body != "" || m.HTML != "" {
+	if (m.Body != "" || m.HTML != "") && !m.Signed && !m.Encrypted && looksProtected(m) {
+		// Cached before comms-mail told signed and encrypted mail apart
+		// (an S/MIME message's ciphertext kept as its text): read again
+		// from the raw message, here in memory, as it is opened.
+		if raw := s.readRawLocked(m); len(raw) > 0 {
+			if parsed, err := ParseRFC822(raw, m.Folder, m.AccountID); err == nil {
+				applyProtection(&s.Messages[i], parsed)
+				m = s.Messages[i].Clone()
+			}
+		}
+	}
+	if m.Body != "" || m.HTML != "" || m.Encrypted {
 		s.mu.Unlock()
 		return m, true
 	}

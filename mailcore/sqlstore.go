@@ -472,6 +472,9 @@ func messageStamp(m *Message) uint64 {
 		str(m.Headers[k])
 	}
 	num(uint64(len(keys)))
+	flag(m.Signed)
+	flag(m.Encrypted)
+	flag(m.Autocrypt)
 	return h.Sum64()
 }
 
