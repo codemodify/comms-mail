@@ -1,8 +1,8 @@
 package mailui
 
 import (
-	"fmt"
 	"strings"
+	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
@@ -31,12 +31,12 @@ func OpenFilters(a *app.Application, cli *mailcore.Client) (*app.Window, error) 
 
 // PrefsApp is tabbed: Accounts and Tags (sidebar Tags / filter pins share this model).
 func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
-	st, _ := cli.Status()
-	status := widgets.NewStatusBar("comms-maild settings.", st.Backend, "v"+uitoolkit.Version)
+	// The status bar names the config file in use, and nothing else.
+	status := widgets.NewStatusBar(mailcore.ConfigPath())
 
-	accountsTab := prefsAccounts(a, win, cli, st, onChange)
+	accountsTab := prefsAccounts(a, win, cli, onChange)
 	tagsTab := prefsTags(a, win, cli, onChange)
-	sigTab := prefsSignatures(win, cli)
+	sigTab := prefsSignatures(a, win, cli)
 	privacyTab := prefsPrivacy(a, win, cli, onChange)
 	keysTab, refreshKeys := keysSection(a, cli)
 	filtersTab := prefsFilters(a, win, cli)
@@ -59,15 +59,18 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 			refreshKeys()
 		}
 	}
+	// The tabs start at the top; Close is at the right under them.
 	closeBtn := newButton("Close", func() { win.Close() })
-	tools := widgets.NewRow(widgets.NewSpacer(), closeBtn).WithGap(8)
-	chrome := widgets.NewTitleBar("Settings", "accounts · signatures · tags · filters · privacy · keys · appearance · v"+uitoolkit.Version)
-	root := widgets.NewColumn(chrome, tabs, tools, status).WithGap(0)
+	gap := widgets.NewSpacer()
+	tools := widgets.NewRow(gap, closeBtn)
+	tools.AddFlex(gap, 1)
+	root := widgets.NewColumn(tabs, widgets.NewPad(8, tools), status).WithGap(0)
 	root.AddFlex(tabs, 1)
 	return root
 }
 
-func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st mailcore.DaemonStatus, onChange func()) widget.Component {
+func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+	st, _ := cli.Status() // the backend, for an account that names no protocol
 	accounts, _ := cli.Accounts()
 	var table *widgets.TableView
 	refresh := func() {
@@ -108,14 +111,6 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 		}
 	}, nil)
 	table.Selected = 0
-	health := st.Health
-	if health == "" {
-		health = "ok"
-	}
-	info := widgets.NewLabel(fmt.Sprintf(
-		"Backend: %s · Health: %s · %d account(s)\nConfig: %s   ·   Passwords: 0600 plaintext or OAuth (docs/mail.md)",
-		st.Backend, health, st.Accounts, mailcore.ConfigPath(),
-	))
 	add := newButton("Add account…", func() {
 		_, _ = OpenAddAccount(a, cli, func() {
 			refresh()
@@ -153,10 +148,7 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, st
 	importBtn.Tip = "Bring accounts in from Thunderbird or KMail"
 	// The table gives up height (it scrolls) so the buttons keep theirs
 	// when a narrow window folds them onto a second line.
-	col := widgets.NewColumn(
-		widgets.NewTitle("Accounts (stores / transports)"),
-		info, table, foldRow(add, remove, importBtn),
-	).WithGap(8)
+	col := widgets.NewColumn(table, foldRow(add, remove, importBtn)).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
 }
@@ -266,12 +258,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 		})
 	})
 	syncRemove()
-	col := widgets.NewColumn(
-		widgets.NewTitle("Tags"),
-		widgets.NewLabel("The sidebar Tags group is this list: locked Unread / Starred / Attachment plus keywords you add. The Tag menu on a message toggles keywords."),
-		table,
-		foldRow(add, edit, remove),
-	).WithGap(8)
+	col := widgets.NewColumn(table, foldRow(add, edit, remove)).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
 }
@@ -334,51 +321,84 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 	return win, nil
 }
 
-// prefsSignatures edits the signature of each From the writer can pick.
-// Write puts it under the message, above any quote.
-func prefsSignatures(win *app.Window, cli *mailcore.Client) widget.Component {
+// prefsSignatures is each From the writer can pick, on the left, and the
+// one picked's signature on the right. A signature is saved as it is
+// typed — a moment after the typing stops, and at once when another From
+// is picked — with no button to press. Write puts it under the message,
+// above any quote.
+func prefsSignatures(a *app.Application, win *app.Window, cli *mailcore.Client) widget.Component {
 	idents := sendIdentities(cli)
-	names := make([]string, len(idents))
-	for i, id := range idents {
-		names[i] = id.DisplayFrom()
+	if len(idents) == 0 {
+		return wrapLabel("Add an account first; each address you send from gets its own signature.")
 	}
-	if len(names) == 0 {
-		return widgets.NewLabel("Add an account first; each address you send from gets its own signature.")
-	}
+	cur := 0
 	sig := widgets.NewTextArea(idents[0].Signature, "Signature (plain text)", nil)
 	sig.MinRows = 6
-	status := widgets.NewLabel("")
-	pick := widgets.NewComboBox(names, 0, func(i int) {
-		if i >= 0 && i < len(idents) {
-			sig.SetText(idents[i].Signature)
-			status.SetText("")
-		}
-	})
-	save := newButton("Save signature", func() {
-		i := pick.Selected
+	sig.Wrap = true
+
+	// save stores what is typed for identity i, if it changed.
+	save := func(i int, text string) {
 		if i < 0 || i >= len(idents) {
 			return
 		}
 		next := idents[i]
-		next.Signature = strings.TrimRight(sig.Text, "\n")
-		saved, err := cli.PutIdentity(next)
-		if err != nil {
-			widgets.Warn(win.Content(), "Signature", err.Error(), nil)
+		next.Signature = strings.TrimRight(text, "\n")
+		if next.Signature == idents[i].Signature {
 			return
 		}
-		idents[i] = saved
-		status.SetText("Saved. New messages from " + saved.DisplayFrom() + " start with it.")
+		idents[i].Signature = next.Signature // what the next save compares with
+		runAsync(a, func() (any, error) { return cli.PutIdentity(next) }, func(v any, err error) {
+			if err != nil {
+				widgets.Warn(win.Content(), "Signature", err.Error(), nil)
+				return
+			}
+			idents[i] = v.(mailcore.Identity)
+		})
+	}
+	var timer *time.Timer
+	flush := func() {
+		if timer != nil {
+			timer.Stop()
+			timer = nil
+		}
+		save(cur, sig.Text)
+	}
+	sig.OnInput = func(string) {
+		if timer != nil {
+			timer.Stop()
+		}
+		i := cur
+		timer = time.AfterFunc(signatureSaveDelay, func() {
+			a.Post(func() {
+				if i == cur {
+					flush()
+				}
+			})
+		})
+	}
+
+	list := widgets.NewTableView([]widgets.TableColumn{{Title: "From"}}, len(idents), func(row, _ int) string {
+		if row < 0 || row >= len(idents) {
+			return ""
+		}
+		return idents[row].DisplayFrom()
+	}, func(row int) {
+		if row < 0 || row >= len(idents) || row == cur {
+			return
+		}
+		flush()
+		cur = row
+		sig.SetText(idents[row].Signature)
 	})
-	save.Primary = true
-	col := widgets.NewColumn(
-		widgets.NewTitle("Signatures"),
-		widgets.NewLabel("From"), pick,
-		sig,
-		widgets.NewRow(save, status).WithGap(8),
-	).WithGap(8)
-	col.AddFlex(sig, 1)
-	return col
+	list.Selected = 0
+	split := widgets.NewSplitter(widgets.SplitColumns, list, sig)
+	split.Ratio = 0.38
+	return split
 }
+
+// signatureSaveDelay is how long after the typing stops a signature is
+// saved.
+const signatureSaveDelay = 600 * time.Millisecond
 
 // prefsPrivacy lists the senders whose remote images load without asking
 // (given with Always in the reading pane), and takes them back.

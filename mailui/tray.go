@@ -23,13 +23,14 @@ func (s *session) attachTray() {
 		s.trayMu.Unlock()
 	}
 	if s.statusItem() == nil {
-		look := s.app.Look()
 		item, err := s.app.NewStatusItem(platform.StatusItemOptions{
 			ID:         "comms-mail",
 			Title:      "Mail",
 			Tooltip:    "Mail",
 			MenuChrome: platform.HostMenu,
-			Icon:       app.StatusIconFromTool(style.IconMail, look, 22),
+			// The logo, as a picture: a tray host given a theme name too
+			// would draw its theme's icon instead.
+			Icon: platform.StatusIcon{Image: logoAt(trayIconSize)},
 			Menu: app.StatusMenuFromItems([]*widgets.MenuItem{
 				widgets.ItemIcon(style.IconMail, "Show Mail", s.showMain),
 				widgets.Sep(),
@@ -226,3 +227,7 @@ var uiNotes = platform.NewNotifier(platform.NotifierOptions{AppName: "Mail", Des
 func DesktopNotify(title, body string) {
 	_, _ = uiNotes.Send(newMailNotification(title, body, nil))
 }
+
+// trayIconSize is the logo's size for the tray: large enough for a
+// high-density panel, which scales it down to its own size.
+const trayIconSize = 64

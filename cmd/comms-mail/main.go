@@ -15,7 +15,6 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/comms-mail/mailui"
 	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/icons"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
 )
@@ -65,8 +64,9 @@ func main() {
 	// AppID is what the desktop files the windows under (Wayland's app_id,
 	// X11's WM_CLASS), whatever the binary is called.
 	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: *headless, WatchLook: true, AppID: "comms-mail"})
-	// The window icon the desktop shows in its title bar, task bar and switcher.
-	a.SetIcon(icons.AppIconRGB("mail", 0x2f, 0x6f, 0xd0)...)
+	// The window icon the desktop shows in its title bar, task bar and
+	// switcher: comms-mail's logo (logo.png).
+	a.SetIcon(mailui.AppIcons()...)
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, MinWidth: 860, MinHeight: 560,
 	})

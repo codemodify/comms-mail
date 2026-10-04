@@ -259,12 +259,7 @@ func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) wid
 	})
 	run.Tip = "Run the rules over the mail already in each Inbox"
 	sync()
-	col := widgets.NewColumn(
-		widgets.NewTitle("Filters"),
-		wrapLabel("Rules run on new mail as it arrives, in order: the first that says stop ends the run."),
-		table,
-		foldRowTrail(add, edit, toggle, del, run),
-	).WithGap(8)
+	col := widgets.NewColumn(table, foldRowTrail(add, edit, toggle, del, run)).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
 }

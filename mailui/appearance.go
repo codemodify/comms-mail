@@ -42,7 +42,6 @@ func prefsAppearance(a *app.Application) widget.Component {
 	all := style.ListThemes()
 	var rows []style.ThemePack
 	shade := 0 // all, light, dark
-	note := wrapLabel("")
 	var table *widgets.TableView
 	var follow *widgets.Button
 
@@ -65,15 +64,17 @@ func prefsAppearance(a *app.Application) widget.Component {
 		}
 		table.Invalidate()
 	}
+	// Use the shared theme is on while comms-mail has a theme of its own;
+	// its tip says which it uses and which every other uitoolkit app keeps.
 	show := func() {
 		shared := style.LoadAppearance().Name
 		if own := ownTheme(); own != "" {
-			note.SetText(fmt.Sprintf("comms-mail uses its own theme, %s. Every other uitoolkit app keeps %s, the theme they share (%s).",
-				themeLabelFor(own), themeLabelFor(shared), style.AppearancePath()))
+			follow.Tip = fmt.Sprintf("comms-mail uses %s; every other uitoolkit app keeps %s, the theme they share (%s).",
+				themeLabelFor(own), themeLabelFor(shared), style.AppearancePath())
 			follow.SetEnabled(true)
 		} else {
-			note.SetText(fmt.Sprintf("comms-mail follows %s, the theme every uitoolkit app shares (%s). Pick one below to use another in comms-mail alone.",
-				themeLabelFor(shared), style.AppearancePath()))
+			follow.Tip = fmt.Sprintf("comms-mail follows %s, the theme every uitoolkit app shares (%s). Pick one in the list to use another in comms-mail alone.",
+				themeLabelFor(shared), style.AppearancePath())
 			follow.SetEnabled(false)
 		}
 		follow.Text = "Use the shared theme (" + themeLabelFor(shared) + ")"
@@ -141,13 +142,7 @@ func prefsAppearance(a *app.Application) widget.Component {
 	filter()
 	show()
 
-	col := widgets.NewColumn(
-		widgets.NewTitle("Theme"),
-		note,
-		widgets.NewRow(widgets.NewLabel(fmt.Sprintf("%d themes in this build", len(all))), widgets.NewSpacer(), shades).WithGap(8),
-		table,
-		widgets.NewRow(follow).WithGap(8),
-	).WithGap(8)
+	col := widgets.NewColumn(foldRow(shades, follow), table).WithGap(8)
 	col.AddFlex(table, 1)
 	return col
 }

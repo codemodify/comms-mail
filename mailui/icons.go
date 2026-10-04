@@ -24,7 +24,6 @@ var actionIcons = map[string]style.ToolIcon{
 	"maybe":                  style.IconQuestion,
 	"forgot it":              style.IconQuestion,
 	"save":                   style.IconSave,
-	"save signature":         style.IconSave,
 	"save account":           style.IconSave,
 	"remove":                 style.IconTrash,
 	"delete":                 style.IconTrash,

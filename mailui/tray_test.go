@@ -50,13 +50,14 @@ func TestMailTrayFakeClickRaises(t *testing.T) {
 	if tray == nil {
 		t.Fatal("Open should create a fake StatusItem when UITK_TRAY=fake")
 	}
-	mailIcon := app.StatusIconFromTool(style.IconMail, style.DarkLook(), 22)
-	infoIcon := app.StatusIconFromTool(style.IconInfo, style.DarkLook(), 22)
-	if tray.Icon().Name != mailIcon.Name || tray.Icon().Name == infoIcon.Name {
-		t.Fatalf("tray icon %q want mail %q not info %q", tray.Icon().Name, mailIcon.Name, infoIcon.Name)
+	// The tray wears comms-mail's logo, as a picture: with a theme name
+	// too, the tray host would draw its theme's icon instead.
+	icon := tray.Icon()
+	if icon.Name != "" || icon.Image == nil || icon.Image.Width != trayIconSize {
+		t.Fatalf("tray icon %q, image %v: want the logo", icon.Name, icon.Image != nil)
 	}
-	if tray.Icon().Name != "mail-unread" {
-		t.Fatalf("freedesktop name %q", tray.Icon().Name)
+	if _, _, _, a := icon.Image.PremulAt(trayIconSize/2, trayIconSize/2); a == 0 {
+		t.Fatal("the tray icon is blank")
 	}
 	w.Hide()
 	if w.Visible() {
