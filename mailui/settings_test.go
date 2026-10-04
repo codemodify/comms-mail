@@ -251,8 +251,8 @@ func TestSecurityTopics(t *testing.T) {
 		return shows()
 	}
 	for i, want := range []struct{ has, hasNot string }{
-		{"Change where…", "OpenPGP"},
-		{"No OpenPGP key", "Change where…"},
+		{"Apply", "OpenPGP"},
+		{"No OpenPGP key", "Apply"},
 		{"(table)", "OpenPGP"},
 	} {
 		if got := pick(i); !strings.Contains(got, want.has) || strings.Contains(got, want.hasNot) {

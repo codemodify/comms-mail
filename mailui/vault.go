@@ -14,7 +14,8 @@ import (
 // secrets.go): the desktop keyring, secretvault, an encrypted file, or a
 // plain file. The window asks when it finds passwords readable in
 // mail.json and before the first account is saved, unlocks the store at
-// start, and Settings › Security › Passwords moves everything to another store.
+// start, and Settings › Security › Passwords is the same choice, which
+// moves everything to another store.
 
 // forgetText is what a forgotten passphrase costs.
 const forgetText = "If you forget the passphrase, the saved passwords cannot be recovered: you would type each account's password again."
@@ -53,7 +54,7 @@ func plainIntro(st mailcore.SecretsStatus) string {
 const accountIntro = "Before comms-mail saves this account's password, choose where your passwords are kept."
 
 // laterNote is under the choices when they are first offered.
-const laterNote = "You can set this up later, or switch to another place at any time, with Change where… under Security › Passwords in Settings."
+const laterNote = "You can set this up later, or switch to another place at any time, under Security › Passwords in Settings."
 
 // switchIntro is the text for moving the secrets elsewhere.
 const switchIntro = "Choose where comms-mail keeps your passwords and sign-ins. They all move there, and the copies where they are now are removed."
@@ -73,12 +74,130 @@ func storeOptions(st mailcore.SecretsStatus) []storeOption {
 	if !st.SecretVaultAvailable {
 		vault += "\nNot available: " + st.SecretVaultProblem
 	}
+	// The files' own paths come first: they are where the passwords are.
+	file := func(path, text string) string {
+		if path == "" {
+			return text
+		}
+		return path + "\n" + text
+	}
 	return []storeOption{
 		{mailcore.StoreKeyring, "Desktop keyring", keyring, st.KeyringAvailable},
 		{mailcore.StoreSecretVault, "secretvault", vault, st.SecretVaultAvailable},
-		{mailcore.StoreEncrypted, "Encrypted file", "A file only your passphrase opens (Argon2id, AES-256-GCM). comms-mail asks for the passphrase once each time it starts. " + forgetText, true},
-		{mailcore.StorePlain, "Plain file", "Passwords stay readable in mail.json, as before: any program running as you can read them.", true},
+		{mailcore.StoreEncrypted, "Encrypted file", file(st.EncryptedFile, "A file only your passphrase opens (Argon2id, AES-256-GCM). comms-mail asks for the passphrase once each time it starts. "+forgetText), true},
+		{mailcore.StorePlain, "Plain file", file(st.PlainFile, "Passwords stay readable in mail.json, as before: any program running as you can read them."), true},
 	}
+}
+
+// storeChoices is the choice of where the secrets are kept: each place
+// with what it means, and the passphrase fields while the encrypted file
+// is picked to move to. The window that asks picks nothing beforehand and
+// cannot pick the place in use; Settings shows the place in use picked,
+// with under[kind] beneath it.
+type storeChoices struct {
+	st      mailcore.SecretsStatus
+	opts    []storeOption
+	radios  []*widgets.RadioButton
+	chosen  int // -1: none
+	list    *widgets.FlexBox
+	passBox *widgets.FlexBox
+	first   *widgets.TextField
+	again   *widgets.TextField
+	// onPick runs after each pick.
+	onPick func()
+}
+
+func newStoreChoices(st mailcore.SecretsStatus, showInUse bool, under map[string]widget.Component) *storeChoices {
+	c := &storeChoices{st: st, opts: storeOptions(st), chosen: -1}
+	c.first = widgets.NewPasswordField("", nil)
+	c.again = widgets.NewPasswordField("", nil)
+	c.passBox = widgets.NewColumn(
+		widgets.NewLabel("Passphrase (at least 8 characters)"), c.first,
+		widgets.NewLabel("Type it again"), c.again,
+	).WithGap(6)
+	c.passBox.SetVisible(false)
+	c.radios = make([]*widgets.RadioButton, len(c.opts))
+	c.list = widgets.NewColumn().WithGap(10)
+	for i, o := range c.opts {
+		label := o.title
+		if o.kind == st.Store {
+			label += " (in use now)"
+		}
+		rb := widgets.NewRadio(label, false, nil)
+		rb.OnChange = func(on bool) {
+			if on {
+				c.pick(i)
+			}
+		}
+		inUse := o.kind == st.Store
+		rb.SetEnabled(o.available && (!inUse || showInUse))
+		c.radios[i] = rb
+		details := widgets.NewColumn(wrapLabel(o.text)).WithGap(6)
+		if extra := under[o.kind]; extra != nil {
+			details.Add(extra)
+		}
+		c.list.Add(widgets.NewColumn(rb, details.WithPadding(28, 0, 0, 0)).WithGap(2))
+		if inUse && showInUse {
+			rb.Selected = true
+			c.chosen = i
+		}
+	}
+	return c
+}
+
+// pick makes option i the choice.
+func (c *storeChoices) pick(i int) {
+	c.chosen = i
+	for j, other := range c.radios {
+		if j != i && other.Selected {
+			other.SetSelected(false)
+		}
+	}
+	c.passBox.SetVisible(c.moving() && c.opts[i].kind == mailcore.StoreEncrypted)
+	c.passBox.RequestLayout()
+	if c.onPick != nil {
+		c.onPick()
+	}
+}
+
+// moving says a place other than the one in use is picked.
+func (c *storeChoices) moving() bool {
+	return c.chosen >= 0 && c.opts[c.chosen].kind != c.st.Store
+}
+
+// move takes everything to the place picked, asking for the encrypted
+// file's passphrase twice. btn is off while it works; done runs on the UI
+// goroutine once they have moved. Warnings show over from.
+func (c *storeChoices) move(a *app.Application, cli *mailcore.Client, from widget.Component, btn *widgets.Button, done func()) {
+	if !c.moving() || !btn.Enabled() {
+		return
+	}
+	kind := c.opts[c.chosen].kind
+	p := ""
+	if kind == mailcore.StoreEncrypted {
+		p = c.first.Text
+		if len([]rune(p)) < mailcore.MinPassphrase {
+			widgets.Warn(from, "Passphrase", "Choose a passphrase of at least 8 characters.", nil)
+			return
+		}
+		if p != c.again.Text {
+			widgets.Warn(from, "Passphrase", "The two passphrases are not the same.", nil)
+			return
+		}
+	}
+	btn.SetEnabled(false)
+	runAsync(a, func() (any, error) {
+		return nil, cli.UseStore(kind, p)
+	}, func(_ any, err error) {
+		if err != nil {
+			btn.SetEnabled(true)
+			widgets.Warn(from, "Keep passwords", err.Error(), nil)
+			return
+		}
+		if done != nil {
+			done()
+		}
+	})
 }
 
 // openStoreChooser asks where the secrets should be kept and moves them
@@ -95,80 +214,19 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 	if err != nil {
 		return nil
 	}
-	first := widgets.NewPasswordField("", nil)
-	again := widgets.NewPasswordField("", nil)
-	passBox := widgets.NewColumn(
-		widgets.NewLabel("Passphrase (at least 8 characters)"), first,
-		widgets.NewLabel("Type it again"), again,
-	).WithGap(6)
-	passBox.SetVisible(false)
-
-	opts := storeOptions(st)
-	chosen := -1
+	c := newStoreChoices(st, false, nil)
 	var okBtn *widgets.Button
-	radios := make([]*widgets.RadioButton, len(opts))
-	list := widgets.NewColumn().WithGap(10)
-	for i, o := range opts {
-		i, o := i, o
-		label := o.title
-		if o.kind == st.Store {
-			label += " (in use now)"
-		}
-		rb := widgets.NewRadio(label, false, nil)
-		rb.OnChange = func(on bool) {
-			if !on {
-				return
-			}
-			chosen = i
-			for j, other := range radios {
-				if j != i && other.Selected {
-					other.SetSelected(false)
-				}
-			}
-			passBox.SetVisible(o.kind == mailcore.StoreEncrypted)
-			okBtn.SetEnabled(true)
-			passBox.RequestLayout()
-		}
-		rb.SetEnabled(o.available && o.kind != st.Store)
-		radios[i] = rb
-		desc := wrapLabel(o.text)
-		list.Add(widgets.NewColumn(rb, widgets.NewColumn(desc).WithPadding(28, 0, 0, 0)).WithGap(2))
-	}
-
 	submit := func() {
-		if chosen < 0 || !okBtn.Enabled() {
-			return
-		}
-		kind := opts[chosen].kind
-		p := ""
-		if kind == mailcore.StoreEncrypted {
-			p = first.Text
-			if len([]rune(p)) < mailcore.MinPassphrase {
-				widgets.Warn(win.Content(), "Passphrase", "Choose a passphrase of at least 8 characters.", nil)
-				return
-			}
-			if p != again.Text {
-				widgets.Warn(win.Content(), "Passphrase", "The two passphrases are not the same.", nil)
-				return
-			}
-		}
-		okBtn.SetEnabled(false)
-		runAsync(a, func() (any, error) {
-			return nil, cli.UseStore(kind, p)
-		}, func(_ any, err error) {
-			if err != nil {
-				okBtn.SetEnabled(true)
-				widgets.Warn(win.Content(), "Keep passwords", err.Error(), nil)
-				return
-			}
+		c.move(a, cli, win.Content(), okBtn, func() {
 			win.Close()
 			if done != nil {
 				done()
 			}
 		})
 	}
-	first.OnSubmit = func(string) { submit() }
-	again.OnSubmit = func(string) { submit() }
+	c.onPick = func() { okBtn.SetEnabled(true) }
+	c.first.OnSubmit = func(string) { submit() }
+	c.again.OnSubmit = func(string) { submit() }
 	okBtn = newButton("OK", submit)
 	okBtn.Primary = true
 	okBtn.SetEnabled(false)
@@ -183,10 +241,10 @@ func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st
 	// The explanation and the choices scroll in a small window; the
 	// passphrase fields, the note that this can be changed later and the
 	// buttons stay in view.
-	body := widgets.NewColumn(wrapLabel(intro), list).WithGap(14)
+	body := widgets.NewColumn(wrapLabel(intro), c.list).WithGap(14)
 	body.AddFlex(widgets.NewSpacer(), 1)
 	scroll := widgets.NewScrollView(body)
-	col := widgets.NewColumn(scroll, passBox).WithGap(10)
+	col := widgets.NewColumn(scroll, c.passBox).WithGap(10)
 	col.AddFlex(scroll, 1)
 	if st.Store == "" {
 		// Asked from Settings it goes without saying.

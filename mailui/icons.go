@@ -14,6 +14,7 @@ import (
 // missing-icon mark in the drawn sets that most packs use by default.
 var actionIcons = map[string]style.ToolIcon{
 	"ok":                     style.IconCheck,
+	"apply":                  style.IconCheck,
 	"yes":                    style.IconCheck,
 	"always":                 style.IconCheck,
 	"cancel":                 style.IconClose,

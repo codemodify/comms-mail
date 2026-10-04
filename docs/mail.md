@@ -538,11 +538,20 @@ secretvault, which does that work itself (see the security primer).
   it finds passwords readable in `mail.json` (an install from before the
   choice), and before the first account's password is saved. **Not now**
   leaves everything as it is.
-- **Moving.** Settings › Security › Passwords › **Change where…** moves every secret to
-  another store: they are written there first and taken out of the old
-  place last (the encrypted file deleted, keyring items removed, or the
-  passwords taken out of `mail.json`), so a failure part-way leaves them
-  where they were. Moving from an install before the choice also deletes
+- **Settings › Security › Passwords** is the same choice, in the page
+  itself: each place with what it means — the encrypted and plain files
+  with their full paths first, as the daemon has them
+  (`SecretsStatus.encryptedFile` / `plainFile`) — and the place in use
+  picked. Under it: that it is locked, with **Unlock…** (**Unlock
+  secretvault…** for secretvault, which shows its own prompt), and
+  **Change passphrase…** for the encrypted file. The places scroll; the
+  passphrase fields and **Apply** stay in view, and Apply is on only
+  while another place is picked.
+- **Moving.** **Apply** there moves every secret to the place picked
+  (the encrypted file's passphrase typed twice): they are written there
+  first and taken out of the old place last (the encrypted file deleted,
+  keyring items removed, or the passwords taken out of `mail.json`), so a
+  failure part-way leaves them where they were. Moving from an install before the choice also deletes
   the old token files, `master.key`, and the copy of that key older builds
   put in the keyring through `secret-tool`.
 - **Locked.** While the store in use cannot be read — the encrypted file

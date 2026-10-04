@@ -541,6 +541,18 @@ type SecretsStatus struct {
 	// SecretVaultProblem says why not.
 	SecretVaultAvailable bool   `json:"secretVaultAvailable"`
 	SecretVaultProblem   string `json:"secretVaultProblem,omitempty"`
+	// PlainFile is where the plain store keeps the passwords (mail.json),
+	// EncryptedFile the encrypted file: the daemon's own paths.
+	PlainFile     string `json:"plainFile,omitempty"`
+	EncryptedFile string `json:"encryptedFile,omitempty"`
+}
+
+// absPath is p made absolute, or p when it cannot be.
+func absPath(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		return a
+	}
+	return p
 }
 
 // accountKeyID is the id an account's secrets are filed under.
@@ -673,7 +685,8 @@ func (s *LocalStore) withSecrets(id string, a AccountConfig) AccountConfig {
 // SecretsStatus reports where the secrets are and whether they can be read.
 func (s *LocalStore) SecretsStatus() SecretsStatus {
 	kind := s.secretKind()
-	st := SecretsStatus{Supported: true, Store: kind, KeyringName: keyringName()}
+	st := SecretsStatus{Supported: true, Store: kind, KeyringName: keyringName(),
+		PlainFile: absPath(ConfigPath()), EncryptedFile: absPath(s.vaultOf().path)}
 	if err := s.storeFor(kind).Ready(); err == nil {
 		st.Ready = true
 	} else if errors.Is(err, ErrLocked) {

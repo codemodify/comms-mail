@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"reflect"
 	"strings"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
+	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
@@ -417,8 +419,8 @@ type securityTopic struct {
 // have locked or a key been made in secretvault itself meanwhile.
 func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) (tab widget.Component, shown func()) {
 	var topics []securityTopic
-	if pass, refresh := passwordsSection(a, cli); pass != nil {
-		topics = append(topics, securityTopic{"Passwords", widgets.NewScrollView(pass), refresh})
+	if pass, refresh := passwordsSection(a, win, cli); pass != nil {
+		topics = append(topics, securityTopic{"Passwords", pass, refresh})
 	}
 	keys, refreshKeys := keysSection(a, cli)
 	topics = append(topics,
@@ -514,81 +516,86 @@ func remoteImagesSection(win *app.Window, cli *mailcore.Client, onChange func())
 	return col
 }
 
-// passwordsSection is Security's say on where the saved passwords and
-// sign-ins are kept: the store in use, moving them to another, and the
-// encrypted file's passphrase. None for a store that keeps no secrets
-// (the demo). refresh asks the daemon again.
-func passwordsSection(a *app.Application, cli *mailcore.Client) (section widget.Component, refresh func()) {
+// passwordsSection is Settings › Security › Passwords: where the saved
+// passwords and sign-ins are kept, as the choice of where to keep them —
+// each place with what it means, the one in use picked — and Apply, which
+// moves them all to the place picked. Under the place in use: that it is
+// locked, with Unlock…, and Change passphrase… for the encrypted file.
+// None for a store that keeps no secrets (the demo). refresh asks the
+// daemon again and redraws the page when anything changed.
+func passwordsSection(a *app.Application, win *app.Window, cli *mailcore.Client) (section widget.Component, refresh func()) {
 	st, err := cli.SecretsStatus()
 	if err != nil || !st.Supported {
 		return nil, nil
 	}
-	note := wrapLabel("")
-	var move, change, unlock *widgets.Button
-	show := func(st mailcore.SecretsStatus) {
-		text := "Your saved passwords and sign-ins are kept in " + mailcore.StoreLabel(st.Store) + "."
-		switch st.Store {
-		case "":
-			switch {
-			case len(st.PlainAccounts) > 0:
-				text = "Your mail passwords are saved as readable text in mail.json, where any program running as you can read them. Choose a safer place for them."
-			case st.PlainTokens:
-				text = "Your Google or Microsoft sign-ins are saved in files whose key is kept beside them. Choose a safer place for them."
-			default:
-				text = "No passwords are saved yet. Choose where comms-mail should keep them."
-			}
-		case mailcore.StoreEncrypted:
-			text += " comms-mail asks for its passphrase once each time it starts."
-		case mailcore.StoreKeyring:
-			text += " The desktop unlocks it when you log in."
-		case mailcore.StoreSecretVault:
-			text += " It asks you before letting comms-mail read them, and while it is locked comms-mail holds none of them and waits."
-		case mailcore.StorePlain:
-			text += " Any program running as you can read them."
-		}
-		if st.Locked {
-			text += " It is locked now."
-		} else if st.Problem != "" {
-			text += " It cannot be read now: " + st.Problem
-		}
-		note.SetText(text)
-		move.Text = "Change where…"
-		if st.Store == "" {
-			move.Text = "Choose where…"
-		}
-		move.Invalidate()
-		change.SetVisible(st.Store == mailcore.StoreEncrypted)
-		// secretvault: unlocking it, or being asked again after a no.
-		unlock.SetVisible(st.Store == mailcore.StoreSecretVault && !st.Ready && (st.Locked || st.Problem != ""))
-	}
-	refresh = func() {
-		if cur, err := cli.SecretsStatus(); err == nil {
+	page := widgets.NewColumn().WithGap(10)
+	var shown mailcore.SecretsStatus
+	var show func(mailcore.SecretsStatus)
+	reload := func(always bool) {
+		if cur, err := cli.SecretsStatus(); err == nil && (always || !reflect.DeepEqual(cur, shown)) {
 			show(cur)
 		}
 	}
-	move = newButton("", func() {
-		cur, err := cli.SecretsStatus()
-		if err != nil {
-			return
-		}
-		intro := switchIntro
-		if cur.Store == "" {
-			intro = plainIntro(cur)
-		}
-		openStoreChooser(a, cli, intro, cur, refresh)
-	})
-	change = newButton("Change passphrase…", func() { openPassphrase(a, cli, passChange, refresh) })
-	unlock = newButton("Unlock secretvault…", nil)
-	unlock.OnClick = func() {
-		// secretvault shows its own prompt; comms-mail never sees the
-		// passphrase.
-		runAsync(a, func() (any, error) { return nil, cli.UnlockSecrets("") }, func(_ any, err error) {
-			if err != nil {
-				widgets.Warn(unlock, "secretvault", "secretvault stayed locked, so comms-mail is waiting: "+err.Error(), nil)
+	refresh = func() { reload(false) }
+	show = func(st mailcore.SecretsStatus) {
+		shown = st
+		page.ClearChildren()
+		var inUse []widget.Component
+		if st.Store != "" && !st.Ready {
+			text := "Locked now."
+			icon := style.IconLock
+			if !st.Locked {
+				text, icon = "It cannot be read now: "+st.Problem, style.IconWarning
 			}
-			refresh()
-		})
+			l := widgets.NewIconLabel(icon, text)
+			l.Wrap = true
+			unlockText := "Unlock…"
+			if st.Store == mailcore.StoreSecretVault {
+				// secretvault shows its own prompt; comms-mail never sees
+				// the passphrase.
+				unlockText = "Unlock secretvault…"
+			}
+			unlock := newButton(unlockText, func() { unlockStore(a, cli, st, win, refresh) })
+			inUse = append(inUse, l, foldRow(unlock))
+		}
+		if st.Store == mailcore.StoreEncrypted {
+			inUse = append(inUse, foldRow(newButton("Change passphrase…", func() { openPassphrase(a, cli, passChange, refresh) })))
+		}
+		under := map[string]widget.Component{}
+		if len(inUse) > 0 {
+			under[st.Store] = widgets.NewColumn(inUse...).WithGap(6)
+		}
+		c := newStoreChoices(st, true, under)
+		apply := newButton("Apply", nil)
+		apply.Tip = "Move your passwords and sign-ins to the place picked"
+		apply.SetEnabled(false)
+		apply.OnClick = func() { c.move(a, cli, page, apply, func() { reload(true) }) }
+		c.onPick = func() { apply.SetEnabled(c.moving()) }
+		c.first.OnSubmit = func(string) { apply.OnClick() }
+		c.again.OnSubmit = func(string) { apply.OnClick() }
+		// The places scroll; the passphrase fields and Apply stay in view.
+		scroll := widgets.NewScrollView(widgets.NewColumn(wrapLabel(passwordsIntro(st)), c.list).WithGap(14))
+		page.AddFlex(scroll, 1)
+		page.Add(c.passBox)
+		page.Add(foldRow(apply))
+		page.RequestLayout()
+		page.Invalidate()
 	}
 	show(st)
-	return widgets.NewColumn(note, foldRow(move, change, unlock)).WithGap(8), refresh
+	return page, refresh
+}
+
+// passwordsIntro says what choosing does, or, before a place is chosen,
+// what is wrong with where they are.
+func passwordsIntro(st mailcore.SecretsStatus) string {
+	if st.Store != "" {
+		return switchIntro
+	}
+	switch {
+	case len(st.PlainAccounts) > 0:
+		return "Your mail passwords are saved as readable text in mail.json, where any program running as you can read them. Choose a safer place for them."
+	case st.PlainTokens:
+		return "Your Google or Microsoft sign-ins are saved in files whose key is kept beside them. Choose a safer place for them."
+	}
+	return "No passwords are saved yet. Choose where comms-mail should keep them."
 }

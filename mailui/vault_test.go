@@ -210,7 +210,7 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 	}
 
 	unlockButton := func() (*widgets.Button, string) {
-		section, _ := passwordsSection(a, cli)
+		section, _ := passwordsSection(a, nil, cli)
 		var btn *widgets.Button
 		var texts []string
 		widget.Walk(section, func(c widget.Component) {
@@ -227,7 +227,7 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 	}
 	btn, text := unlockButton()
 	// (A hidden button is not walked.)
-	if !strings.Contains(text, "asks you before letting comms-mail read them") || btn != nil && btn.Visible() {
+	if !strings.Contains(text, "asks you before letting comms-mail read") || strings.Contains(text, "Locked now") || btn != nil && btn.Visible() {
 		t.Fatalf("Settings, unlocked (unlock shown %v):\n%s", btn != nil && btn.Visible(), text)
 	}
 
@@ -258,7 +258,7 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 
 	// Settings asks secretvault to unlock, which shows its own prompt.
 	btn, text = unlockButton()
-	if btn == nil || !btn.Visible() || !strings.Contains(text, "locked now") {
+	if btn == nil || !btn.Visible() || !strings.Contains(text, "Locked now") {
 		t.Fatalf("Settings, locked:\n%s", text)
 	}
 	btn.OnClick()
@@ -401,7 +401,7 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 		t.Fatal("the window asked where to keep passwords when none are saved")
 	}
 
-	section, _ := passwordsSection(a, cli)
+	section, _ := passwordsSection(a, nil, cli)
 	var texts []string
 	widget.Walk(section, func(c widget.Component) {
 		if l, ok := c.(*widgets.Label); ok {
@@ -422,4 +422,99 @@ func labelTexts(w *app.Window) string {
 		}
 	})
 	return strings.Join(texts, "\n")
+}
+
+// Settings › Security › Passwords is the choice itself, where the window
+// that asked was: each place with what it means, the plain and encrypted
+// files' full paths first, the place in use picked, and Apply, which moves
+// everything to another — the encrypted file's passphrase asked twice. The
+// page then shows the new place in use, with Change passphrase… under it.
+func TestPasswordsPageIsTheChoice(t *testing.T) {
+	cli, dir := vaultDaemon(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 900, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	page, _ := passwordsSection(a, w, cli)
+	w.SetContent(page)
+	a.PumpOnce()
+	type parts struct {
+		radios  map[string]*widgets.RadioButton
+		buttons map[string]*widgets.Button
+		fields  []*widgets.TextField
+		texts   []string
+	}
+	look := func() parts {
+		p := parts{radios: map[string]*widgets.RadioButton{}, buttons: map[string]*widgets.Button{}}
+		widget.Walk(page, func(c widget.Component) {
+			switch v := c.(type) {
+			case *widgets.RadioButton:
+				p.radios[v.Text] = v
+			case *widgets.Button:
+				p.buttons[v.Text] = v
+			case *widgets.TextField:
+				p.fields = append(p.fields, v)
+			case *widgets.Label:
+				p.texts = append(p.texts, v.Text)
+			}
+		})
+		return p
+	}
+	firstLineIs := func(texts []string, path string) bool {
+		for _, s := range texts {
+			if strings.HasPrefix(s, path+"\n") {
+				return true
+			}
+		}
+		return false
+	}
+	vaultPath := filepath.Join(dir, "secrets", "vault.json")
+	configPath, _ := filepath.Abs(mailcore.ConfigPath())
+	p := look()
+	if len(p.radios) != 4 || !firstLineIs(p.texts, vaultPath) || !firstLineIs(p.texts, configPath) {
+		t.Fatalf("radios %d; texts:\n%s", len(p.radios), strings.Join(p.texts, "\n---\n"))
+	}
+	if p.buttons["Change where…"] != nil || p.buttons["Apply"] == nil || p.buttons["Apply"].Enabled() {
+		t.Fatalf("buttons %v", p.buttons)
+	}
+	if len(p.fields) != 0 {
+		t.Fatal("passphrase fields before the encrypted file is picked")
+	}
+	// The window that asks says the same.
+	st, _ := cli.SecretsStatus()
+	ask := newWindowFrom(t, a, func() { openStoreChooser(a, cli, switchIntro, st, nil) })
+	if !strings.Contains(labelTexts(ask), vaultPath+"\n") {
+		t.Fatalf("the window says:\n%s", labelTexts(ask))
+	}
+	ask.Close()
+
+	p.radios["Encrypted file"].SetSelected(true)
+	a.PumpOnce()
+	p = look()
+	if len(p.fields) != 2 || !p.buttons["Apply"].Enabled() {
+		t.Fatalf("Encrypted file picked: %d fields, Apply %v", len(p.fields), p.buttons["Apply"].Enabled())
+	}
+	p.fields[0].SetText("correct horse battery")
+	p.fields[1].SetText("correct horse battery")
+	p.buttons["Apply"].OnClick()
+	a.PumpOnce()
+	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StoreEncrypted || !st.Ready || st.PlainSecrets {
+		t.Fatalf("after Apply: %+v", st)
+	}
+	p = look()
+	inUse := p.radios["Encrypted file (in use now)"]
+	if inUse == nil || !inUse.Selected || len(p.fields) != 0 || p.buttons["Change passphrase…"] == nil || p.buttons["Apply"].Enabled() {
+		t.Fatalf("after the move: radios %v, %d fields, buttons %v", p.radios, len(p.fields), p.buttons)
+	}
+	// Picking another place offers Apply; the one in use again takes it back.
+	p.radios["Plain file"].SetSelected(true)
+	if !p.buttons["Apply"].Enabled() || inUse.Selected {
+		t.Fatal("picking the plain file")
+	}
+	inUse.SetSelected(true)
+	if p.buttons["Apply"].Enabled() {
+		t.Fatal("Apply is on with the place in use picked")
+	}
 }
