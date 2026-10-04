@@ -186,7 +186,7 @@ func callTimeout(method string) time.Duration {
 	case MethodSyncRun, MethodMessagesFetch, MethodOutboxFlush, MethodStatusSet:
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
-		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw, MethodMessagesSecurity:
+		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw, MethodMessagesSecurity, MethodComposeKeys:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
@@ -310,6 +310,14 @@ func (c *Client) GetSource(id MessageID) (string, error) {
 		return "", err
 	}
 	return r.RFC822, nil
+}
+
+// SigningKeys says whether secretvault can sign as from (and whether it
+// is in use at all, or locked).
+func (c *Client) SigningKeys(from string) (SigningKeys, error) {
+	var r SigningKeys
+	err := c.call(MethodComposeKeys, composeKeysParams{From: from}, &r)
+	return r, err
 }
 
 // MessageSecurity has secretvault check message id and, with decrypt,

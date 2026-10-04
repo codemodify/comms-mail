@@ -10,6 +10,7 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/app"
+	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
@@ -23,6 +24,9 @@ type ComposeOptions struct {
 	ReplyAll bool
 	Forward  *mailcore.Message
 	Draft    *mailcore.Message
+	// Encrypt starts the message encrypted: a reply to, or a forward of,
+	// an encrypted message.
+	Encrypt  bool
 	OnChange func() // refresh the 3-pane after send / save
 }
 
@@ -64,12 +68,19 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	// starts a new conversation in the recipient's client.
 	inReplyTo, references := "", ""
 	forwardOf := mailcore.MessageID("")
+	// How it goes: signed whenever secretvault holds a key for From
+	// (unless the writer says not), encrypted when asked (sendprotect.go).
+	encrypt0, sign0, signSet := opts.Encrypt, true, false
 	if opts.Draft != nil {
 		d := opts.Draft
 		to0, cc0, bcc0, subj0, body0 = d.To, d.Cc, d.Bcc, d.Subject, d.Body
 		draftID = d.ID
 		fromIdx = indexFrom(fromItems, d.From)
 		inReplyTo, references = d.InReplyTo, d.References
+		if p := d.Protect; p != nil {
+			encrypt0 = p.Encrypt
+			sign0, signSet = p.Sign || p.SignIfKey, !p.SignIfKey
+		}
 	} else if opts.ReplyTo != nil {
 		m := opts.ReplyTo
 		if opts.ReplyAll {
@@ -179,8 +190,87 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		return ""
 	}
 
+	// Sign and Encrypt, shown while secretvault is the store (it signs
+	// and encrypts). Sign is on whenever secretvault holds a key for the
+	// From address; while it is locked that cannot be known, and the
+	// message is signed if it does (SignIfKey). The writer's own choice
+	// stays theirs.
+	var keys mailcore.SigningKeys
+	signBox := widgets.NewCheckbox("Sign", sign0, nil)
+	encryptBox := widgets.NewCheckbox("Encrypt", encrypt0, nil)
+	signTouched := signSet
+	signBox.OnChange = func(bool) { signTouched = true }
+	keyNote := wrapLabel("")
+	protectRow := widgets.NewRow(signBox, encryptBox, keyNote).WithGap(12).WithAlign(layout.AlignCenter)
+	protectRow.SetVisible(false)
+	var keysGen int
+	// keysKnown runs once secretvault has said what it holds (below:
+	// that is no edit to save).
+	var keysKnown func()
+	checkKeys := func() {
+		keysGen++
+		gen, fromNow := keysGen, fromText()
+		runAsync(a, func() (any, error) { return cli.SigningKeys(fromNow) }, func(v any, err error) {
+			if gen != keysGen || err != nil {
+				return
+			}
+			keys = v.(mailcore.SigningKeys)
+			protectRow.SetVisible(keys.Available)
+			switch {
+			case keys.Locked:
+				keyNote.SetText("secretvault is locked: signed if it holds a key for this address")
+				signBox.SetEnabled(true)
+			case keys.CanSign:
+				keyNote.SetText("")
+				signBox.SetEnabled(true)
+				if !signTouched {
+					signBox.Checked = true
+				}
+			default:
+				keyNote.SetText("secretvault holds no key for this address")
+				signBox.Checked = false
+				signBox.SetEnabled(false)
+			}
+			signBox.Invalidate()
+			protectRow.RequestLayout()
+			if keysKnown != nil {
+				keysKnown()
+			}
+		})
+	}
+	protection := func() *mailcore.Protection {
+		if !keys.Available {
+			if opts.Draft != nil && opts.Draft.Protect != nil {
+				return opts.Draft.Protect // not known yet: as it was saved
+			}
+			return nil
+		}
+		p := mailcore.Protection{Encrypt: encryptBox.Checked}
+		switch {
+		case !signBox.Checked:
+		case signTouched || keys.CanSign:
+			p.Sign = true
+		default:
+			p.SignIfKey = true
+		}
+		if !p.Sign && !p.SignIfKey && !p.Encrypt {
+			return nil
+		}
+		return &p
+	}
+	// Another From may have a key, or not.
+	swapSignature := from.OnChange
+	from.OnChange = func(i int) {
+		if swapSignature != nil {
+			swapSignature(i)
+		}
+		checkKeys()
+	}
+	checkKeys()
+
 	collect := func() mailcore.Message {
 		return mailcore.Message{
+			Protect:    protection(),
 			From:       fromText(),
 			To:         to.Text(),
 			Cc:         cc.Text(),
@@ -202,6 +292,16 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	// changed since it was last saved is written to Drafts (the same draft
 	// each time), so a crash or a lost window costs at most that much.
 	lastSaved := collect() // what is on disk (or what the window opened with)
+	keysKnown = func() {
+		// Sign turned on because secretvault holds a key is not the
+		// writer's edit: a window nobody has touched is not saved for it.
+		cur := collect()
+		was := lastSaved
+		was.Protect = cur.Protect
+		if sameDraft(cur, was) {
+			lastSaved.Protect = cur.Protect
+		}
+	}
 	var saving, again, sent, autoOnly bool
 	sentDraft := mailcore.MessageID("")
 	var saveNow func(auto bool)
@@ -452,6 +552,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	form.AddRow("Cc", cc)
 	form.AddRow("Bcc", bcc)
 	form.AddRow("Subject", subject)
+	form.AddRow("Security", protectRow)
 	fields := widgets.NewPad(10, form)
 
 	chrome := widgets.NewTitleBar("Write", "compose  ·  comms-maild  ·  v"+uitoolkit.Version)
@@ -482,7 +583,16 @@ var composeSeam func(autosave, close func())
 // sameDraft reports whether two states of a message would save the same.
 func sameDraft(a, b mailcore.Message) bool {
 	return a.From == b.From && a.To == b.To && a.Cc == b.Cc && a.Bcc == b.Bcc &&
-		a.Subject == b.Subject && a.Body == b.Body
+		a.Subject == b.Subject && a.Body == b.Body && sameProtection(a.Protect, b.Protect)
+}
+
+// sameProtection compares how two versions of a draft are to go: choosing
+// Encrypt is a change to save (it takes the draft off the server).
+func sameProtection(a, b *mailcore.Protection) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // replyToAddr honours Reply-To when the sender set one.

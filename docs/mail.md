@@ -605,6 +605,34 @@ reads it.
   the line says so, with **Unlock secretvault…**, which asks secretvault
   to show its own prompt.
 
+Sending:
+
+- **Write has Sign and Encrypt** (the *Security* row, shown while
+  secretvault is the store). **Sign is on whenever secretvault holds a key
+  for the From address** — an OpenPGP key or an S/MIME certificate
+  (`compose.keys`, which never asks secretvault to unlock); with no key it
+  is off and says so, and while secretvault is locked it is on and the
+  message is signed if a key turns out to be there. **Encrypt** is off,
+  and on for a reply to, or forward of, an encrypted message — which
+  quotes what secretvault decrypted, under the real subject.
+- **On Send**, comms-maild builds the message as always and secretvault
+  makes it signed and encrypted (`mail.compose`): signed with your key for
+  From, encrypted to each recipient's key from your contacts and to your
+  own, OpenPGP where everyone has a key, else S/MIME. What goes out is
+  what secretvault returned, and so is the copy in **Sent** — never the
+  plain text, and readable to you through secretvault.
+- **While secretvault is locked** the message waits in the Outbox, as for
+  a locked password store, and is signed and encrypted when it goes.
+  Anything else secretvault refuses — a recipient with no key, no key for
+  From — comes back to the Write window, and nothing is sent. An encrypted
+  message cannot have Bcc recipients (secretvault encrypts to the
+  recipients the message names, and Bcc is not among them), and Sign or
+  Encrypt without secretvault is refused.
+- **A draft of a message to be encrypted is kept on this machine only**:
+  never written to the server's Drafts, and a copy saved there before
+  Encrypt was ticked is taken off it. Drafts and messages waiting in the
+  Outbox are kept here as written, plain.
+
 ## Folders
 
 Right-click a folder for **New Folder…** / **New Subfolder…** (each asks

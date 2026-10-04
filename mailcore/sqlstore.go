@@ -475,6 +475,14 @@ func messageStamp(m *Message) uint64 {
 	flag(m.Signed)
 	flag(m.Encrypted)
 	flag(m.Autocrypt)
+	if p := m.Protect; p != nil {
+		flag(true)
+		flag(p.Sign)
+		flag(p.SignIfKey)
+		flag(p.Encrypt)
+	} else {
+		flag(false)
+	}
 	return h.Sum64()
 }
 

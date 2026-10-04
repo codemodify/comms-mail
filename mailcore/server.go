@@ -334,6 +334,16 @@ func (s *Server) dispatch(req Request) Response {
 				result = sourceResult{ID: p.ID, RFC822: rawAsText(raw)}
 			}
 		}
+	case MethodComposeKeys:
+		var p composeKeysParams
+		p, err = decodeParams[composeKeysParams](req.Params)
+		if err == nil {
+			if ls, ok := s.Store.(*LocalStore); ok {
+				result = ls.SigningKeys(p.From)
+			} else {
+				result = SigningKeys{}
+			}
+		}
 	case MethodMessagesSecurity:
 		var p securityParams
 		p, err = decodeParams[securityParams](req.Params)

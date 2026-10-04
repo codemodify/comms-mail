@@ -252,6 +252,10 @@ type Message struct {
 	Signed    bool `json:"signed,omitempty"`
 	Encrypted bool `json:"encrypted,omitempty"`
 	Autocrypt bool `json:"autocrypt,omitempty"`
+	// Protect is how the writer asked the message to go — signed,
+	// encrypted — while it is a draft and while it waits in the Outbox
+	// (sendprotect.go). It is never part of what is sent.
+	Protect *Protection `json:"protect,omitempty"`
 }
 
 func messageHasBody(m Message) bool {
@@ -278,6 +282,10 @@ func (m Message) Clone() Message {
 	}
 	if m.Keywords != nil {
 		out.Keywords = append([]string(nil), m.Keywords...)
+	}
+	if m.Protect != nil {
+		p := *m.Protect
+		out.Protect = &p
 	}
 	return out
 }

@@ -393,6 +393,9 @@ func securityFromReport(res svInspectResult, outer Message) MessageSecurity {
 	}
 	if r.Content != nil && len(r.Content.Raw) > 0 {
 		out.Content = contentMessage(r.Content.Raw, inline, outer)
+		if out.Subject != "" {
+			out.Content.Subject = out.Subject
+		}
 	}
 	for _, w := range r.Warnings {
 		out.Warnings = append(out.Warnings, w.Message)

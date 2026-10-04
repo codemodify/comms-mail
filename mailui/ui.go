@@ -1509,10 +1509,32 @@ func (s *session) write() {
 	s.mark("Write")
 }
 
+// decrypted is m as it reads: what secretvault decrypted of it, where a
+// reader showing it holds that, and whether it was encrypted. Replying to
+// or forwarding an encrypted message quotes that, and starts encrypted.
+func (s *session) decrypted(m mailcore.Message) (mailcore.Message, bool) {
+	readers := []*reader{s.rd}
+	if mt, ok := s.activeTab(); ok {
+		readers = append([]*reader{mt.rd}, readers...)
+	}
+	for _, r := range readers {
+		if r != nil && r.sec.id == m.ID && r.sec.content != nil {
+			c := *r.sec.content
+			out := m.Clone()
+			out.Body, out.HTML = c.Body, c.HTML
+			if c.Subject != "" {
+				out.Subject = c.Subject
+			}
+			return out, true
+		}
+	}
+	return m, m.Encrypted
+}
+
 func (s *session) reply() {
 	s.withFull("Reply", func(m mailcore.Message) {
-		cp := m.Clone()
-		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, OnChange: s.refreshAll})
+		cp, enc := s.decrypted(m)
+		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, Encrypt: enc, OnChange: s.refreshAll})
 		if err != nil {
 			widgets.Warn(s.win.Content(), "Reply", err.Error(), nil)
 		}
@@ -1521,8 +1543,8 @@ func (s *session) reply() {
 
 func (s *session) replyAll() {
 	s.withFull("Reply All", func(m mailcore.Message) {
-		cp := m.Clone()
-		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, ReplyAll: true, OnChange: s.refreshAll})
+		cp, enc := s.decrypted(m)
+		_, err := OpenCompose(s.app, s.cli, ComposeOptions{ReplyTo: &cp, ReplyAll: true, Encrypt: enc, OnChange: s.refreshAll})
 		if err != nil {
 			widgets.Warn(s.win.Content(), "Reply All", err.Error(), nil)
 		}
@@ -1531,8 +1553,8 @@ func (s *session) replyAll() {
 
 func (s *session) forward() {
 	s.withFull("Forward", func(m mailcore.Message) {
-		cp := m.Clone()
-		_, err := OpenCompose(s.app, s.cli, ComposeOptions{Forward: &cp, OnChange: s.refreshAll})
+		cp, enc := s.decrypted(m)
+		_, err := OpenCompose(s.app, s.cli, ComposeOptions{Forward: &cp, Encrypt: enc, OnChange: s.refreshAll})
 		if err != nil {
 			widgets.Warn(s.win.Content(), "Forward", err.Error(), nil)
 		}

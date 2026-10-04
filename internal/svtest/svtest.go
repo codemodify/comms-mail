@@ -1,9 +1,11 @@
 // Package svtest is a stand-in secretvaultd for comms-mail's tests: its
 // socket, the methods comms-maild calls (client.hello, vault.list,
 // vault.unlock, item.get, item.list, item.put, item.delete, mail.inspect,
-// trust.seen) and the notifications it sends (vault.locked,
-// vault.unlocked), with one vault named "personal". It checks and
-// decrypts nothing: a test says what mail.inspect answers. Only tests import it, so it is never in a binary, and
+// trust.seen, pgp.public, smime.list, mail.compose) and the notifications
+// it sends (vault.locked, vault.unlocked), with one vault named
+// "personal". It checks, signs, encrypts and decrypts nothing: a test says
+// what mail.inspect answers and whose keys it holds, and mail.compose
+// wraps the message in a structure that reads as signed or encrypted. Only tests import it, so it is never in a binary, and
 // tests never reach the person's own secretvault.
 package svtest
 
@@ -73,6 +75,69 @@ type Vault struct {
 	inspect  func(raw []byte, decrypt bool) any
 	inspects []Inspected
 	seen     []Seen
+	ownPGP   map[string]bool // addresses with an OpenPGP key of the person's
+	composed []Composed
+	refuse   string // mail.compose refuses, with this
+}
+
+// Composed is one mail.compose asked.
+type Composed struct {
+	Message       []byte
+	Sign, Encrypt bool
+}
+
+// OwnKeys gives the person an OpenPGP key for each address.
+func (v *Vault) OwnKeys(addrs ...string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.ownPGP = map[string]bool{}
+	for _, a := range addrs {
+		v.ownPGP[strings.ToLower(a)] = true
+	}
+}
+
+// RefuseCompose makes mail.compose fail with why ("" to stop).
+func (v *Vault) RefuseCompose(why string) {
+	v.mu.Lock()
+	v.refuse = why
+	v.mu.Unlock()
+}
+
+// Composes are the mail.compose calls answered.
+func (v *Vault) Composes() []Composed {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]Composed(nil), v.composed...)
+}
+
+// Wrapped is what mail.compose returns for message: the original's
+// header fields, and a body that reads as PGP/MIME encrypted or signed.
+// Encrypted, nothing of the original body is in it.
+func Wrapped(message []byte, sign, encrypt bool) []byte {
+	head, body, _ := strings.Cut(strings.ReplaceAll(string(message), "\r\n", "\n"), "\n\n")
+	var keep []string
+	for _, l := range strings.Split(head, "\n") {
+		low := strings.ToLower(l)
+		if strings.HasPrefix(low, "content-") || strings.HasPrefix(low, "mime-version") || strings.HasPrefix(l, " ") || strings.HasPrefix(l, "\t") {
+			continue
+		}
+		keep = append(keep, l)
+	}
+	keep = append(keep, "MIME-Version: 1.0")
+	var b strings.Builder
+	b.WriteString(strings.Join(keep, "\r\n"))
+	if encrypt {
+		b.WriteString("\r\nContent-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"svx\"\r\n\r\n" +
+			"--svx\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n" +
+			"--svx\r\nContent-Type: application/octet-stream; name=\"encrypted.asc\"\r\n\r\n" +
+			"-----BEGIN PGP MESSAGE-----\r\nwcBMA8+stand+in+ciphertext\r\n-----END PGP MESSAGE-----\r\n--svx--\r\n")
+		return []byte(b.String())
+	}
+	b.WriteString("\r\nContent-Type: multipart/signed; micalg=pgp-sha256; protocol=\"application/pgp-signature\"; boundary=\"svs\"\r\n\r\n" +
+		"--svs\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.ReplaceAll(body, "\n", "\r\n") +
+		"\r\n--svs\r\nContent-Type: application/pgp-signature; name=\"signature.asc\"\r\n\r\n" +
+		"-----BEGIN PGP SIGNATURE-----\r\niQ==\r\n-----END PGP SIGNATURE-----\r\n--svs--\r\n")
+	return []byte(b.String())
 }
 
 // Inspected is one mail.inspect asked.
@@ -257,6 +322,9 @@ func (v *Vault) serve(c net.Conn) {
 			Item    Item   `json:"item"`
 			Message []byte `json:"message"`
 			Decrypt bool   `json:"decrypt"`
+			Key     string `json:"key"`
+			Sign    bool   `json:"sign"`
+			Encrypt bool   `json:"encrypt"`
 		}
 		_ = json.Unmarshal(m.Params, &p)
 		v.mu.Lock()
@@ -287,6 +355,30 @@ func (v *Vault) serve(c net.Conn) {
 				out = fn(p.Message, p.Decrypt)
 			}
 			reply(m.ID, out, 0, "")
+		case "pgp.public", "smime.list", "mail.compose":
+			if locked {
+				reply(m.ID, nil, codeLocked, "the vault is locked")
+				continue
+			}
+			v.mu.Lock()
+			own, refuse := v.ownPGP[strings.ToLower(p.Key)], v.refuse
+			if m.Method == "mail.compose" && refuse == "" {
+				v.composed = append(v.composed, Composed{Message: p.Message, Sign: p.Sign, Encrypt: p.Encrypt})
+			}
+			v.mu.Unlock()
+			switch {
+			case m.Method == "smime.list":
+				reply(m.ID, []any{}, 0, "")
+			case m.Method == "pgp.public" && !own:
+				reply(m.ID, nil, codeNotFound, "no OpenPGP key in vault \"personal\" is "+p.Key)
+			case m.Method == "pgp.public":
+				reply(m.ID, map[string]any{"fingerprint": "OWNKEY", "user_ids": []string{p.Key}}, 0, "")
+			case refuse != "":
+				reply(m.ID, nil, -32000, refuse)
+			default:
+				format := "openpgp"
+				reply(m.ID, map[string]any{"message": Wrapped(p.Message, p.Sign, p.Encrypt), "format": format}, 0, "")
+			}
 		case "trust.seen":
 			var seen Seen
 			_ = json.Unmarshal(m.Params, &seen)

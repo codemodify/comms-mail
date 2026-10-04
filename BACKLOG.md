@@ -81,17 +81,18 @@ new ones turn up.
 - **Sender warnings** — `Authentication-Results` (SPF/DKIM/DMARC) failures,
   look-alike display names, Reply-To on another domain; "Always show
   images" only for senders who passed.
-- **Reading signed / encrypted mail** — done 2026-10-03 (docs/mail.md,
-  Signed and encrypted mail). Left: attachments *inside* an encrypted
-  message are not listed or opened yet; a reply to an encrypted message
-  quotes nothing yet (it comes with sending); Autocrypt keys reach
-  secretvault only when a message is opened, not as it arrives; the list
-  has no signed / encrypted mark.
+- **Reading and sending signed / encrypted mail** — done 2026-10-03
+  (docs/mail.md, Signed and encrypted mail). Left: attachments *inside* an
+  encrypted message are not listed or opened yet, nor carried by a
+  forward of one; Autocrypt keys reach secretvault only when a message is
+  opened, not as it arrives; the list has no signed / encrypted mark; an
+  encrypted message cannot have Bcc recipients; the Write window cannot
+  say before Send which recipients lack a key (asked of secretvault).
 - **PGP and S/MIME** — only through secretvault, which keeps the private
   keys and signs and decrypts in its own daemon: comms-mail writes no
   crypto of its own (decided 2026-10-03; this replaces building in Proton
-  `go-crypto` and our own CMS). Next: sending, `mail.compose` with Sign /
-  Encrypt in the Write window. Without secretvault as the store there is
+  `go-crypto` and our own CMS). Next: your keys in Settings (generate an
+  OpenPGP key, import a `.p12`). Without secretvault as the store there is
   no PGP or S/MIME.
 - **Asked of secretvault** — S/MIME roots beyond an organisation's own CA
   (a public CA's certificate does not verify as trusted today); a check

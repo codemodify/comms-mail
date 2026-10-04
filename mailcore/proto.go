@@ -76,14 +76,17 @@ const (
 	// MethodMessagesSecurity has secretvault check a signed or encrypted
 	// message, and decrypt it with decrypt (MessageSecurity).
 	MethodMessagesSecurity = "messages.security"
-	MethodMessagesSearch   = "messages.search"
-	MethodSearchServer     = "messages.searchServer"
-	MethodContactsSuggest  = "contacts.suggest"
-	MethodFoldersDelete    = "folders.delete"
-	MethodFoldersRename    = "folders.rename"
-	MethodFoldersMove      = "folders.move"
-	MethodFoldersCompact   = "folders.compact"
-	MethodFoldersFocus     = "folders.focus"
+	// MethodComposeKeys says whether secretvault can sign as a From
+	// address (SigningKeys).
+	MethodComposeKeys     = "compose.keys"
+	MethodMessagesSearch  = "messages.search"
+	MethodSearchServer    = "messages.searchServer"
+	MethodContactsSuggest = "contacts.suggest"
+	MethodFoldersDelete   = "folders.delete"
+	MethodFoldersRename   = "folders.rename"
+	MethodFoldersMove     = "folders.move"
+	MethodFoldersCompact  = "folders.compact"
+	MethodFoldersFocus    = "folders.focus"
 	// Where secrets are kept (secrets.go), and the encrypted file's
 	// passphrase (vault.go).
 	MethodSecretsStatus   = "secrets.status"
@@ -221,6 +224,10 @@ type messagesListParams struct {
 
 type messageIDParams struct {
 	ID MessageID `json:"id"`
+}
+
+type composeKeysParams struct {
+	From string `json:"from"`
 }
 
 type securityParams struct {

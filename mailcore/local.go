@@ -1278,6 +1278,13 @@ func (s *LocalStore) expungeOne(m Message, f Folder) error {
 	})
 }
 func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
+	return s.appendWith(folder, msg, nil)
+}
+
+// appendWith is Append with the message's bytes as they are to be kept —
+// a sent message as secretvault signed or encrypted it — or, with raw
+// nil, built from msg.
+func (s *LocalStore) appendWith(folder FolderID, msg Message, raw []byte) (MessageID, error) {
 	s.mu.Lock()
 	f, ok := s.folderLocked(folder)
 	if !ok {
@@ -1307,10 +1314,23 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 		// of this message is this one.
 		msg.RFCMessageID = newMessageID(ident.Address)
 	}
-	raw, buildErr := BuildRFC822Strict(msg, ident, nil)
-	if buildErr != nil {
-		s.mu.Unlock()
-		return "", buildErr
+	if raw == nil {
+		built, buildErr := BuildRFC822Strict(msg, ident, nil)
+		if buildErr != nil {
+			s.mu.Unlock()
+			return "", buildErr
+		}
+		raw = built
+	} else {
+		// What is kept is what the bytes say: an encrypted message keeps
+		// no text, and its Message-ID is the one it went out with.
+		if parsed, err := ParseRFC822(raw, folder, f.AccountID); err == nil {
+			applyProtection(&msg, parsed)
+			if id := strings.TrimSpace(parsed.RFCMessageID); id != "" {
+				msg.RFCMessageID = id
+			}
+		}
+		msg.Size, msg.Protect = len(raw), nil
 	}
 	s.WriteRawLocked(msg, raw)
 	s.Messages = append(s.Messages, msg)
@@ -1318,6 +1338,9 @@ func (s *LocalStore) Append(folder FolderID, msg Message) (MessageID, error) {
 	accountID := f.AccountID
 	s.mu.Unlock()
 
+	if f.Kind == FolderDrafts && draftStaysHere(msg) {
+		return msg.ID, nil // a message to be encrypted: never on the server as it is
+	}
 	// APPEND is network I/O.
 	return s.appendToServer(f, accountID, msg.ID, raw), nil
 }
@@ -1398,8 +1421,8 @@ func (s *LocalStore) replayAppend(op OutboxOp) error {
 	f, hasFolder := s.folderLocked(m.Folder)
 	raw := s.readRawLocked(m)
 	s.mu.Unlock()
-	if !hasFolder || len(raw) == 0 {
-		return nil
+	if !hasFolder || len(raw) == 0 || (f.Kind == FolderDrafts && draftStaysHere(m)) {
+		return nil // a draft to be encrypted stays here
 	}
 	_, err := s.appendNow(f, m.AccountID, m.ID, raw)
 	return err
@@ -1504,6 +1527,20 @@ func (s *LocalStore) update(id MessageID, msg Message) (MessageID, error) {
 	s.saveLocked()
 	s.mu.Unlock()
 
+	if draftStaysHere(msg) {
+		// To be encrypted: kept here only. A copy saved to the server
+		// before Encrypt was chosen is taken off it.
+		if hasFolder && keep.UID != 0 {
+			s.dropServerCopy(f, msg.AccountID, keep.UID)
+			s.mu.Lock()
+			if j, ok := s.indexLocked(msg.ID); ok {
+				s.Messages[j].UID = 0
+				s.saveLocked()
+			}
+			s.mu.Unlock()
+		}
+		return msg.ID, nil
+	}
 	if !hasFolder || keep.UID == 0 {
 		return msg.ID, nil
 	}
@@ -1513,18 +1550,23 @@ func (s *LocalStore) update(id MessageID, msg Message) (MessageID, error) {
 	if newID == msg.ID {
 		return msg.ID, nil // not replaced (offline, or no UID back); kept locally
 	}
-	if cli, err := s.client(msg.AccountID); err == nil {
+	s.dropServerCopy(f, msg.AccountID, keep.UID)
+	return newID, nil
+}
+
+// dropServerCopy deletes the message with uid from f on the server.
+func (s *LocalStore) dropServerCopy(f Folder, accountID string, uid uint32) {
+	if cli, err := s.client(accountID); err == nil {
 		_ = cli.inBox(func() error {
 			if err := selectFor(cli, f, false); err != nil {
 				return err
 			}
-			if err := cli.uidStore(keep.UID, []string{`\Deleted`}, nil); err != nil {
+			if err := cli.uidStore(uid, []string{`\Deleted`}, nil); err != nil {
 				return err
 			}
-			return cli.expungeUID(keep.UID)
+			return cli.expungeUID(uid)
 		})
 	}
-	return newID, nil
 }
 
 func (s *LocalStore) Fetch(accountID string) (int, error) {
@@ -3407,7 +3449,9 @@ func (s *LocalStore) sendViaSMTP(accountID, identityID string, msg Message, file
 	}
 	if cfg.SMTP.locked {
 		err = ErrLocked // it waits in the Outbox until comms-mail is unlocked
-	} else {
+	} else if raw, err = s.protect(raw, msg); err == nil {
+		// Signed and encrypted, as asked, by secretvault (sendprotect.go);
+		// a locked secretvault is ErrLocked, and the message waits.
 		err = SendSMTP(cfg.SMTP, ExtractAddr(msg.From), rcpts, raw)
 	}
 	if err != nil {
@@ -3422,6 +3466,11 @@ func (s *LocalStore) sendViaSMTP(accountID, identityID string, msg Message, file
 	sent, ok := specialFolder(s, accountID, FolderSent)
 	if !ok {
 		return "", nil
+	}
+	if msg.Protect.any() {
+		// Sent keeps what went out: signed, or encrypted (to the writer
+		// too, so secretvault opens it), never the plain text.
+		return s.appendWith(sent.ID, msg, raw)
 	}
 	return s.Append(sent.ID, msg)
 }

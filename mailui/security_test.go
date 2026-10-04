@@ -214,3 +214,66 @@ func TestReadingSignedAndEncryptedMail(t *testing.T) {
 		t.Fatalf("after Unlock: %v %q (asked %d)", icons, texts, sv.Unlocks())
 	}
 }
+
+// writeParts are a Write window's Sign and Encrypt boxes, the note beside
+// them and its body.
+func writeParts(w *app.Window) (sign, encrypt *widgets.Checkbox, note string, body *widgets.TextArea) {
+	widget.Walk(w.Content(), func(c widget.Component) {
+		switch v := c.(type) {
+		case *widgets.Checkbox:
+			switch v.Text {
+			case "Sign":
+				sign = v
+			case "Encrypt":
+				encrypt = v
+			}
+		case *widgets.Label:
+			if strings.Contains(v.Text, "secretvault") {
+				note = v.Text
+			}
+		case *widgets.TextArea:
+			body = v
+		}
+	})
+	return
+}
+
+// Replying to an encrypted message quotes what secretvault decrypted,
+// under the real subject, and starts encrypted; Sign is on when
+// secretvault holds a key for the From address, and cannot be when it
+// holds none.
+func TestWritingSignedAndEncrypted(t *testing.T) {
+	s, a, sv, ids := securityDaemon(t)
+	if _, err := s.cli.PutAccount(mailcore.AccountConfig{ID: "home", Address: "ada@example.com",
+		IMAP: mailcore.ServerConfig{Host: "127.0.0.1:1", TLSMode: "ssl"}}); err != nil {
+		t.Fatal(err)
+	}
+	sv.OwnKeys("ada@example.com")
+	open(s, a, ids["..."])
+	w := newWindowFrom(t, a, s.reply)
+	for i := 0; i < 3; i++ {
+		a.PumpOnce()
+	}
+	sign, encrypt, note, body := writeParts(w)
+	if sign == nil || encrypt == nil || body == nil {
+		t.Fatal("the Write window has no Sign or Encrypt")
+	}
+	if !encrypt.Checked || !sign.Checked || !sign.Enabled() {
+		t.Fatalf("reply to an encrypted message: sign %v (enabled %v), encrypt %v", sign.Checked, sign.Enabled(), encrypt.Checked)
+	}
+	if !strings.Contains(body.Text, "> The plan is in the blue folder.") || !strings.Contains(w.Title(), "The real subject") {
+		t.Fatalf("quoted %q, title %q", body.Text, w.Title())
+	}
+	w.Close()
+
+	// No key for the address: Sign is off and says why.
+	sv.OwnKeys()
+	w = newWindowFrom(t, a, s.write)
+	for i := 0; i < 3; i++ {
+		a.PumpOnce()
+	}
+	sign, encrypt, note, _ = writeParts(w)
+	if sign.Checked || sign.Enabled() || encrypt.Checked || !strings.Contains(note, "holds no key") {
+		t.Fatalf("no key: sign %v (enabled %v), encrypt %v, note %q", sign.Checked, sign.Enabled(), encrypt.Checked, note)
+	}
+}
