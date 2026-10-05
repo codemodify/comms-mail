@@ -80,8 +80,11 @@ func TestEducateIsOnePicture(t *testing.T) {
 		}
 		var wantLetters []string
 		for _, st := range steps {
-			for i := range st.points {
+			for i, p := range st.points {
 				wantLetters = append(wantLetters, string(rune('a'+i)))
+				for k := range p.sub {
+					wantLetters = append(wantLetters, roman(k+1))
+				}
 			}
 		}
 		if !slices.Equal(letters, wantLetters) {
@@ -319,20 +322,29 @@ func TestEducateIsOnePicture(t *testing.T) {
 		w.Close()
 	}
 	for i, st := range steps {
-		says := strings.ToLower(strings.Join(st.points, "\n"))
+		var all []string
+		for _, p := range st.points {
+			all = append(all, p.text)
+			all = append(all, p.sub...)
+		}
+		says := strings.ToLower(strings.Join(all, "\n"))
 		for _, n := range flat(st.tags) {
 			if !strings.Contains(says, strings.ToLower(n)) {
 				t.Errorf("step %d (%s) has the tag %s and does not say it", i+1, st.title, n)
 			}
 		}
-		// A few words each.
-		for _, p := range st.points {
+		// A few words each, and each one whole: none ends where the next
+		// goes on.
+		for _, p := range all {
 			if n := len(strings.Fields(p)); n > 9 {
 				t.Errorf("step %d: %q is %d words", i+1, p, n)
 			}
+			if first := []rune(p)[0]; first >= 'a' && first <= 'z' && !strings.HasPrefix(p, "comms-mail") && !strings.Contains(p, ".") {
+				t.Errorf("step %d: %q goes on from the point before", i+1, p)
+			}
 		}
 	}
-	if !strings.Contains(strings.Join(steps[7].points, " "), fakeDomain) {
+	if !strings.Contains(steps[7].points[0].text, fakeDomain) {
 		t.Errorf("step 8 does not name %s", fakeDomain)
 	}
 }

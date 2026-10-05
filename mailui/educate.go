@@ -23,9 +23,19 @@ import (
 // the picture, and joined by "or" under it.
 type step struct {
 	title  string
-	points []string
+	points []point
 	tags   [][]string
 }
+
+// point is one of a step's points, a few words of what does what, and its
+// sub-points: the detail that clears up what it could be taken to mean.
+type point struct {
+	text string
+	sub  []string
+}
+
+// pt is a point, and its sub-points.
+func pt(text string, sub ...string) point { return point{text, sub} }
 
 // alt is a group of alternatives; one is a group of one.
 func alt(names ...string) []string { return names }
@@ -39,68 +49,111 @@ func one(names ...string) [][]string {
 }
 
 var steps = []step{
-	{"YOU sign and encrypt", []string{
-		"Your private key signs it",
-		"A fresh session key encrypts it",
-		"TARGET's public key locks that key, and yours",
-		"OpenPGP: your own keys, trusted by fingerprint",
-		"S/MIME: certificates from an authority",
-		"The subject goes inside; outside reads \"...\"",
-		"Still visible: sender, recipients, date, size",
-		"No forward secrecy: a stolen key opens old mail",
+	{"YOU sign and encrypt", []point{
+		pt("Your private key signs it",
+			"A hash of the message, signed with that key",
+			"Anyone checks it with your public key",
+			"Any change after signing breaks it"),
+		pt("A fresh session key encrypts it",
+			"A random AES key, for this message only",
+			"Not derived from any public key",
+			"Encrypts the whole message once: fast"),
+		pt("TARGET's public key locks that key, and yours",
+			"One locked copy per reader, yours for Sent",
+			"RSA: the session key encrypted with it",
+			"X25519, ECDH: a key derived from it wraps it",
+			"Derived with a one-time key pair, per message",
+			"Only TARGET's private key unlocks it"),
+		pt("OpenPGP: your own keys, trusted by fingerprint",
+			"Fingerprint: a hash of the public key",
+			"Compare it with the owner another way"),
+		pt("S/MIME: certificates from an authority",
+			"The authority vouches the key is the address's"),
+		pt("The subject goes inside; outside reads \"...\""),
+		pt("Still visible: sender, recipients, date, size"),
+		pt("No forward secrecy: a stolen key opens old mail",
+			"TARGET's key is long-term, unlike TLS's"),
 	}, [][]string{alt("OpenPGP", "S/MIME")}},
-	{"comms-mail hands it to YOUR SERVER", []string{
-		"TLS from the first byte: port 465",
-		"Or STARTTLS: port 587",
-		"The server's certificate is checked",
-		"Never carries on unencrypted",
-		"Signs in: password, or OAuth token",
-		"OAuth: scoped, revocable, no password",
-		"SMTP hands the message over",
+	{"comms-mail hands it to YOUR SERVER", []point{
+		pt("TLS from the first byte: port 465"),
+		pt("Or STARTTLS: port 587",
+			"Starts plain, then upgrades to TLS",
+			"No upgrade offered: comms-mail does not send"),
+		pt("The server's certificate is checked",
+			"Issued by an authority, for that server's name"),
+		pt("Signs in: password, or OAuth token"),
+		pt("OAuth: scoped, revocable, no password",
+			"You sign in on the provider's own page",
+			"comms-mail gets a token for mail only"),
+		pt("SMTP hands the message over",
+			"First who from and who to, then the message"),
 	}, [][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}},
-	{"YOUR SERVER signs it and finds TARGET SERVER", []string{
-		"DKIM signs body and headers, for your domain",
-		"Its public key is in your domain's DNS",
-		"The MX record in DNS names TARGET SERVER",
+	{"YOUR SERVER signs it and finds TARGET SERVER", []point{
+		pt("DKIM signs body and headers, for your domain",
+			"With the domain's key, kept on the server",
+			"Not your personal key: it proves the domain"),
+		pt("Its public key is in your domain's DNS",
+			"At selector._domainkey.yourdomain"),
+		pt("The MX record in DNS names TARGET SERVER"),
 	}, one("DKIM", "MX")},
-	{"Server to server", []string{
-		"SMTP, on port 25",
-		"STARTTLS encrypts, if both offer it",
-		"An attacker in between can strip the offer",
-		"MTA-STS: a policy over HTTPS makes TLS a must",
-		"DANE: the certificate pinned in DNSSEC",
-		"Each server still reads the message",
+	{"Server to server", []point{
+		pt("SMTP, on port 25"),
+		pt("STARTTLS encrypts, if both offer it",
+			"Often without checking the certificate"),
+		pt("An attacker in between can strip the offer",
+			"The mail then goes on unencrypted"),
+		pt("MTA-STS: a policy over HTTPS makes TLS a must",
+			"Published at mta-sts.domain, kept by senders"),
+		pt("DANE: the certificate pinned in DNSSEC",
+			"TLSA records, in signed DNS"),
+		pt("Each server still reads the message",
+			"TLS protects the road, not the stops",
+			"Only step 1 hides what it says"),
 	}, [][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}},
-	{"TARGET SERVER checks the sender", []string{
-		"SPF: is the sending server on the domain's list?",
-		"DKIM: does the signature verify, unchanged?",
-		"DMARC: does one pass for the visible From?",
-		"DMARC, failing: none, quarantine or reject",
-		"ARC: keeps results through forwarders",
-		"The verdict goes into Authentication-Results",
-		"Spam and malware filtered, then stored",
+	{"TARGET SERVER checks the sender", []point{
+		pt("SPF: is the sending server on the domain's list?",
+			"Checks the bounce address, not the visible From",
+			"Fails when mail is forwarded"),
+		pt("DKIM: does the signature verify, unchanged?",
+			"Survives forwarding; mailing lists can break it"),
+		pt("DMARC: does one pass for the visible From?",
+			"Aligned: the domain that passed is From's"),
+		pt("DMARC, failing: none, quarantine or reject",
+			"The domain's owner chooses, in its DNS"),
+		pt("ARC: keeps results through forwarders"),
+		pt("The verdict goes into Authentication-Results"),
+		pt("Spam and malware filtered, then stored",
+			"As it came: readable unless step 1 encrypted it"),
 	}, one("SPF", "DKIM", "DMARC", "ARC")},
-	{"TARGET fetches it", []string{
-		"Signs in, over TLS",
-		"IMAP (993): stays on the server, synced",
-		"POP3 (995): downloaded to one device",
+	{"TARGET fetches it", []point{
+		pt("Signs in, over TLS"),
+		pt("IMAP (993): stays on the server, synced"),
+		pt("POP3 (995): downloaded to one device"),
 	}, [][]string{alt("TLS"), alt("IMAP", "POP3")}},
-	{"TARGET verifies and opens it", []string{
-		"Trusts only its own provider's verdict",
-		"Warns when a check failed",
-		"Verifies the OpenPGP or S/MIME signature",
-		"The signer must be the From address",
-		"TARGET's private key decrypts it",
-		"comms-mail flags look-alikes and false names",
-		"Remote images blocked: they report opens",
+	{"TARGET verifies and opens it", []point{
+		pt("Trusts only its own provider's verdict",
+			"The topmost Authentication-Results",
+			"Senders can forge the ones under it"),
+		pt("Warns when a check failed"),
+		pt("Verifies the OpenPGP or S/MIME signature",
+			"With the sender's public key"),
+		pt("The signer must be the From address",
+			"Else anyone's valid signature would pass"),
+		pt("TARGET's private key decrypts it",
+			"Unlocks the session key, which opens the message"),
+		pt("comms-mail flags look-alikes and false names"),
+		pt("Remote images blocked: they report opens",
+			"Loading one tells when, from where, with what"),
 	}, [][]string{alt("OpenPGP", "S/MIME")}},
-	{"What gets through anyway", []string{
-		"acrne.com, posing as your supplier acme.com",
-		"Its own SPF, DKIM and DMARC: all pass",
-		"A real account, broken into: passes too",
-		"Checks prove the domain, not the person",
-		"Confirm payment changes another way",
-		"Distrust attachments and links you did not expect",
+	{"What gets through anyway", []point{
+		pt("acrne.com, posing as your supplier acme.com",
+			"\"rn\" reads as \"m\""),
+		pt("Its own SPF, DKIM and DMARC: all pass",
+			"The attacker owns that domain"),
+		pt("A real account, broken into: passes too"),
+		pt("Checks prove the domain, not the person"),
+		pt("Confirm payment changes another way"),
+		pt("Distrust attachments and links you did not expect"),
 	}, one("SPF", "DKIM", "DMARC")},
 }
 
@@ -342,32 +395,55 @@ func (c *protoChip) Paint(ctx *paintengine2d.Context) {
 	drawChip(ctx, c.Look(), c.name, paintengine2d.XYWH(b.Min.X, b.Min.Y, w, h))
 }
 
-// pointList is a step's points, lettered a, b, c…: a few words each.
-func pointList(points []string) *widgets.FlexBox {
+// pointList is a step's points, lettered a, b, c…, and under each its
+// sub-points, numbered i, ii, iii…: a few words each.
+func pointList(points []point) *widgets.FlexBox {
 	col := widgets.NewColumn().WithGap(2)
 	for i, p := range points {
-		row := widgets.NewRow(newLetter(string(rune('a' + i)))).WithGap(6).WithAlign(layout.AlignStart)
-		row.AddFlex(wrapLabel(p), 1)
+		row := widgets.NewRow(newLetter(string(rune('a'+i)), 14)).WithGap(6).WithAlign(layout.AlignStart)
+		row.AddFlex(wrapLabel(p.text), 1)
 		col.Add(row)
+		for k, sub := range p.sub {
+			row := widgets.NewRow(widgets.NewSpacerSize(14, 0), newLetter(roman(k+1), 22)).WithGap(6).WithAlign(layout.AlignStart)
+			text := wrapLabel(sub)
+			text.Tone = widgets.ToneMuted
+			row.AddFlex(text, 1)
+			col.Add(row)
+		}
 	}
 	return col
 }
 
-// letter is a point's letter, muted, in a column of its own width so the
-// points line up.
+// roman is n, 1 to 39, in small roman numerals: a sub-point's number.
+func roman(n int) string {
+	out := ""
+	for _, r := range []struct {
+		v int
+		s string
+	}{{10, "x"}, {9, "ix"}, {5, "v"}, {4, "iv"}, {1, "i"}} {
+		for n >= r.v {
+			out, n = out+r.s, n-r.v
+		}
+	}
+	return out
+}
+
+// letter is a point's letter, or a sub-point's numeral, muted, right
+// aligned in a column w wide so the points line up.
 type letter struct {
 	widget.Base
 	text string
+	w    float32
 }
 
-func newLetter(text string) *letter {
-	l := &letter{text: text}
+func newLetter(text string, w float32) *letter {
+	l := &letter{text: text, w: w}
 	l.Init(l)
 	return l
 }
 
 func (l *letter) Measure(c layout.Constraints) paintengine2d.Point {
-	return c.Constrain(paintengine2d.Pt(style.Dip(l.Look(), 14), l.Look().Font().Height()))
+	return c.Constrain(paintengine2d.Pt(style.Dip(l.Look(), l.w), l.Look().Font().Height()))
 }
 
 func (l *letter) Arrange(r paintengine2d.Rect) { l.SetBounds(r) }
