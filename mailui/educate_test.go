@@ -12,24 +12,11 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// Educate is every lesson in turn — its heading, its picture, its words —
-// and a picture's words are never cut short, in a wide window or one as
-// narrow as Settings goes, and its box is as tall as what it draws.
-func TestEducateLessons(t *testing.T) {
-	ls := lessons()
-	if len(ls) < 10 {
-		t.Fatalf("%d lessons", len(ls))
-	}
-	for _, l := range ls {
-		if l.title == "" || len(l.says) == 0 {
-			t.Fatalf("an empty lesson: %+v", l)
-		}
-		if l.fig != nil {
-			if f := l.fig(); len(f.links) != len(f.nodes)-1 {
-				t.Errorf("%s: %d nodes, %d links", l.title, len(f.nodes), len(f.links))
-			}
-		}
-	}
+// Educate is one picture, its numbers 1 to 8 each once, inside it and
+// clear of one another, and a line for each number under it — in a wide
+// window and one as narrow as Settings goes, its names never cut short
+// and its box as tall as what it draws.
+func TestEducateIsOnePicture(t *testing.T) {
 	for _, width := range []int{330, 560} { // Educate's pane, narrowest and usual
 		a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 		w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
@@ -39,40 +26,63 @@ func TestEducateLessons(t *testing.T) {
 		page := educateSection()
 		w.SetContent(page)
 		a.PumpOnce()
-		var titles []string
-		var figs []*figure
+		var scenes []*educateScene
+		var numbers []int
 		widget.Walk(page, func(c widget.Component) {
 			switch v := c.(type) {
-			case *widgets.Label:
-				if v.Title {
-					titles = append(titles, v.Text)
-				}
-			case *figure:
-				figs = append(figs, v)
+			case *educateScene:
+				scenes = append(scenes, v)
+			case *numberMark:
+				numbers = append(numbers, v.n)
 			}
 		})
-		want := 0
-		for _, l := range ls {
-			if l.fig != nil {
-				want++
-			}
+		if len(scenes) != 1 {
+			t.Fatalf("at %d: %d pictures", width, len(scenes))
 		}
-		if len(titles) != len(ls) || len(figs) != want {
-			t.Fatalf("at %d: %d headings, %d pictures", width, len(titles), len(figs))
+		if len(numbers) != len(lessons) || len(lessons) != 8 {
+			t.Fatalf("at %d: %d numbered lines for %d lessons", width, len(numbers), len(lessons))
 		}
-		for _, f := range figs {
-			b := f.Bounds()
-			if need := f.Measure(layout.Constraints{MaxW: b.Dx(), MaxH: -1}); need.Y > b.Dy()+0.5 {
-				t.Errorf("at %d: a picture needs %v and has %v", width, need.Y, b.Dy())
+		sc := scenes[0]
+		b := sc.Bounds()
+		if need := sc.Measure(layout.Constraints{MaxW: b.Dx(), MaxH: -1}); need.Y > b.Dy()+0.5 {
+			t.Errorf("at %d: the picture needs %v and has %v", width, need.Y, b.Dy())
+		}
+		g := sc.layoutAt(b.Dx())
+		local := sc.LocalBounds()
+		marks := sc.marks(g, local)
+		seen := map[int]bool{}
+		m := style.Dip(sc.Look(), markSize)
+		for i, mk := range marks {
+			seen[mk.n] = true
+			if mk.x-m/2 < local.Min.X || mk.x+m/2 > local.Max.X || mk.y-m/2 < local.Min.Y || mk.y+m/2 > local.Max.Y {
+				t.Errorf("at %d: number %d is outside the picture", width, mk.n)
 			}
-			g := f.layoutAt(b.Dx())
-			for _, lines := range append(g.linkLines, g.nodeLines...) {
-				for _, line := range lines {
-					if strings.HasSuffix(line, "…") {
-						t.Errorf("at %d: a picture's words are cut: %q", width, line)
-					}
+			for _, other := range marks[i+1:] {
+				if dx, dy := mk.x-other.x, mk.y-other.y; dx*dx+dy*dy < m*m {
+					t.Errorf("at %d: numbers %d and %d overlap", width, mk.n, other.n)
 				}
 			}
+		}
+		for n := 1; n <= 8; n++ {
+			if !seen[n] {
+				t.Errorf("at %d: no %d in the picture", width, n)
+			}
+		}
+		for _, lines := range append(g.labels[:], g.stranger, g.picture) {
+			for _, l := range lines {
+				if strings.HasSuffix(l, "…") {
+					t.Errorf("at %d: a name is cut: %q", width, l)
+				}
+			}
+		}
+		var last *widgets.Label
+		widget.Walk(page, func(c widget.Component) {
+			if l, ok := c.(*widgets.Label); ok && l.Text == lastWord {
+				last = l
+			}
+		})
+		if last == nil {
+			t.Errorf("at %d: no last word", width)
 		}
 		w.Close()
 	}

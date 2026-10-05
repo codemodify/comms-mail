@@ -1,235 +1,314 @@
 package mailui
 
 import (
+	"strconv"
+
+	"github.com/codemodify/paintengine2d"
+	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
 // Settings › Security › Educate: what keeps email safe and what does not,
-// for someone who has never thought about it — in short sections, each a
-// picture and a few plain sentences, and where comms-mail does its part.
+// for someone who has never thought about it — one picture of an email's
+// journey with everything in it, numbered, and a line for each number.
 
-// lesson is one section: its heading, its picture (nil for none), what it
-// says, and what comms-mail does about it.
-type lesson struct {
-	title string
-	fig   func() *figure
-	says  []string
-	here  string
+// lessons are the picture's numbers, in order, each said in one line.
+var lessons = []string{
+	"Email is like a postcard: your mail provider and the other person's can read it on the way.",
+	"The road between is locked (TLS): nobody in between — on café Wi-Fi, at your internet company — can read or change it.",
+	"Your password and your keys are kept locked away: choose where in Security › Passwords and Security › Keys.",
+	"A signature is a seal: it proves the mail is from you and that nothing in it was changed.",
+	"Encryption locks it in a box only the other person can open — not even the providers. OpenPGP and S/MIME are two ways to do it; comms-mail does both.",
+	"Anyone can write any From. Your provider checks who really sent it (SPF, DKIM, DMARC), and comms-mail warns you when it could not confirm.",
+	"Look-alikes: paypa1.com is not paypal.com. Check the address letter by letter.",
+	"Pictures from the internet tell the sender you opened the mail, and when: comms-mail asks before loading them.",
 }
 
-func lessons() []lesson {
-	you := figNode{pict: pictPerson, label: "You"}
-	them := figNode{pict: pictPerson, label: "The other person"}
-	yourServer := figNode{pict: pictServer, label: "Your mail provider"}
-	theirServer := figNode{pict: pictServer, label: "Their mail provider"}
-	return []lesson{
-		{
-			title: "Email is a postcard",
-			fig: func() *figure {
-				ys, ts := yourServer, theirServer
-				ys.badge, ts.badge = pictEye, pictEye
-				return newFigure([]figNode{you, ys, ts, them},
-					figLink{label: "you send", pict: pictLetter},
-					figLink{label: "passed on", pict: pictLetter},
-					figLink{label: "delivered", pict: pictLetter})
-			},
-			says: []string{
-				"An email does not go straight to the other person. It goes from you to your mail provider's computer (a server), from there to theirs, and then to them.",
-				"Ordinary email is like a postcard: whoever handles it on the way could read it — your provider, theirs, and anyone who breaks into either. The eye marks who can read it.",
-				"That is fine for most mail. For private things there are ways to seal it: see Signatures and Encryption below.",
-			},
-		},
-		{
-			title: "Locked on the road",
-			fig: func() *figure {
-				ys, ts := yourServer, theirServer
-				ys.badge, ts.badge = pictEye, pictEye
-				return newFigure([]figNode{you, ys, ts, them},
-					figLink{label: "locked", pict: pictLock, tone: toneGood},
-					figLink{label: "locked", pict: pictLock, tone: toneGood},
-					figLink{label: "locked", pict: pictLock, tone: toneGood})
-			},
-			says: []string{
-				"The trip between your computer and your mail provider is protected by a locked connection — TLS, the same lock as https:// in a web browser. Nobody on a café's Wi-Fi or at your internet company can read or change your mail on the way.",
-				"But the lock covers only the road. At each provider the mail is unpacked again, as readable as before.",
-			},
-			here: "every account uses a locked connection, and never falls back to an open one by itself.",
-		},
-		{
-			title: "Your password, and where it is kept",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictKey, label: "Your mail password"},
-					{pict: pictLock, label: "A safe place", tone: toneGood},
-					{pict: pictLetter, label: "comms-mail"},
-					yourServer,
-				},
-					figLink{label: "kept in"},
-					figLink{label: "handed over when needed"},
-					figLink{label: "signs in", pict: pictLock, tone: toneGood})
-			},
-			says: []string{
-				"To fetch and send your mail, comms-mail signs in to your provider each time it connects, so it has to keep your password somewhere. Where matters: whoever gets that password can read all your mail and send mail as you.",
-				"System Keyring is your computer's own safe, opened when you log in. Secret Vault is your own vault program, which asks you before letting comms-mail in. Encrypted file is a file locked with a passphrase only you know. Plain file is readable by any program on your computer — avoid it.",
-				"Signing in with Google or Microsoft gives comms-mail something like a valet key: it opens your mail and nothing else, and you can take it back from your account's security page without changing your password.",
-			},
-			here: "choose where in Security › Passwords.",
-		},
-		{
-			title: "Who really sent it?",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictPerson, label: "A stranger", tone: toneBad},
-					{pict: pictServer, label: "Your mail provider checks", badge: pictWarning},
-					{pict: pictPerson, label: "You are warned", badge: pictWarning},
-				},
-					figLink{label: `"From: your bank"`, pict: pictLetter, tone: toneBad},
-					figLink{label: "could not confirm", tone: toneBad})
-			},
-			says: []string{
-				"The From line of an email is just text the sender typed. Anyone can put any name and address there, like a false return address on an envelope.",
-				"Mail providers fight this with three checks. SPF: is this server allowed to send mail for that address? DKIM: a tamper-proof stamp the sender's provider puts on each email. DMARC: the sender's own rule for what to do when the first two fail. Your provider runs them and writes down the result in the email.",
-			},
-			here: "when your provider could not confirm who sent a message, a warning says so above it. Treat it like a phone call from an unknown number saying it is your bank.",
-		},
-		{
-			title: "Look-alikes",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictLetter, label: "paypal.com", badge: pictCheck},
-					{pict: pictLetter, label: "paypa1.com", badge: pictWarning, tone: toneBad},
-				},
-					figLink{label: "not the same", plain: true, tone: toneBad})
-			},
-			says: []string{
-				"Tricksters register addresses that look almost right: paypa1.com with the number one, rnicrosoft.com with an r and an n, or a friendly name such as \"PayPal Service\" over an address somewhere else entirely.",
-				"Before you click: does the address match, letter for letter? When in doubt, do not use the link in the email — go to the website yourself, or phone them.",
-			},
-			here: "a warning when a sender looks like someone you write to but is not, when the name shows a different address, and when replies would go somewhere else.",
-		},
-		{
-			title: "Pictures that spy",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictPerson, label: "You open the email"},
-					{pict: pictPicture, label: "A tiny picture on their server"},
-					{pict: pictPerson, label: "The sender", badge: pictEye},
-				},
-					figLink{label: "fetched", pict: pictPicture},
-					figLink{label: "you opened it, when, and from where", tone: toneBad})
-			},
-			says: []string{
-				"Many emails carry tiny, invisible pictures kept on the sender's server. To show them, your mail program has to fetch them — and that tells the sender you opened the email, when, and roughly where you are.",
-			},
-			here: "pictures from the internet are not loaded unless you ask. Always, for a sender, holds only for mail your provider confirmed came from them; Security › Remote images lists whom you allowed.",
-		},
-		{
-			title: "Signatures: a seal on the letter",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictPerson, label: "You", badge: pictKey},
-					{pict: pictLetter, label: "Your email", badge: pictSeal},
-					{pict: pictPerson, label: "The other person", badge: pictCheck},
-				},
-					figLink{label: "sealed with your private key", pict: pictPen},
-					figLink{label: "checked with your public key", pict: pictKey, tone: toneGood})
-			},
-			says: []string{
-				"A digital signature proves two things: the email really is from you, and nobody changed a single letter on the way.",
-				"It works with a pair of keys. Your private key makes the seal, and only you have it. Your public key checks the seal, and you can give it to everybody. Without your private key, nobody can make a seal that checks.",
-				"A signature hides nothing: everyone on the way can still read the email.",
-			},
-			here: "signed mail shows who signed it and whether that is confirmed, and what you write is signed whenever you have a key.",
-		},
-		{
-			title: "Encryption: a locked box",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictPerson, label: "You", badge: pictPadlockOpen},
-					{pict: pictServer, label: "The providers", badge: pictLock, tone: toneGood},
-					{pict: pictPerson, label: "The other person", badge: pictKey},
-				},
-					figLink{label: "locked with their padlock", pict: pictLock, tone: toneGood},
-					figLink{label: "opened with their key", pict: pictLock, tone: toneGood})
-			},
-			says: []string{
-				"Encryption puts the email in a box only the other person can open. The providers carry the box but cannot look inside — not even yours.",
-				"Think of padlocks. The other person hands out open padlocks — their public key — to anyone. You snap one shut on your box. Only their own key — their private key — opens it again; not even you can.",
-				"So to send someone encrypted mail you need their public key first, and they need yours to answer. Still visible to the providers: who it is from, who it is to, and when.",
-			},
-			here: "Encrypt is in the Write window, and drafts of encrypted mail stay on this computer, never on the server.",
-		},
-		{
-			title: "Two kinds: OpenPGP and S/MIME",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictPeople, label: "OpenPGP: you check the key, or people you trust did"},
-					{pict: pictSeal, label: "S/MIME: an authority checked who you are"},
-				},
-					figLink{label: "same job, different trust", plain: true})
-			},
-			says: []string{
-				"There are two ways to sign and encrypt email. They do the same job; they differ in how you know a public key really is that person's.",
-				"OpenPGP: you check the key yourself — compare its fingerprint face to face or on the phone — or trust people who did. Like knowing a friend's handwriting.",
-				"S/MIME: a certificate authority checks who you are and issues a certificate, the way a passport office does. Common at companies and in public services.",
-				"They do not mix: you use the kind the other person uses.",
-			},
-			here: "both, read and written.",
-		},
-		{
-			title: "Your private key is you",
-			fig: func() *figure {
-				return newFigure([]figNode{
-					{pict: pictKey, label: "Your private key"},
-					{pict: pictPerson, label: "Someone else", tone: toneBad},
-					{pict: pictPeople, label: "Your contacts", badge: pictWarning},
-				},
-					figLink{label: "if it leaks", tone: toneBad},
-					figLink{label: "reads your mail and signs as you", pict: pictLetter, tone: toneBad})
-			},
-			says: []string{
-				"If someone copies your private key, they can read your encrypted mail and sign as you. If you lose it, encrypted mail sent to you can never be opened again — there is no reset button.",
-				"So keep it somewhere locked, keep a backup somewhere safe, and if it ever leaks, make a new one and tell the people you write to.",
-			},
-			here: "your keys are in Security › Keys.",
-		},
-		{
-			title: "Good habits",
-			says: []string{
-				"Use a password for your email that you use nowhere else — or sign in with Google or Microsoft — and turn on two-step sign-in at your provider.",
-				"Never type your password after clicking a link in an email. Go to the website yourself.",
-				"Do not open attachments you did not expect, even from people you know: ask them first.",
-				"A warning in comms-mail means stop and check, not click anyway.",
-				"Keep your computer and comms-mail up to date.",
-				"For anything really private, encrypt it — or do not email it.",
-			},
-		},
-	}
-}
+// lastWord is said under the numbers.
+const lastWord = "When in doubt, do not click: go to the website yourself, or ask the person another way."
 
-// educateSection is the Educate page: every lesson in turn.
+// educateSection is the Educate page: the picture, then a line for each
+// number in it.
 func educateSection() widget.Component {
-	col := widgets.NewColumn().WithGap(10)
-	for i, l := range lessons() {
-		if i > 0 {
-			col.Add(widgets.NewSeparator())
+	col := widgets.NewColumn(newEducateScene()).WithGap(10)
+	for i, l := range lessons {
+		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
+		row.AddFlex(wrapLabel(l), 1)
+		col.Add(row)
+	}
+	last := wrapLabel(lastWord)
+	last.Tone = widgets.ToneMuted
+	col.Add(last)
+	return widgets.NewScrollView(widgets.NewPad(4, col))
+}
+
+// ---- the numbers ----
+
+// numberMark is a number in a disc of the look's accent: the same in the
+// picture and beside its line.
+type numberMark struct {
+	widget.Base
+	n int
+}
+
+func newNumberMark(n int) *numberMark {
+	m := &numberMark{n: n}
+	m.Init(m)
+	return m
+}
+
+const markSize = 20
+
+func (m *numberMark) Measure(c layout.Constraints) paintengine2d.Point {
+	s := style.Dip(m.Look(), markSize)
+	return c.Constrain(paintengine2d.Pt(s, max(s, m.Look().Font().Height())))
+}
+
+func (m *numberMark) Arrange(r paintengine2d.Rect) { m.SetBounds(r) }
+
+func (m *numberMark) Paint(ctx *paintengine2d.Context) {
+	b := m.LocalBounds()
+	s := style.Dip(m.Look(), markSize)
+	// Level with the first line of the text beside it.
+	drawNumber(ctx, m.Look(), m.n, paintengine2d.Pt(b.Min.X+s/2, b.Min.Y+m.Look().Font().Height()/2), s)
+}
+
+// drawNumber draws n in a disc of size s centred at c.
+func drawNumber(ctx *paintengine2d.Context, lk style.LookAndFeel, n int, c paintengine2d.Point, s float32) {
+	p := lk.Palette()
+	ctx.DrawCircle(c, s/2, paintengine2d.Fill(p.Accent))
+	f := lk.BoldFont()
+	t := strconv.Itoa(n)
+	f.Draw(ctx, t, paintengine2d.Pt(c.X-f.Advance(t)/2, c.Y-f.Height()/2), p.TextOnAccent)
+}
+
+// ---- the picture ----
+
+// educateScene is an email's journey and what threatens it, in one
+// picture: you, your provider, theirs and them on a locked road, a sealed
+// and locked letter over it; a stranger's mail coming in, checked, from a
+// look-alike address; a picture that tells the stranger you looked.
+type educateScene struct{ widget.Base }
+
+func newEducateScene() *educateScene {
+	s := &educateScene{}
+	s.Init(s)
+	return s
+}
+
+// The picture's lengths, in 1x design pixels.
+const (
+	sceneNode  = 52 // a person's or a place's disc, at most
+	sceneBadge = 20
+	sceneDisc  = 22 // a picture on a road
+	sceneMin   = 300
+)
+
+var sceneNames = [4]string{"You", "Your provider", "Their provider", "The other person"}
+
+// sceneLayout is where everything goes at width w.
+type sceneLayout struct {
+	slot, d, y1, y2, labelsY, height float32
+	labels                           [4][]string
+	stranger, picture                []string
+}
+
+// sceneMark is a number in the picture, where it is drawn.
+type sceneMark struct {
+	n    int
+	x, y float32
+}
+
+func (s *educateScene) dip(v float32) float32 { return style.Dip(s.Look(), v) }
+
+func (s *educateScene) MinWidth() float32 { return s.dip(sceneMin) }
+
+func (s *educateScene) Measure(c layout.Constraints) paintengine2d.Point {
+	w := s.dip(560)
+	if c.HasMaxW() {
+		w = c.MaxW
+	}
+	return c.Constrain(paintengine2d.Pt(w, s.layoutAt(w).height))
+}
+
+func (s *educateScene) Arrange(r paintengine2d.Rect) { s.SetBounds(r) }
+
+func (s *educateScene) layoutAt(w float32) sceneLayout {
+	font := s.Look().Font()
+	fh := font.Height()
+	var g sceneLayout
+	g.slot = w / 4
+	g.d = min(s.dip(sceneNode), g.slot*0.48)
+	lines := 0
+	for i, name := range sceneNames {
+		g.labels[i] = wrapWords(font, name, g.slot-s.dip(4), 3)
+		lines = max(lines, len(g.labels[i]))
+	}
+	// Over the road: the letter between its seal and padlock, and room
+	// for the numbers over the marks at the discs' corners.
+	g.y1 = s.dip(8) + s.dip(30) + s.dip(38) + g.d/2
+	g.labelsY = g.y1 + g.d/2 + s.dip(6)
+	under := g.labelsY + float32(lines)*fh
+	// Under it: the stranger, under your provider, and the picture, under
+	// you, with room for the stranger's address beside the road up.
+	g.y2 = under + s.dip(48) + g.d/2
+	g.stranger = wrapWords(font, "A stranger", g.slot-s.dip(4), 2)
+	g.picture = wrapWords(font, "A picture", g.slot-s.dip(4), 2)
+	g.height = g.y2 + g.d/2 + s.dip(6) + float32(max(len(g.stranger), len(g.picture)))*fh + s.dip(8)
+	return g
+}
+
+// corner is where a mark sits on node i's disc: its top right, or left.
+func (s *educateScene) corner(g sceneLayout, b paintengine2d.Rect, i float32, right bool) paintengine2d.Point {
+	dx := g.d / 2 * 0.62
+	if !right {
+		dx = -dx
+	}
+	return paintengine2d.Pt(b.Min.X+g.slot*(i+0.5)+dx, b.Min.Y+g.y1-g.d/2*0.62)
+}
+
+// letter is where the letter is, and its seal and padlock either side.
+func (s *educateScene) letter(g sceneLayout, b paintengine2d.Rect) (at, seal, lock paintengine2d.Point, size float32) {
+	size = s.dip(30)
+	at = paintengine2d.Pt(b.Min.X+g.slot*2, b.Min.Y+s.dip(8)+size/2)
+	gap := size*0.5 + s.dip(sceneBadge)/2 + s.dip(4)
+	return at, paintengine2d.Pt(at.X-gap, at.Y), paintengine2d.Pt(at.X+gap, at.Y), size
+}
+
+// marks are where the numbers go: over the marks they are about, or
+// beside what they are about.
+func (s *educateScene) marks(g sceneLayout, b paintengine2d.Rect) []sceneMark {
+	x := func(i float32) float32 { return b.Min.X + g.slot*(i+0.5) }
+	r := g.d / 2
+	m := s.dip(markSize)
+	over := func(p paintengine2d.Point) (float32, float32) {
+		return p.X, p.Y - s.dip(sceneBadge)/2 - m/2 - s.dip(3)
+	}
+	_, seal, lock, _ := s.letter(g, b)
+	beside := s.dip(sceneBadge)/2 + m/2 + s.dip(3)
+	under := b.Min.Y + g.labelsY + float32(len(g.labels[1]))*s.Look().Font().Height()
+	mid := (under + b.Min.Y + g.y2 - r) / 2
+	x1, y1 := over(s.corner(g, b, 1, true))
+	x3, y3 := over(s.corner(g, b, 0, true))
+	x6, y6 := over(s.corner(g, b, 1, false))
+	return []sceneMark{
+		{1, x1, y1},
+		{2, x(0) + g.slot/2, b.Min.Y + g.y1 + s.dip(sceneDisc)/2 + m/2 + s.dip(3)},
+		{3, x3, y3},
+		{4, seal.X - beside, seal.Y},
+		{5, lock.X + beside, lock.Y},
+		{6, x6, y6},
+		{7, x(1) - m/2 - s.dip(8), mid},
+		{8, x(0) + r*0.7 + m/2, b.Min.Y + g.y2 - r*0.7},
+	}
+}
+
+func (s *educateScene) Paint(ctx *paintengine2d.Context) {
+	lk := s.Look()
+	b := s.LocalBounds()
+	g := s.layoutAt(b.Dx())
+	in := inksOf(lk)
+	font := lk.Font()
+	fh := font.Height()
+	x := func(i float32) float32 { return b.Min.X + g.slot*(i+0.5) }
+	y1, y2 := b.Min.Y+g.y1, b.Min.Y+g.y2
+	r := g.d / 2
+	pen := func(c paintengine2d.Color, dashed bool) paintengine2d.Paint {
+		p := paintengine2d.StrokePaint(c, s.dip(1.75))
+		if dashed {
+			p.Stroke.Dash = []float32{s.dip(5), s.dip(4)}
 		}
-		col.Add(widgets.NewTitle(l.title))
-		if l.fig != nil {
-			col.Add(l.fig())
+		return p
+	}
+	head := func(at paintengine2d.Point, dx, dy float32, c paintengine2d.Color) {
+		h := s.dip(7)
+		p := paintengine2d.NewPath()
+		p.MoveTo(at.X, at.Y)
+		p.LineTo(at.X-dx*h-dy*h*0.6, at.Y-dy*h+dx*h*0.6)
+		p.LineTo(at.X-dx*h+dy*h*0.6, at.Y-dy*h-dx*h*0.6)
+		p.Close()
+		ctx.DrawPath(p, paintengine2d.Fill(c))
+	}
+	onDisc := func(p pict, at paintengine2d.Point, size float32, ink paintengine2d.Color) {
+		ctx.DrawCircle(at, size/2+s.dip(2), paintengine2d.Fill(in.disc))
+		ctx.DrawCircle(at, size/2+s.dip(2), paintengine2d.StrokePaint(ink, s.dip(1.25)))
+		inner := size * 0.7
+		drawPict(ctx, lk, p, paintengine2d.XYWH(at.X-inner/2, at.Y-inner/2, inner, inner), ink)
+	}
+	node := func(p pict, at paintengine2d.Point, t tone) {
+		edge := in.discEdge
+		if t != tonePlain {
+			edge = in.of(t)
 		}
-		for _, s := range l.says {
-			if l.fig == nil {
-				col.Add(iconLine(style.IconCheck, s)) // a list of habits
-				continue
-			}
-			col.Add(wrapLabel(s))
-		}
-		if l.here != "" {
-			col.Add(iconLine(style.IconInfo, "In comms-mail: "+l.here))
+		ctx.DrawCircle(at, r, paintengine2d.Fill(in.disc))
+		ctx.DrawCircle(at, r, paintengine2d.StrokePaint(edge, s.dip(1.5)))
+		sz := g.d * 0.56
+		drawPict(ctx, lk, p, paintengine2d.XYWH(at.X-sz/2, at.Y-sz/2, sz, sz), in.of(t))
+	}
+	label := func(lines []string, cx, y float32, c paintengine2d.Color) {
+		for _, l := range lines {
+			font.Draw(ctx, l, paintengine2d.Pt(cx-font.Advance(l)/2, y), c)
+			y += fh
 		}
 	}
-	return widgets.NewScrollView(widgets.NewPad(4, col))
+	badge := func(p pict, at paintengine2d.Point, t tone) { onDisc(p, at, s.dip(sceneBadge)*0.9, in.of(t)) }
+
+	// The road: you, your provider, theirs, them — locked between each.
+	for i := 0; i < 3; i++ {
+		x0, x1 := x(float32(i))+r+s.dip(4), x(float32(i+1))-r-s.dip(4)
+		ctx.DrawLine(paintengine2d.Pt(x0, y1), paintengine2d.Pt(x1, y1), pen(in.good, false))
+		head(paintengine2d.Pt(x1, y1), 1, 0, in.good)
+		onDisc(pictLock, paintengine2d.Pt((x0+x1)/2, y1), s.dip(sceneDisc)*0.8, in.good)
+	}
+	// The letter over the road, between its seal and its padlock.
+	at, seal, lock, ls := s.letter(g, b)
+	drawPict(ctx, lk, pictLetter, paintengine2d.XYWH(at.X-ls/2, at.Y-ls/2, ls, ls), in.text)
+	badge(pictSeal, seal, toneGood)
+	badge(pictLock, lock, toneGood)
+
+	// The stranger's mail up to your provider, from a look-alike address;
+	// a picture under you that tells the stranger you looked.
+	under := b.Min.Y + g.labelsY + float32(len(g.labels[1]))*fh
+	sx := x(1)
+	ctx.DrawLine(paintengine2d.Pt(sx, y2-r-s.dip(4)), paintengine2d.Pt(sx, under+s.dip(4)), pen(in.bad, false))
+	head(paintengine2d.Pt(sx, under+s.dip(4)), 0, -1, in.bad)
+	mid := (under + y2 - r) / 2
+	font.Draw(ctx, "From: paypa1.com", paintengine2d.Pt(sx+s.dip(10), mid-fh/2), in.bad)
+
+	px := x(0)
+	youUnder := b.Min.Y + g.labelsY + float32(len(g.labels[0]))*fh
+	ctx.DrawLine(paintengine2d.Pt(px, youUnder+s.dip(4)), paintengine2d.Pt(px, y2-r*0.8-s.dip(4)), pen(in.bad, true))
+	ctx.DrawLine(paintengine2d.Pt(px+r*0.8+s.dip(4), y2), paintengine2d.Pt(sx-r-s.dip(4), y2), pen(in.bad, true))
+	head(paintengine2d.Pt(sx-r-s.dip(4), y2), 1, 0, in.bad)
+
+	// The people and places.
+	node(pictPerson, paintengine2d.Pt(x(0), y1), tonePlain)
+	node(pictServer, paintengine2d.Pt(x(1), y1), tonePlain)
+	node(pictServer, paintengine2d.Pt(x(2), y1), tonePlain)
+	node(pictPerson, paintengine2d.Pt(x(3), y1), tonePlain)
+	for i := range sceneNames {
+		label(g.labels[i], x(float32(i)), b.Min.Y+g.labelsY, in.text)
+	}
+	node(pictPerson, paintengine2d.Pt(sx, y2), toneBad)
+	label(g.stranger, sx, y2+r+s.dip(6), in.bad)
+	pr := r * 0.8
+	ctx.DrawCircle(paintengine2d.Pt(px, y2), pr, paintengine2d.Fill(in.disc))
+	ctx.DrawCircle(paintengine2d.Pt(px, y2), pr, paintengine2d.StrokePaint(in.bad, s.dip(1.5)))
+	ps := pr * 1.1
+	drawPict(ctx, lk, pictPicture, paintengine2d.XYWH(px-ps/2, y2-ps/2, ps, ps), in.bad)
+	label(g.picture, px, y2+r+s.dip(6), in.text)
+
+	// The marks at the corners: your key, the providers' eyes, your
+	// provider's check.
+	badge(pictKey, s.corner(g, b, 0, true), toneGood)
+	badge(pictEye, s.corner(g, b, 1, true), toneBad)
+	badge(pictEye, s.corner(g, b, 2, true), toneBad)
+	badge(pictCheck, s.corner(g, b, 1, false), toneGood)
+
+	// The numbers, last, over everything.
+	for _, m := range s.marks(g, b) {
+		drawNumber(ctx, lk, m.n, paintengine2d.Pt(m.x, m.y), s.dip(markSize))
+	}
 }
