@@ -13,7 +13,7 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30,
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
-#2 (declined and settled), #29 (a design change), #47, #48 and #49
+#2 (declined and settled), #29 (a design change), #47, #48, #49 and #50
 (found 2026-10-04). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
@@ -162,6 +162,21 @@ wrapping label of its own in a row (mailui/icons.go, `iconLine`).
 
 Found 2026-10-04; the same in 0.23.3 and 0.23.4 (measure :140–156, paint
 :205–214).
+
+### 50. A `Label` is plain or a `Title`: no bold at the text's own size
+Settings › Security › Educate names each hop ("From your mail server to
+theirs") over the words about it: a run-in heading, bold at the body's
+size, as GTK's `heading` class, Qt's `QFont::setBold` and HTML's
+`<strong>` give. `Label` picks its face from `Title` (`TitleFont`, the
+page title's size, a size above the section titles it sits under) or
+`Mono`, else the body font (`Label.font`, widgets/label.go:97–109 in
+0.23.3 and 0.23.4); the look's `BoldFont` is used only by `Card.Bold`
+and the header bar. comms-mail draws the line itself with `BoldFont`
+and its own wrapping (mailui/educate.go, `strong`).
+**Fix asked for:** `Label.Bold`, the body size in `BoldFont`, wrapping
+as a plain label does.
+
+Found 2026-10-04 against 0.23.3; the same in 0.23.4.
 
 ## Resolved
 

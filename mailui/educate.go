@@ -10,33 +10,69 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// Settings › Security › Educate: what keeps email safe and what does not,
-// for someone who has never thought about it — one picture of an email's
-// journey with everything in it, numbered, and a line for each number.
+// Settings › Security › Educate: how an email gets from you to a friend,
+// and the standards that keep it safe on the way — one picture of the
+// three hops, each with the standards it uses drawn on it, then what
+// happens on each hop, and what each standard does and how. A standard is
+// the same tag everywhere, so the picture and the words read together.
 
-// lessons are the picture's numbers, in order, each said in one line.
-var lessons = []string{
-	"Email is like a postcard: your mail provider and the other person's can read it on the way.",
-	"The road between is locked (TLS): nobody in between — on café Wi-Fi, at your internet company — can read or change it.",
-	"Your password and your keys are kept locked away: choose where in Security › Passwords and Security › Keys.",
-	"A signature is a seal: it proves the mail is from you and that nothing in it was changed.",
-	"Encryption locks it in a box only the other person can open — not even the providers. OpenPGP and S/MIME are two ways to do it; comms-mail does both.",
-	"Anyone can write any From. Your provider checks who really sent it (SPF, DKIM, DMARC), and comms-mail warns you when it could not confirm.",
-	"Look-alikes: paypa1.com is not paypal.com. Check the address letter by letter.",
-	"Pictures from the internet tell the sender you opened the mail, and when: comms-mail asks before loading them.",
+// hop is one of the picture's numbered hops.
+type hop struct {
+	title, says string
+	// wire are the standards the message goes over on the hop; asks what
+	// the servers look up in DNS for it.
+	wire, asks []string
 }
 
-// lastWord is said under the numbers.
-const lastWord = "When in doubt, do not click: go to the website yourself, or ask the person another way."
+var hops = []hop{
+	{"From you to your mail server",
+		"comms-mail signs and encrypts the message, if you asked, then connects to your mail server, locks the connection, logs in with your password or an OAuth sign-in, and hands the message over.",
+		[]string{"SMTP", "TLS", "OAuth"}, nil},
+	{"From your mail server to theirs",
+		"Your server stamps the message with DKIM, asks DNS which server takes the other domain's mail (its MX record), and hands the message over, the connection locked. Their server asks DNS too: may your server send for your domain (SPF), is the stamp real (DKIM), and what does your domain want done when they fail (DMARC). It writes what it found into the message.",
+		[]string{"SMTP", "STARTTLS"}, []string{"MX", "SPF", "DKIM", "DMARC"}},
+	{"From their mail server to your friend",
+		"Your friend's mail program logs in to their server over a locked connection and fetches the message. It shows what the server found, checks your signature and opens the encryption.",
+		[]string{"IMAP", "POP3", "TLS"}, nil},
+}
 
-// educateSection is the Educate page: the picture, then a line for each
-// number in it.
+// standard is one standard, or two that do one job: what it does, and how.
+type standard struct {
+	names []string
+	what  string
+}
+
+var standards = []standard{
+	{[]string{"SMTP"}, "How mail is handed over, from your program to your server and from server to server. The sender says who the mail is from and who it is for, then sends it; each server passes it on toward the address."},
+	{[]string{"TLS", "STARTTLS"}, "Locks the connection, so nobody on the way can read or change what goes over it. The two ends agree on a secret key and encrypt everything with it, and the server proves who it is with a certificate. STARTTLS locks a connection that began open; MTA-STS and DANE let a domain say the lock is a must."},
+	{[]string{"OAuth"}, "Lets comms-mail log in without your password. Google or Microsoft gives it a token that opens your mail and nothing else, which you can take back at any time."},
+	{[]string{"DNS", "MX"}, "The internet's address book. A domain's MX record says which server takes its mail; the domain's SPF, DKIM and DMARC records are kept there too."},
+	{[]string{"SPF"}, "Says which servers may send mail for a domain. The domain lists them in DNS; the receiving server checks the server that sent the message against the list."},
+	{[]string{"DKIM"}, "A tamper-proof stamp from the sending domain. Its server signs the message with a private key; the receiving server checks the stamp with the public key the domain puts in DNS. A message changed on the way fails."},
+	{[]string{"DMARC"}, "Ties SPF and DKIM to the From address you see, and says what to do when they fail: let it through, put it in spam, or refuse it. The receiving server writes its verdict into the message (Authentication-Results); comms-mail reads it, and warns you about mail it could not confirm."},
+	{[]string{"IMAP", "POP3"}, "Fetch mail from your mailbox. Your mail program logs in over TLS; IMAP keeps the mail on the server, the same on all your devices, POP3 takes it down."},
+	{[]string{"OpenPGP", "S/MIME"}, "Sign and encrypt from end to end, so no server on the way can read or change the message, not even yours. You sign with your private key and encrypt to your friend's public key; only their private key opens it. OpenPGP trusts keys people check themselves; S/MIME trusts certificates from authorities."},
+}
+
+// endToEnd are the standards over the whole way, from you to your friend.
+var endToEnd = []string{"OpenPGP", "S/MIME"}
+
+// lastWord is said under the standards.
+const lastWord = "None of these catches a look-alike address (paypa1.com is not paypal.com): read it letter by letter. Pictures from the internet tell the sender you read the mail, so comms-mail asks before loading them. When in doubt, do not click."
+
+// educateSection is the Educate page: the picture, what happens on each
+// hop, and the standards.
 func educateSection() widget.Component {
-	col := widgets.NewColumn(newEducateScene()).WithGap(10)
-	for i, l := range lessons {
+	col := widgets.NewColumn(newHopsScene(), widgets.NewTitle("What happens")).WithGap(10)
+	for i, h := range hops {
+		about := widgets.NewColumn(newStrong(h.title), chipRow(append(append([]string(nil), h.wire...), h.asks...)), wrapLabel(h.says)).WithGap(4)
 		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
-		row.AddFlex(wrapLabel(l), 1)
+		row.AddFlex(about, 1)
 		col.Add(row)
+	}
+	col.Add(widgets.NewTitle("The standards"))
+	for _, s := range standards {
+		col.Add(widgets.NewColumn(chipRow(s.names), wrapLabel(s.what)).WithGap(4))
 	}
 	last := wrapLabel(lastWord)
 	last.Tone = widgets.ToneMuted
@@ -44,10 +80,10 @@ func educateSection() widget.Component {
 	return widgets.NewScrollView(widgets.NewPad(4, col))
 }
 
-// ---- the numbers ----
+// ---- marks ----
 
 // numberMark is a number in a disc of the look's accent: the same in the
-// picture and beside its line.
+// picture and beside its words.
 type numberMark struct {
 	widget.Base
 	n int
@@ -63,7 +99,7 @@ const markSize = 20
 
 func (m *numberMark) Measure(c layout.Constraints) paintengine2d.Point {
 	s := style.Dip(m.Look(), markSize)
-	return c.Constrain(paintengine2d.Pt(s, max(s, m.Look().Font().Height())))
+	return c.Constrain(paintengine2d.Pt(s, max(s, m.Look().BoldFont().Height())))
 }
 
 func (m *numberMark) Arrange(r paintengine2d.Rect) { m.SetBounds(r) }
@@ -71,8 +107,8 @@ func (m *numberMark) Arrange(r paintengine2d.Rect) { m.SetBounds(r) }
 func (m *numberMark) Paint(ctx *paintengine2d.Context) {
 	b := m.LocalBounds()
 	s := style.Dip(m.Look(), markSize)
-	// Level with the first line of the text beside it.
-	drawNumber(ctx, m.Look(), m.n, paintengine2d.Pt(b.Min.X+s/2, b.Min.Y+m.Look().Font().Height()/2), s)
+	// Level with the first line of the words beside it.
+	drawNumber(ctx, m.Look(), m.n, paintengine2d.Pt(b.Min.X+s/2, b.Min.Y+max(s, m.Look().BoldFont().Height())/2), s)
 }
 
 // drawNumber draws n in a disc of size s centred at c.
@@ -84,35 +120,253 @@ func drawNumber(ctx *paintengine2d.Context, lk style.LookAndFeel, n int, c paint
 	f.Draw(ctx, t, paintengine2d.Pt(c.X-f.Advance(t)/2, c.Y-f.Height()/2), p.TextOnAccent)
 }
 
-// ---- the picture ----
+// ---- tags ----
 
-// educateScene is an email's journey and what threatens it, in one
-// picture: you, your provider, theirs and them on a locked road, a sealed
-// and locked letter over it; a stranger's mail coming in, checked, from a
-// look-alike address; a picture that tells the stranger you looked.
-type educateScene struct{ widget.Base }
+const chipGap = 5
 
-func newEducateScene() *educateScene {
-	s := &educateScene{}
+// chipSize is the size of name's tag.
+func chipSize(lk style.LookAndFeel, name string) (w, h float32) {
+	f := lk.Font()
+	return f.Advance(name) + style.Dip(lk, 12), f.Height() + style.Dip(lk, 4)
+}
+
+// drawChip draws name as a tag in r: an outline and text in the accent.
+func drawChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r paintengine2d.Rect) {
+	p := lk.Palette()
+	ink := p.Ink(p.Accent)
+	rad := r.Dy() / 2
+	ctx.DrawRoundRect(r, rad, rad, paintengine2d.Fill(p.Field))
+	ctx.DrawRoundRect(r, rad, rad, paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
+	f := lk.Font()
+	f.Draw(ctx, name, paintengine2d.Pt(r.Min.X+(r.Dx()-f.Advance(name))/2, r.Min.Y+(r.Dy()-f.Height())/2), ink)
+}
+
+// chipLines breaks names into lines of tags no wider than w, and says how
+// wide each line is; a tag wider than w has a line of its own.
+func chipLines(lk style.LookAndFeel, names []string, w float32) (lines [][]string, widths []float32) {
+	gap := style.Dip(lk, chipGap)
+	var cur []string
+	var curW float32
+	for _, n := range names {
+		cw, _ := chipSize(lk, n)
+		if len(cur) > 0 && curW+gap+cw > w {
+			lines, widths = append(lines, cur), append(widths, curW)
+			cur, curW = nil, 0
+		}
+		if len(cur) > 0 {
+			curW += gap
+		}
+		cur, curW = append(cur, n), curW+cw
+	}
+	if len(cur) > 0 {
+		lines, widths = append(lines, cur), append(widths, curW)
+	}
+	return lines, widths
+}
+
+// placedChip is a tag where it is drawn.
+type placedChip struct {
+	name string
+	r    paintengine2d.Rect
+}
+
+// placeChips lays names out in lines no wider than w from top, each line
+// centred on cx, or from cx when left; and says how tall they are.
+func placeChips(lk style.LookAndFeel, names []string, cx, top, w float32, left bool) ([]placedChip, float32) {
+	lines, widths := chipLines(lk, names, w)
+	gap := style.Dip(lk, chipGap)
+	_, ch := chipSize(lk, "X")
+	var out []placedChip
+	y := top
+	for i, line := range lines {
+		x := cx
+		if !left {
+			x -= widths[i] / 2
+		}
+		for _, n := range line {
+			cw, _ := chipSize(lk, n)
+			out = append(out, placedChip{n, paintengine2d.XYWH(x, y, cw, ch)})
+			x += cw + gap
+		}
+		y += ch + gap
+	}
+	if len(lines) == 0 {
+		return nil, 0
+	}
+	return out, y - gap - top
+}
+
+// protoChip is one standard's tag, as the picture draws it.
+type protoChip struct {
+	widget.Base
+	name string
+}
+
+func newProtoChip(name string) *protoChip {
+	c := &protoChip{name: name}
+	c.Init(c)
+	return c
+}
+
+func (c *protoChip) Measure(k layout.Constraints) paintengine2d.Point {
+	return k.Constrain(paintengine2d.Pt(chipSize(c.Look(), c.name)))
+}
+
+func (c *protoChip) Arrange(r paintengine2d.Rect) { c.SetBounds(r) }
+
+func (c *protoChip) Paint(ctx *paintengine2d.Context) {
+	b := c.LocalBounds()
+	w, h := chipSize(c.Look(), c.name)
+	drawChip(ctx, c.Look(), c.name, paintengine2d.XYWH(b.Min.X, b.Min.Y, w, h))
+}
+
+// chipRow is names' tags in a row that wraps.
+func chipRow(names []string) *widgets.Wrap {
+	w := widgets.NewWrap()
+	w.Gap = chipGap
+	for _, n := range names {
+		w.Add(newProtoChip(n))
+	}
+	return w
+}
+
+// strong is a line of bold text that wraps: a hop's name over its words.
+// (A Label is plain or a Title, which is the page title's size;
+// uitoolkit-gaps.md #50.)
+type strong struct {
+	widget.Base
+	text  string
+	lines []string
+}
+
+func newStrong(text string) *strong {
+	s := &strong{text: text}
 	s.Init(s)
 	return s
 }
 
-// The picture's lengths, in 1x design pixels.
+func (s *strong) Measure(c layout.Constraints) paintengine2d.Point {
+	f := s.Look().BoldFont()
+	w := f.Advance(s.text)
+	if c.HasMaxW() {
+		w = min(w, c.MaxW)
+	}
+	return c.Constrain(paintengine2d.Pt(w, float32(len(wrapWords(f, s.text, w, 4)))*f.Height()))
+}
+
+func (s *strong) Arrange(r paintengine2d.Rect) {
+	s.SetBounds(r)
+	s.lines = wrapWords(s.Look().BoldFont(), s.text, r.Dx(), 4)
+}
+
+func (s *strong) Paint(ctx *paintengine2d.Context) {
+	b := s.LocalBounds()
+	f := s.Look().BoldFont()
+	for i, l := range s.lines {
+		f.Draw(ctx, l, paintengine2d.Pt(b.Min.X, b.Min.Y+float32(i)*f.Height()), s.Look().Palette().Text)
+	}
+}
+
+// ---- the picture ----
+
+// hopsScene is the picture: you, your mail server, theirs and your friend,
+// the three hops between them numbered, each with what it goes over drawn
+// on it; DNS under the servers, with what they look up there; and OpenPGP
+// and S/MIME over all of it, end to end.
+type hopsScene struct{ widget.Base }
+
+func newHopsScene() *hopsScene {
+	s := &hopsScene{}
+	s.Init(s)
+	return s
+}
+
 const (
-	sceneNode  = 52 // a person's or a place's disc, at most
-	sceneBadge = 20
-	sceneDisc  = 22 // a picture on a road
-	sceneMin   = 300
+	sceneNode = 52 // a person's or a server's disc, at most
+	sceneMin  = 300
 )
 
-var sceneNames = [4]string{"You", "Your provider", "Their provider", "The other person"}
+var sceneNames = [4]string{"You", "Your mail server", "Their mail server", "Your friend"}
 
-// sceneLayout is where everything goes at width w.
+// sceneLayout is where everything goes at width w, from the picture's top
+// left.
 type sceneLayout struct {
-	slot, d, y1, y2, labelsY, height float32
-	labels                           [4][]string
-	stranger, picture                []string
+	slot, d                       float32
+	spanY, y1, labelsY, dnsY, dnd float32
+	labels                        [4][]string
+	dnsLabel                      []string
+	chips                         []placedChip // on the span, over the hops, under DNS
+	h                             float32
+}
+
+func (s *hopsScene) dip(v float32) float32 { return style.Dip(s.Look(), v) }
+
+func (s *hopsScene) MinWidth() float32 { return s.dip(sceneMin) }
+
+func (s *hopsScene) Measure(c layout.Constraints) paintengine2d.Point {
+	w := s.dip(560)
+	if c.HasMaxW() {
+		w = c.MaxW
+	}
+	return c.Constrain(paintengine2d.Pt(w, s.layoutAt(w).h))
+}
+
+func (s *hopsScene) Arrange(r paintengine2d.Rect) { s.SetBounds(r) }
+
+// asked is what the servers look up in DNS, over all the hops.
+func asked() []string {
+	var out []string
+	for _, h := range hops {
+		out = append(out, h.asks...)
+	}
+	return out
+}
+
+func (s *hopsScene) layoutAt(w float32) sceneLayout {
+	lk := s.Look()
+	font := lk.Font()
+	fh := font.Height()
+	gap := s.dip(chipGap)
+	var g sceneLayout
+	g.slot = w / 4
+	g.d = min(s.dip(sceneNode), g.slot*0.48)
+	x := func(i float32) float32 { return g.slot * (i + 0.5) }
+
+	// Over everything: end to end, from you to your friend.
+	span, spanH := placeChips(lk, endToEnd, x(1.5), s.dip(6), w*0.6, false)
+	g.spanY = s.dip(6) + spanH/2
+	g.chips = span
+
+	// Over each hop, clear of the discs, what it goes over.
+	var band float32
+	for i, h := range hops {
+		_, hh := placeChips(lk, h.wire, x(float32(i)+0.5), 0, g.slot-s.dip(6), false)
+		band = max(band, hh)
+	}
+	top := s.dip(6) + spanH + s.dip(12)
+	g.y1 = top + band + s.dip(4) + g.d/2
+	for i, h := range hops {
+		_, hh := placeChips(lk, h.wire, x(float32(i)+0.5), 0, g.slot-s.dip(6), false)
+		c, _ := placeChips(lk, h.wire, x(float32(i)+0.5), g.y1-g.d/2-s.dip(4)-hh, g.slot-s.dip(6), false)
+		g.chips = append(g.chips, c...)
+	}
+
+	lines := 0
+	for i, name := range sceneNames {
+		g.labels[i] = wrapWords(font, name, g.slot-s.dip(4), 3)
+		lines = max(lines, len(g.labels[i]))
+	}
+	g.labelsY = g.y1 + g.d/2 + s.dip(6)
+
+	// Under the servers, DNS, and what they look up there.
+	g.dnd = g.d * 0.7
+	g.dnsY = g.labelsY + float32(lines)*fh + s.dip(22) + g.dnd/2
+	g.dnsLabel = wrapWords(font, "DNS", g.slot, 1)
+	under := g.dnsY + g.dnd/2 + s.dip(4) + fh + gap
+	c, ch := placeChips(lk, asked(), x(1.5), under, 3*g.slot-s.dip(6), false)
+	g.chips = append(g.chips, c...)
+	g.h = under + ch + s.dip(8)
+	return g
 }
 
 // sceneMark is a number in the picture, where it is drawn.
@@ -121,91 +375,16 @@ type sceneMark struct {
 	x, y float32
 }
 
-func (s *educateScene) dip(v float32) float32 { return style.Dip(s.Look(), v) }
-
-func (s *educateScene) MinWidth() float32 { return s.dip(sceneMin) }
-
-func (s *educateScene) Measure(c layout.Constraints) paintengine2d.Point {
-	w := s.dip(560)
-	if c.HasMaxW() {
-		w = c.MaxW
+// marks are where the hops' numbers go: on each hop, between its discs.
+func (s *hopsScene) marks(g sceneLayout, b paintengine2d.Rect) []sceneMark {
+	var out []sceneMark
+	for i := range hops {
+		out = append(out, sceneMark{i + 1, b.Min.X + g.slot*(float32(i)+1), b.Min.Y + g.y1})
 	}
-	return c.Constrain(paintengine2d.Pt(w, s.layoutAt(w).height))
+	return out
 }
 
-func (s *educateScene) Arrange(r paintengine2d.Rect) { s.SetBounds(r) }
-
-func (s *educateScene) layoutAt(w float32) sceneLayout {
-	font := s.Look().Font()
-	fh := font.Height()
-	var g sceneLayout
-	g.slot = w / 4
-	g.d = min(s.dip(sceneNode), g.slot*0.48)
-	lines := 0
-	for i, name := range sceneNames {
-		g.labels[i] = wrapWords(font, name, g.slot-s.dip(4), 3)
-		lines = max(lines, len(g.labels[i]))
-	}
-	// Over the road: the letter between its seal and padlock, and room
-	// for the numbers over the marks at the discs' corners.
-	g.y1 = s.dip(8) + s.dip(30) + s.dip(38) + g.d/2
-	g.labelsY = g.y1 + g.d/2 + s.dip(6)
-	under := g.labelsY + float32(lines)*fh
-	// Under it: the stranger, under your provider, and the picture, under
-	// you, with room for the stranger's address beside the road up.
-	g.y2 = under + s.dip(48) + g.d/2
-	g.stranger = wrapWords(font, "A stranger", g.slot-s.dip(4), 2)
-	g.picture = wrapWords(font, "A picture", g.slot-s.dip(4), 2)
-	g.height = g.y2 + g.d/2 + s.dip(6) + float32(max(len(g.stranger), len(g.picture)))*fh + s.dip(8)
-	return g
-}
-
-// corner is where a mark sits on node i's disc: its top right, or left.
-func (s *educateScene) corner(g sceneLayout, b paintengine2d.Rect, i float32, right bool) paintengine2d.Point {
-	dx := g.d / 2 * 0.62
-	if !right {
-		dx = -dx
-	}
-	return paintengine2d.Pt(b.Min.X+g.slot*(i+0.5)+dx, b.Min.Y+g.y1-g.d/2*0.62)
-}
-
-// letter is where the letter is, and its seal and padlock either side.
-func (s *educateScene) letter(g sceneLayout, b paintengine2d.Rect) (at, seal, lock paintengine2d.Point, size float32) {
-	size = s.dip(30)
-	at = paintengine2d.Pt(b.Min.X+g.slot*2, b.Min.Y+s.dip(8)+size/2)
-	gap := size*0.5 + s.dip(sceneBadge)/2 + s.dip(4)
-	return at, paintengine2d.Pt(at.X-gap, at.Y), paintengine2d.Pt(at.X+gap, at.Y), size
-}
-
-// marks are where the numbers go: over the marks they are about, or
-// beside what they are about.
-func (s *educateScene) marks(g sceneLayout, b paintengine2d.Rect) []sceneMark {
-	x := func(i float32) float32 { return b.Min.X + g.slot*(i+0.5) }
-	r := g.d / 2
-	m := s.dip(markSize)
-	over := func(p paintengine2d.Point) (float32, float32) {
-		return p.X, p.Y - s.dip(sceneBadge)/2 - m/2 - s.dip(3)
-	}
-	_, seal, lock, _ := s.letter(g, b)
-	beside := s.dip(sceneBadge)/2 + m/2 + s.dip(3)
-	under := b.Min.Y + g.labelsY + float32(len(g.labels[1]))*s.Look().Font().Height()
-	mid := (under + b.Min.Y + g.y2 - r) / 2
-	x1, y1 := over(s.corner(g, b, 1, true))
-	x3, y3 := over(s.corner(g, b, 0, true))
-	x6, y6 := over(s.corner(g, b, 1, false))
-	return []sceneMark{
-		{1, x1, y1},
-		{2, x(0) + g.slot/2, b.Min.Y + g.y1 + s.dip(sceneDisc)/2 + m/2 + s.dip(3)},
-		{3, x3, y3},
-		{4, seal.X - beside, seal.Y},
-		{5, lock.X + beside, lock.Y},
-		{6, x6, y6},
-		{7, x(1) - m/2 - s.dip(8), mid},
-		{8, x(0) + r*0.7 + m/2, b.Min.Y + g.y2 - r*0.7},
-	}
-}
-
-func (s *educateScene) Paint(ctx *paintengine2d.Context) {
+func (s *hopsScene) Paint(ctx *paintengine2d.Context) {
 	lk := s.Look()
 	b := s.LocalBounds()
 	g := s.layoutAt(b.Dx())
@@ -213,8 +392,9 @@ func (s *educateScene) Paint(ctx *paintengine2d.Context) {
 	font := lk.Font()
 	fh := font.Height()
 	x := func(i float32) float32 { return b.Min.X + g.slot*(i+0.5) }
-	y1, y2 := b.Min.Y+g.y1, b.Min.Y+g.y2
+	y1 := b.Min.Y + g.y1
 	r := g.d / 2
+	accent := lk.Palette().Ink(lk.Palette().Accent)
 	pen := func(c paintengine2d.Color, dashed bool) paintengine2d.Paint {
 		p := paintengine2d.StrokePaint(c, s.dip(1.75))
 		if dashed {
@@ -231,83 +411,53 @@ func (s *educateScene) Paint(ctx *paintengine2d.Context) {
 		p.Close()
 		ctx.DrawPath(p, paintengine2d.Fill(c))
 	}
-	onDisc := func(p pict, at paintengine2d.Point, size float32, ink paintengine2d.Color) {
-		ctx.DrawCircle(at, size/2+s.dip(2), paintengine2d.Fill(in.disc))
-		ctx.DrawCircle(at, size/2+s.dip(2), paintengine2d.StrokePaint(ink, s.dip(1.25)))
-		inner := size * 0.7
-		drawPict(ctx, lk, p, paintengine2d.XYWH(at.X-inner/2, at.Y-inner/2, inner, inner), ink)
+	node := func(p pict, at paintengine2d.Point, size float32) {
+		ctx.DrawCircle(at, size/2, paintengine2d.Fill(in.disc))
+		ctx.DrawCircle(at, size/2, paintengine2d.StrokePaint(in.discEdge, s.dip(1.5)))
+		sz := size * 0.56
+		drawPict(ctx, lk, p, paintengine2d.XYWH(at.X-sz/2, at.Y-sz/2, sz, sz), in.text)
 	}
-	node := func(p pict, at paintengine2d.Point, t tone) {
-		edge := in.discEdge
-		if t != tonePlain {
-			edge = in.of(t)
-		}
-		ctx.DrawCircle(at, r, paintengine2d.Fill(in.disc))
-		ctx.DrawCircle(at, r, paintengine2d.StrokePaint(edge, s.dip(1.5)))
-		sz := g.d * 0.56
-		drawPict(ctx, lk, p, paintengine2d.XYWH(at.X-sz/2, at.Y-sz/2, sz, sz), in.of(t))
-	}
-	label := func(lines []string, cx, y float32, c paintengine2d.Color) {
-		for _, l := range lines {
-			font.Draw(ctx, l, paintengine2d.Pt(cx-font.Advance(l)/2, y), c)
-			y += fh
-		}
-	}
-	badge := func(p pict, at paintengine2d.Point, t tone) { onDisc(p, at, s.dip(sceneBadge)*0.9, in.of(t)) }
 
-	// The road: you, your provider, theirs, them — locked between each.
+	// End to end, from you to your friend, over it all.
+	spanY := b.Min.Y + g.spanY
+	foot := y1 - r - s.dip(3)
+	ctx.DrawLine(paintengine2d.Pt(x(0), foot), paintengine2d.Pt(x(0), spanY), pen(accent, true))
+	ctx.DrawLine(paintengine2d.Pt(x(0), spanY), paintengine2d.Pt(x(3), spanY), pen(accent, true))
+	ctx.DrawLine(paintengine2d.Pt(x(3), spanY), paintengine2d.Pt(x(3), foot), pen(accent, true))
+	head(paintengine2d.Pt(x(3), foot), 0, 1, accent)
+
+	// The three hops.
 	for i := 0; i < 3; i++ {
 		x0, x1 := x(float32(i))+r+s.dip(4), x(float32(i+1))-r-s.dip(4)
 		ctx.DrawLine(paintengine2d.Pt(x0, y1), paintengine2d.Pt(x1, y1), pen(in.good, false))
 		head(paintengine2d.Pt(x1, y1), 1, 0, in.good)
-		onDisc(pictLock, paintengine2d.Pt((x0+x1)/2, y1), s.dip(sceneDisc)*0.8, in.good)
 	}
-	// The letter over the road, between its seal and its padlock.
-	at, seal, lock, ls := s.letter(g, b)
-	drawPict(ctx, lk, pictLetter, paintengine2d.XYWH(at.X-ls/2, at.Y-ls/2, ls, ls), in.text)
-	badge(pictSeal, seal, toneGood)
-	badge(pictLock, lock, toneGood)
 
-	// The stranger's mail up to your provider, from a look-alike address;
-	// a picture under you that tells the stranger you looked.
-	under := b.Min.Y + g.labelsY + float32(len(g.labels[1]))*fh
-	sx := x(1)
-	ctx.DrawLine(paintengine2d.Pt(sx, y2-r-s.dip(4)), paintengine2d.Pt(sx, under+s.dip(4)), pen(in.bad, false))
-	head(paintengine2d.Pt(sx, under+s.dip(4)), 0, -1, in.bad)
-	mid := (under + y2 - r) / 2
-	font.Draw(ctx, "From: paypa1.com", paintengine2d.Pt(sx+s.dip(10), mid-fh/2), in.bad)
-
-	px := x(0)
-	youUnder := b.Min.Y + g.labelsY + float32(len(g.labels[0]))*fh
-	ctx.DrawLine(paintengine2d.Pt(px, youUnder+s.dip(4)), paintengine2d.Pt(px, y2-r*0.8-s.dip(4)), pen(in.bad, true))
-	ctx.DrawLine(paintengine2d.Pt(px+r*0.8+s.dip(4), y2), paintengine2d.Pt(sx-r-s.dip(4), y2), pen(in.bad, true))
-	head(paintengine2d.Pt(sx-r-s.dip(4), y2), 1, 0, in.bad)
-
-	// The people and places.
-	node(pictPerson, paintengine2d.Pt(x(0), y1), tonePlain)
-	node(pictServer, paintengine2d.Pt(x(1), y1), tonePlain)
-	node(pictServer, paintengine2d.Pt(x(2), y1), tonePlain)
-	node(pictPerson, paintengine2d.Pt(x(3), y1), tonePlain)
-	for i := range sceneNames {
-		label(g.labels[i], x(float32(i)), b.Min.Y+g.labelsY, in.text)
+	// DNS, under the servers, which both ask.
+	dnsY := b.Min.Y + g.dnsY
+	dx := x(1.5)
+	feet := b.Min.Y + g.labelsY + float32(max(len(g.labels[1]), len(g.labels[2])))*fh + s.dip(4)
+	ctx.DrawLine(paintengine2d.Pt(dx-g.dnd*0.4, dnsY-g.dnd*0.3), paintengine2d.Pt(x(1), feet), pen(in.muted, true))
+	ctx.DrawLine(paintengine2d.Pt(dx+g.dnd*0.4, dnsY-g.dnd*0.3), paintengine2d.Pt(x(2), feet), pen(in.muted, true))
+	node(pictServer, paintengine2d.Pt(dx, dnsY), g.dnd)
+	for _, l := range g.dnsLabel {
+		font.Draw(ctx, l, paintengine2d.Pt(dx-font.Advance(l)/2, dnsY+g.dnd/2+s.dip(4)), in.text)
 	}
-	node(pictPerson, paintengine2d.Pt(sx, y2), toneBad)
-	label(g.stranger, sx, y2+r+s.dip(6), in.bad)
-	pr := r * 0.8
-	ctx.DrawCircle(paintengine2d.Pt(px, y2), pr, paintengine2d.Fill(in.disc))
-	ctx.DrawCircle(paintengine2d.Pt(px, y2), pr, paintengine2d.StrokePaint(in.bad, s.dip(1.5)))
-	ps := pr * 1.1
-	drawPict(ctx, lk, pictPicture, paintengine2d.XYWH(px-ps/2, y2-ps/2, ps, ps), in.bad)
-	label(g.picture, px, y2+r+s.dip(6), in.text)
 
-	// The marks at the corners: your key, the providers' eyes, your
-	// provider's check.
-	badge(pictKey, s.corner(g, b, 0, true), toneGood)
-	badge(pictEye, s.corner(g, b, 1, true), toneBad)
-	badge(pictEye, s.corner(g, b, 2, true), toneBad)
-	badge(pictCheck, s.corner(g, b, 1, false), toneGood)
+	// The people and the servers.
+	for i, p := range []pict{pictPerson, pictServer, pictServer, pictPerson} {
+		node(p, paintengine2d.Pt(x(float32(i)), y1), g.d)
+		y := b.Min.Y + g.labelsY
+		for _, l := range g.labels[i] {
+			font.Draw(ctx, l, paintengine2d.Pt(x(float32(i))-font.Advance(l)/2, y), in.text)
+			y += fh
+		}
+	}
 
-	// The numbers, last, over everything.
+	// The standards, and the hops' numbers, over everything.
+	for _, c := range g.chips {
+		drawChip(ctx, lk, c.name, c.r.Translate(b.Min))
+	}
 	for _, m := range s.marks(g, b) {
 		drawNumber(ctx, lk, m.n, paintengine2d.Pt(m.x, m.y), s.dip(markSize))
 	}
