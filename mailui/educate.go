@@ -411,14 +411,17 @@ const fakeDomain = "acrne.com"
 // educateSection is the Educate page: the picture, what its symbols mean,
 // and each step.
 //
-// The picture and what its symbols mean stay together, in view; under
-// them, which message and road — what YOU do to it, TLS or not, what the
-// domains publish — and its steps; the picture and its key showing that
-// one, and nothing of what is turned off.
+// The picture and what its symbols mean — all of them, always — stay
+// together, in view; under them, which message and road — what YOU do to
+// it, TLS or not, what the domains publish — and its steps, the picture
+// showing that one, and nothing of what is turned off.
 func educateSection() widget.Component {
 	scene := newRouteScene()
 	key := widgets.NewWrap()
 	key.Gap, key.LineGap = 16, 6
+	for _, sy := range symbols {
+		key.Add(newSymbolItem(sy))
+	}
 	list := widgets.NewColumn().WithGap(14)
 	l := firstLesson
 	var mtaSTS, dane *widgets.Checkbox
@@ -426,13 +429,6 @@ func educateSection() widget.Component {
 		scene.l = l
 		scene.RequestLayout()
 		scene.Invalidate()
-		key.ClearChildren()
-		for _, sy := range symbols {
-			if sy.when == nil || sy.when(l) {
-				key.Add(newSymbolItem(sy))
-			}
-		}
-		key.RequestLayout()
 		// MTA-STS and DANE make TLS between servers a must: without TLS
 		// there is nothing for them to do.
 		if mtaSTS != nil {
@@ -780,23 +776,21 @@ func altRow(groups [][]string) *widgets.Wrap {
 
 // ---- what the symbols mean ----
 
-// symbol is one of the picture's symbols, and what it means; when, if
-// set, says the picture draws it.
+// symbol is one of the picture's symbols, and what it means.
 type symbol struct {
 	draw func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect)
 	says string
-	when func(lesson) bool
 }
 
 var symbols = []symbol{
-	{envelopeSymbol(envelope{}), "A message", func(l lesson) bool { return !l.signed && !l.encrypted }}, // a plain one is drawn
-	{envelopeSymbol(envelope{seal: true}), "Signed by you", func(l lesson) bool { return l.signed }},
-	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET", func(l lesson) bool { return l.encrypted }},
-	{envelopeSymbol(envelope{stamp: true}), "Signed by its domain", nil}, // the attacker's, if not yours
+	{envelopeSymbol(envelope{}), "A message"},
+	{envelopeSymbol(envelope{seal: true}), "Signed by you"},
+	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET"},
+	{envelopeSymbol(envelope{stamp: true}), "Signed by its domain"},
 	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
 		y := box.Center().Y
 		drawTube(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y), box.Dy()*0.8)
-	}, "TLS", func(l lesson) bool { return l.tls }},
+	}, "TLS"},
 }
 
 // envelopeSymbol draws e in the middle of a symbol's box.

@@ -96,15 +96,6 @@ func TestEducateIsOnePicture(t *testing.T) {
 			if !slices.Equal(letters, wantLetters) {
 				t.Errorf("at %d: the points are lettered %v, want %v", width, letters, wantLetters)
 			}
-			shown := 0
-			for _, sy := range symbols {
-				if sy.when == nil || sy.when(les) {
-					shown++
-				}
-			}
-			if len(keys) != shown {
-				t.Errorf("at %d: %d symbols explained of %d", width, len(keys), len(symbols))
-			}
 			wantOrs := 0
 			for _, st := range steps {
 				for _, grp := range st.tags {
@@ -125,29 +116,16 @@ func TestEducateIsOnePicture(t *testing.T) {
 				t.Errorf("at %d: the picture needs %v and has %v", width, need.Y, b.Dy())
 			}
 			g := sc.layoutAt(b.Dx())
-			// What the symbols mean: each one the picture draws, and none
-			// it does not.
-			drawn := map[string]bool{}
-			for _, e := range g.envs {
-				drawn["A message"] = drawn["A message"] || e.e == envelope{}
-				drawn["Signed by you"] = drawn["Signed by you"] || e.e.seal
-				drawn["Encrypted to TARGET"] = drawn["Encrypted to TARGET"] || e.e.lock
-				drawn["Signed by its domain"] = drawn["Signed by its domain"] || e.e.stamp
-			}
-			for _, l := range g.lines {
-				drawn["TLS"] = drawn["TLS"] || l.tube > 0
-			}
-			var explained []string
+			// What the symbols mean: all of them, whatever is drawn.
+			var explained, every []string
 			for _, k := range keys {
 				explained = append(explained, k.sy.says)
-				if !drawn[k.sy.says] {
-					t.Errorf("at %d, %+v: %q is explained and not drawn", width, les, k.sy.says)
-				}
 			}
-			for what, is := range drawn {
-				if is && !slices.Contains(explained, what) {
-					t.Errorf("at %d, %+v: %q is drawn and not explained", width, les, what)
-				}
+			for _, sy := range symbols {
+				every = append(every, sy.says)
+			}
+			if !slices.Equal(explained, every) || len(every) != 5 {
+				t.Errorf("at %d, %+v: the key explains %q, want %q", width, les, explained, every)
 			}
 			local := sc.LocalBounds()
 			lk := sc.Look()
