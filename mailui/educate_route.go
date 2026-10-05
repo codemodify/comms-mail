@@ -24,7 +24,12 @@ import (
 // as tags; alternatives — either one does the job — stand across its line:
 // one over the other by a line across, side by side by a line down.
 
-type routeScene struct{ widget.Base }
+// plain draws a message neither signed nor encrypted: plain envelopes,
+// and nothing from you to the recipient past the servers.
+type routeScene struct {
+	widget.Base
+	plain bool
+}
 
 func newRouteScene() *routeScene {
 	s := &routeScene{}
@@ -381,8 +386,10 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		e2eTop = mid
 		groupTop = mid + e2eH + s.dip(10)
 	}
-	cE, _, _ := placeDown(lk, e2e, L, e2eTop, true)
-	group(cE, "e2e")
+	if !s.plain {
+		cE, _, _ := placeDown(lk, e2e, L, e2eTop, true)
+		group(cE, "e2e")
+	}
 	yd, tagsTop := groupTop+dnsD/2, groupTop+dnsD+gap
 	if beside {
 		yd, tagsTop = groupTop+dnsGroup/2, groupTop+(dnsGroup-dnsH)/2
@@ -439,12 +446,14 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	tunnel4 := routeLine{a: pt(R, top4), b: pt(R, foot4), ink: inkGood, head: true, tube: thV}
 	tunnel6 := routeLine{a: pt(R-r-s.dip(4), y2), b: pt(L+r+s.dip(4), y2), ink: inkGood, head: true, tube: thH}
 	fake := routeLine{a: pt(xa-dnd/2-s.dip(3), y2), b: pt(R+r+s.dip(4), y2), ink: inkBad, head: true}
-	g.lines = []routeLine{
-		{a: pt(L, top4), b: pt(L, foot4), ink: inkAccent, dashed: true, head: true},
-		tunnel2, tunnel4, tunnel6, fake,
-		{a: pt(xd+doff, yd-doff), b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: inkMuted, dashed: true},
-		{a: toTheirs, b: pt(R-thV/2-s.dip(3), y2-thH/2-s.dip(3)), ink: inkMuted, dashed: true},
+	if !s.plain {
+		g.lines = append(g.lines, routeLine{a: pt(L, top4), b: pt(L, foot4), ink: inkAccent, dashed: true, head: true})
 	}
+	g.lines = append(g.lines,
+		tunnel2, tunnel4, tunnel6, fake,
+		routeLine{a: pt(xd+doff, yd-doff), b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: inkMuted, dashed: true},
+		routeLine{a: toTheirs, b: pt(R-thV/2-s.dip(3), y2-thH/2-s.dip(3)), ink: inkMuted, dashed: true},
+	)
 	// On each line that carries the message: its number at the start, the
 	// envelope between it and the arrow's head.
 	carry := func(l routeLine, n int, e envelope) {
@@ -460,9 +469,11 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		c = c.Sub(box.Center().Sub(c))
 		g.envs = append(g.envs, placedEnv{c: c, e: e, step: n})
 	}
-	carry(tunnel2, 2, envelope{lock: true, seal: true})
-	carry(tunnel4, 4, envelope{lock: true, seal: true, stamp: true})
-	carry(tunnel6, 6, envelope{lock: true, seal: true, stamp: true})
+	sent := envelope{lock: !s.plain, seal: !s.plain}
+	carry(tunnel2, 2, sent)
+	sent.stamp = true
+	carry(tunnel4, 4, sent)
+	carry(tunnel6, 6, sent)
 	carry(fake, 8, envelope{stamp: true, bad: true})
 	return g
 }

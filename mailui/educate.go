@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"slices"
 	"strconv"
 
 	"github.com/codemodify/paintengine2d"
@@ -166,25 +167,89 @@ var steps = []step{
 	}, one("SPF", "DKIM", "DMARC")},
 }
 
+// plainSteps are the steps of a message neither signed nor encrypted:
+// the same road, but YOU send it as it is, and TARGET opens it with only
+// its domain vouched for.
+var plainSteps = func() []step {
+	out := slices.Clone(steps)
+	out[0] = step{"YOU send it as it is", []point{
+		pt("No signature: nothing proves you wrote it",
+			"Changes on the way go unnoticed"),
+		pt("No encryption: what it says is readable",
+			"By every server that carries or stores it"),
+		pt("The subject and every header too"),
+		pt("Each connection is still encrypted: steps 2, 4, 6"),
+		pt("Your domain still signs it: step 3"),
+	}, nil}
+	checks := out[4]
+	checks.points = slices.Clone(checks.points)
+	checks.points[len(checks.points)-1] = pt("Spam and malware filtered, then stored",
+		"As it came: readable by TARGET's provider")
+	out[4] = checks
+	out[6] = step{"TARGET opens it", []point{
+		pt("Trusts only its own provider's verdict",
+			"The topmost Authentication-Results",
+			"Senders can forge the ones under it"),
+		pt("Warns when a check failed"),
+		pt("No signature: only your domain is vouched for",
+			"Not that you wrote it"),
+		pt("Anyone on the way could have read it"),
+		pt("comms-mail flags look-alikes and false names"),
+		pt("Remote images blocked: they report opens",
+			"Loading one tells when, from where, with what"),
+	}, nil}
+	return out
+}()
+
+// stepsFor are the steps of a plain message, or a signed and encrypted
+// one.
+func stepsFor(plain bool) []step {
+	if plain {
+		return plainSteps
+	}
+	return steps
+}
+
 // fakeDomain is the attacker's look-alike domain, as the picture shows it.
 const fakeDomain = "acrne.com"
 
 // educateSection is the Educate page: the picture, what its symbols mean,
 // and each step.
+//
+// The picture and what its symbols mean stay together, in view; under
+// them, which message — not signed and not encrypted, or signed and
+// encrypted — and its steps, the picture showing that one.
 func educateSection() widget.Component {
+	scene := newRouteScene()
 	key := widgets.NewWrap()
-	key.Gap, key.LineGap = 16, 8
+	key.Gap, key.LineGap = 16, 6
 	for _, sy := range symbols {
 		key.Add(newSymbolItem(sy))
 	}
-	col := widgets.NewColumn(key, widgets.NewTitle("Step by step")).WithGap(14)
-	for i, st := range steps {
-		about := widgets.NewColumn(newStrong(st.title), altRow(st.tags), pointList(st.points)).WithGap(6)
-		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
-		row.AddFlex(about, 1)
-		col.Add(row)
+	list := widgets.NewColumn().WithGap(14)
+	show := func(plain bool) {
+		scene.plain = plain
+		scene.RequestLayout()
+		scene.Invalidate()
+		list.ClearChildren()
+		for i, st := range stepsFor(plain) {
+			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
+			if len(st.tags) > 0 {
+				about.Add(altRow(st.tags))
+			}
+			about.Add(pointList(st.points))
+			row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
+			row.AddFlex(about, 1)
+			list.Add(row)
+		}
+		list.RequestLayout()
+		list.Invalidate()
 	}
-	return newEducatePage(newRouteScene(), col)
+	which := widgets.NewSegmented([]string{"Not signed, not encrypted", "Signed and encrypted"}, 0, nil)
+	which.OnChange = func(i int) { show(i == 0) }
+	show(true)
+	words := widgets.NewColumn(which, widgets.NewTitle("Step by step"), list).WithGap(14)
+	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
 }
 
 // educatePage keeps the picture in view while the words under it scroll,
@@ -193,6 +258,7 @@ func educateSection() widget.Component {
 // scrolls with them.
 type educatePage struct {
 	widget.Base
+	top    widget.Component // what stays in view: the picture, and its key
 	scene  *routeScene
 	words  widget.Component
 	rule   *widgets.Separator
@@ -205,10 +271,10 @@ type educatePage struct {
 // of them.
 const pinMin = 160
 
-func newEducatePage(scene *routeScene, words widget.Component) *educatePage {
-	p := &educatePage{scene: scene, words: words, rule: widgets.NewSeparator()}
+func newEducatePage(top widget.Component, scene *routeScene, words widget.Component) *educatePage {
+	p := &educatePage{top: top, scene: scene, words: words, rule: widgets.NewSeparator()}
 	p.Init(p)
-	p.body = widgets.NewColumn(scene, words).WithGap(14)
+	p.body = widgets.NewColumn(top, words).WithGap(14)
 	p.scroll = widgets.NewScrollView(widgets.NewPad(4, p.body))
 	p.Add(p.scroll)
 	return p
@@ -231,21 +297,21 @@ func (p *educatePage) Arrange(r paintengine2d.Rect) {
 	p.SetBounds(r)
 	pad := style.Dip(p.Look(), 4)
 	inner := r.Dx() - 2*pad
-	sceneH := p.scene.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
+	topH := p.top.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
 	ruleH := p.rule.Measure(layout.Constraints{MaxW: r.Dx(), MaxH: -1}).Y
-	pin := r.Dy()-(pad+sceneH+pad+ruleH) >= style.Dip(p.Look(), pinMin)
+	pin := r.Dy()-(pad+topH+pad+ruleH) >= style.Dip(p.Look(), pinMin)
 	if pin != p.pinned {
 		p.pinned = pin
 		p.body.ClearChildren()
 		if pin {
 			p.Remove(p.scroll)
-			p.Add(p.scene)
+			p.Add(p.top)
 			p.Add(p.rule)
 			p.Add(p.scroll)
 		} else {
-			p.Remove(p.scene)
+			p.Remove(p.top)
 			p.Remove(p.rule)
-			p.body.Add(p.scene)
+			p.body.Add(p.top)
 		}
 		p.body.Add(p.words)
 		p.scroll.ScrollTo(0)
@@ -254,8 +320,8 @@ func (p *educatePage) Arrange(r paintengine2d.Rect) {
 		p.scroll.Arrange(r)
 		return
 	}
-	p.scene.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, sceneH))
-	top := r.Min.Y + pad + sceneH + pad
+	p.top.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, topH))
+	top := r.Min.Y + pad + topH + pad
 	p.rule.Arrange(paintengine2d.XYWH(r.Min.X, top, r.Dx(), ruleH))
 	p.scroll.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(r.Min.X, top+ruleH), Max: r.Max})
 }
