@@ -24,11 +24,12 @@ import (
 // as tags; alternatives — either one does the job — stand across its line:
 // one over the other by a line across, side by side by a line down.
 
-// plain draws a message neither signed nor encrypted: plain envelopes,
-// and nothing from you to the recipient past the servers.
+// signed and encrypted are the message drawn: its envelope with a seal,
+// a padlock, both or neither; and OpenPGP and S/MIME from YOU to TARGET
+// when either.
 type routeScene struct {
 	widget.Base
-	plain bool
+	signed, encrypted bool
 }
 
 func newRouteScene() *routeScene {
@@ -150,8 +151,8 @@ func (s *routeScene) columns(w float32) routeColumns {
 	eb := envBox(lk, paintengine2d.Pt(0, 0))
 	thV := eb.Dx() + s.dip(8)
 	named := func(i int) float32 { return mk + s.dip(4) + font.Advance(routeNames[i].name) }
-	_, e2eW, _ := placeDown(lk, steps[0].tags, 0, 0, true)
-	_, hop4W, _ := placeDown(lk, steps[3].tags, 0, 0, false)
+	_, e2eW, _ := placeDown(lk, e2eTags, 0, 0, true)
+	_, hop4W, _ := placeDown(lk, relayStep(false).tags, 0, 0, false)
 	var aw float32
 	for _, l := range []string{"Attacker", fakeDomain} {
 		aw = max(aw, font.Advance(l))
@@ -278,7 +279,8 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	eb := envBox(lk, paintengine2d.Pt(0, 0))
 	thH, thV := eb.Dy()+s.dip(8), eb.Dx()+s.dip(8) // the tunnels across, and down
 	head := s.dip(9)
-	e2e, hop2, hop4, hop6 := steps[0].tags, steps[1].tags, steps[3].tags, steps[5].tags
+	e2e, hop2, hop4, hop6 := e2eTags, submitStep.tags, relayStep(false).tags, fetchStep.tags
+	endToEnd := s.signed || s.encrypted
 	group := func(cs []placedChip, name string) {
 		for i := range cs {
 			cs[i].group = name
@@ -386,7 +388,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		e2eTop = mid
 		groupTop = mid + e2eH + s.dip(10)
 	}
-	if !s.plain {
+	if endToEnd {
 		cE, _, _ := placeDown(lk, e2e, L, e2eTop, true)
 		group(cE, "e2e")
 	}
@@ -446,7 +448,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	tunnel4 := routeLine{a: pt(R, top4), b: pt(R, foot4), ink: inkGood, head: true, tube: thV}
 	tunnel6 := routeLine{a: pt(R-r-s.dip(4), y2), b: pt(L+r+s.dip(4), y2), ink: inkGood, head: true, tube: thH}
 	fake := routeLine{a: pt(xa-dnd/2-s.dip(3), y2), b: pt(R+r+s.dip(4), y2), ink: inkBad, head: true}
-	if !s.plain {
+	if endToEnd {
 		g.lines = append(g.lines, routeLine{a: pt(L, top4), b: pt(L, foot4), ink: inkAccent, dashed: true, head: true})
 	}
 	g.lines = append(g.lines,
@@ -469,7 +471,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		c = c.Sub(box.Center().Sub(c))
 		g.envs = append(g.envs, placedEnv{c: c, e: e, step: n})
 	}
-	sent := envelope{lock: !s.plain, seal: !s.plain}
+	sent := envelope{lock: s.encrypted, seal: s.signed}
 	carry(tunnel2, 2, sent)
 	sent.stamp = true
 	carry(tunnel4, 4, sent)

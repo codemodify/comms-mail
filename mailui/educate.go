@@ -1,7 +1,6 @@
 package mailui
 
 import (
-	"slices"
 	"strconv"
 
 	"github.com/codemodify/paintengine2d"
@@ -49,12 +48,60 @@ func one(names ...string) [][]string {
 	return out
 }
 
-var steps = []step{
-	{"YOU sign and encrypt", []point{
+// e2eTags are the standards from YOU to TARGET, past every server: for
+// signing, and for encrypting.
+var e2eTags = [][]string{alt("OpenPGP", "S/MIME")}
+
+// The steps every message takes the same way: 2, 3, 6 and 8.
+var (
+	submitStep = step{"comms-mail hands it to YOUR SERVER", []point{
+		pt("TLS from the first byte: port 465"),
+		pt("Or STARTTLS: port 587",
+			"Starts plain, then upgrades to TLS",
+			"No upgrade offered: comms-mail does not send"),
+		pt("The server's certificate is checked",
+			"Issued by an authority, for that server's name"),
+		pt("Signs in: password, or OAuth token"),
+		pt("OAuth: scoped, revocable, no password",
+			"You sign in on the provider's own page",
+			"comms-mail gets a token for mail only"),
+		pt("SMTP hands the message over",
+			"First who from and who to, then the message"),
+	}, [][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}}
+	domainStep = step{"YOUR SERVER signs it and finds TARGET SERVER", []point{
+		pt("DKIM signs body and headers, for your domain",
+			"With the domain's key, kept on the server",
+			"Not your personal key: it proves the domain"),
+		pt("Its public key is in your domain's DNS",
+			"At selector._domainkey.yourdomain"),
+		pt("The MX record in DNS names TARGET SERVER"),
+	}, one("DKIM", "MX")}
+	fetchStep = step{"TARGET fetches it", []point{
+		pt("Signs in, over TLS"),
+		pt("IMAP (993): stays on the server, synced"),
+		pt("POP3 (995): downloaded to one device"),
+	}, [][]string{alt("TLS"), alt("IMAP", "POP3")}}
+	throughStep = step{"What gets through anyway", []point{
+		pt("acrne.com, posing as your supplier acme.com",
+			"\"rn\" reads as \"m\""),
+		pt("Its own SPF, DKIM and DMARC: all pass",
+			"The attacker owns that domain"),
+		pt("A real account, broken into: passes too"),
+		pt("Checks prove the domain, not the person"),
+		pt("Confirm payment changes another way"),
+		pt("Distrust attachments and links you did not expect"),
+	}, one("SPF", "DKIM", "DMARC")}
+)
+
+// What YOU do, by what is done: sign, encrypt, and what either brings.
+var (
+	signPoints = []point{
 		pt("Your private key signs it",
 			"A hash of the message, signed with that key",
 			"Anyone checks it with your public key",
 			"Any change after signing breaks it"),
+	}
+	encryptPoints = []point{
 		pt("A fresh session key encrypts it",
 			"A random AES key, for this message only",
 			"Not derived from any public key",
@@ -74,39 +121,71 @@ var steps = []step{
 			"A key from that secret encrypts the session key",
 			"The one-time public key travels with the message",
 			"TARGET rebuilds the secret with its private key"),
+	}
+	keyPoints = []point{
 		pt("OpenPGP: your own keys, trusted by fingerprint",
 			"Fingerprint: a hash of the public key",
 			"Compare it with the owner another way"),
 		pt("S/MIME: certificates from an authority",
 			"The authority vouches the key is the address's"),
+	}
+	hiddenPoints = []point{
 		pt("The subject is encrypted too; outside shows \"...\""),
 		pt("Still visible: sender, recipients, date, size"),
 		pt("No forward secrecy: a stolen key decrypts old mail",
 			"TARGET's key is long-term; TLS keys are thrown away"),
-	}, [][]string{alt("OpenPGP", "S/MIME")}},
-	{"comms-mail hands it to YOUR SERVER", []point{
-		pt("TLS from the first byte: port 465"),
-		pt("Or STARTTLS: port 587",
-			"Starts plain, then upgrades to TLS",
-			"No upgrade offered: comms-mail does not send"),
-		pt("The server's certificate is checked",
-			"Issued by an authority, for that server's name"),
-		pt("Signs in: password, or OAuth token"),
-		pt("OAuth: scoped, revocable, no password",
-			"You sign in on the provider's own page",
-			"comms-mail gets a token for mail only"),
-		pt("SMTP hands the message over",
-			"First who from and who to, then the message"),
-	}, [][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}},
-	{"YOUR SERVER signs it and finds TARGET SERVER", []point{
-		pt("DKIM signs body and headers, for your domain",
-			"With the domain's key, kept on the server",
-			"Not your personal key: it proves the domain"),
-		pt("Its public key is in your domain's DNS",
-			"At selector._domainkey.yourdomain"),
-		pt("The MX record in DNS names TARGET SERVER"),
-	}, one("DKIM", "MX")},
-	{"Server to server", []point{
+	}
+)
+
+// scenarioSteps are the eight steps of a message signed or not, encrypted
+// or not: each saying what is done, and nothing of what is not.
+func scenarioSteps(signed, encrypted bool) []step {
+	return []step{youStep(signed, encrypted), submitStep, domainStep, relayStep(encrypted),
+		checkStep(encrypted), fetchStep, targetStep(signed, encrypted), throughStep}
+}
+
+// youStep is 1: what YOU do to it.
+func youStep(signed, encrypted bool) step {
+	var points []point
+	title := "YOU send it as written"
+	switch {
+	case signed && encrypted:
+		title = "YOU sign and encrypt it"
+	case signed:
+		title = "YOU sign it"
+	case encrypted:
+		title = "YOU encrypt it"
+	}
+	if signed {
+		points = append(points, signPoints...)
+	}
+	if encrypted {
+		points = append(points, encryptPoints...)
+	}
+	if signed || encrypted {
+		points = append(points, keyPoints...)
+	}
+	if encrypted {
+		points = append(points, hiddenPoints...)
+	} else {
+		points = append(points, pt("Every server it passes can read it"))
+	}
+	if !signed && !encrypted {
+		return step{title, append([]point{pt("Headers, body and attachments, as written")}, points...), nil}
+	}
+	return step{title, points, e2eTags}
+}
+
+// relayStep is 4: server to server.
+func relayStep(encrypted bool) step {
+	last := pt("Each server reads the message",
+		"TLS encrypts the connection, not the stored mail")
+	if encrypted {
+		last = pt("Each server has the message, still encrypted",
+			"TLS encrypts the connection, not the stored mail",
+			"Step 1's encryption keeps what it says hidden")
+	}
+	return step{"Server to server", []point{
 		pt("SMTP, on port 25"),
 		pt("STARTTLS encrypts, if both offer it",
 			"Often without checking the certificate"),
@@ -116,11 +195,17 @@ var steps = []step{
 			"Published at mta-sts.domain, kept by senders"),
 		pt("DANE: the certificate pinned in DNSSEC",
 			"TLSA records, in signed DNS"),
-		pt("Each server still reads the message",
-			"TLS encrypts the connection, not the stored mail",
-			"Only step 1 hides what it says"),
-	}, [][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}},
-	{"TARGET SERVER checks the sender", []point{
+		last,
+	}, [][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}}
+}
+
+// checkStep is 5: TARGET SERVER checks the sender, and keeps the message.
+func checkStep(encrypted bool) step {
+	stored := "As it came: readable by TARGET's provider"
+	if encrypted {
+		stored = "As it came: what it says stays encrypted"
+	}
+	return step{"TARGET SERVER checks the sender", []point{
 		pt("SPF: is the sending server on the domain's list?",
 			"Checks the bounce address, not the visible From",
 			"Fails when mail is forwarded"),
@@ -132,82 +217,51 @@ var steps = []step{
 			"The domain's owner chooses, in its DNS"),
 		pt("ARC: keeps results through forwarders"),
 		pt("The verdict goes into Authentication-Results"),
-		pt("Spam and malware filtered, then stored",
-			"As it came: readable unless step 1 encrypted it"),
-	}, one("SPF", "DKIM", "DMARC", "ARC")},
-	{"TARGET fetches it", []point{
-		pt("Signs in, over TLS"),
-		pt("IMAP (993): stays on the server, synced"),
-		pt("POP3 (995): downloaded to one device"),
-	}, [][]string{alt("TLS"), alt("IMAP", "POP3")}},
-	{"TARGET verifies and opens it", []point{
-		pt("Trusts only its own provider's verdict",
-			"The topmost Authentication-Results",
-			"Senders can forge the ones under it"),
-		pt("Warns when a check failed"),
-		pt("Verifies the OpenPGP or S/MIME signature",
-			"With the sender's public key"),
-		pt("The signer must be the From address",
-			"Else anyone's valid signature would pass"),
-		pt("TARGET's private key decrypts it",
-			"It decrypts the session key; that decrypts the message"),
-		pt("comms-mail flags look-alikes and false names"),
-		pt("Remote images blocked: they report opens",
-			"Loading one tells when, from where, with what"),
-	}, [][]string{alt("OpenPGP", "S/MIME")}},
-	{"What gets through anyway", []point{
-		pt("acrne.com, posing as your supplier acme.com",
-			"\"rn\" reads as \"m\""),
-		pt("Its own SPF, DKIM and DMARC: all pass",
-			"The attacker owns that domain"),
-		pt("A real account, broken into: passes too"),
-		pt("Checks prove the domain, not the person"),
-		pt("Confirm payment changes another way"),
-		pt("Distrust attachments and links you did not expect"),
-	}, one("SPF", "DKIM", "DMARC")},
+		pt("Spam and malware filtered, then stored", stored),
+	}, one("SPF", "DKIM", "DMARC", "ARC")}
 }
 
-// plainSteps are the steps of a message neither signed nor encrypted:
-// the same road, but YOU send it as it is, and TARGET opens it with only
-// its domain vouched for.
-var plainSteps = func() []step {
-	out := slices.Clone(steps)
-	out[0] = step{"YOU send it as it is", []point{
-		pt("No signature: nothing proves you wrote it",
-			"Changes on the way go unnoticed"),
-		pt("No encryption: what it says is readable",
-			"By every server that carries or stores it"),
-		pt("The subject and every header too"),
-		pt("Each connection is still encrypted: steps 2, 4, 6"),
-		pt("Your domain still signs it: step 3"),
-	}, nil}
-	checks := out[4]
-	checks.points = slices.Clone(checks.points)
-	checks.points[len(checks.points)-1] = pt("Spam and malware filtered, then stored",
-		"As it came: readable by TARGET's provider")
-	out[4] = checks
-	out[6] = step{"TARGET opens it", []point{
+// targetStep is 7: what TARGET's app does with it.
+func targetStep(signed, encrypted bool) step {
+	title := "TARGET opens it"
+	switch {
+	case signed && encrypted:
+		title = "TARGET decrypts, verifies and opens it"
+	case signed:
+		title = "TARGET verifies and opens it"
+	case encrypted:
+		title = "TARGET decrypts and opens it"
+	}
+	points := []point{
 		pt("Trusts only its own provider's verdict",
 			"The topmost Authentication-Results",
 			"Senders can forge the ones under it"),
 		pt("Warns when a check failed"),
-		pt("No signature: only your domain is vouched for",
-			"Not that you wrote it"),
-		pt("Anyone on the way could have read it"),
+	}
+	if encrypted {
+		decrypt := pt("TARGET's private OpenPGP or S/MIME key decrypts it",
+			"It decrypts the session key; that decrypts the message")
+		if !signed {
+			decrypt.sub = append(decrypt.sub, "Shows it was for TARGET; not who sent it")
+		}
+		points = append(points, decrypt)
+	}
+	if signed {
+		points = append(points,
+			pt("Verifies the OpenPGP or S/MIME signature",
+				"With the sender's public key"),
+			pt("The signer must be the From address",
+				"Else anyone's valid signature would pass"))
+	}
+	points = append(points,
 		pt("comms-mail flags look-alikes and false names"),
 		pt("Remote images blocked: they report opens",
-			"Loading one tells when, from where, with what"),
-	}, nil}
-	return out
-}()
-
-// stepsFor are the steps of a plain message, or a signed and encrypted
-// one.
-func stepsFor(plain bool) []step {
-	if plain {
-		return plainSteps
+			"Loading one tells when, from where, with what"))
+	var tags [][]string
+	if signed || encrypted {
+		tags = e2eTags
 	}
-	return steps
+	return step{title, points, tags}
 }
 
 // fakeDomain is the attacker's look-alike domain, as the picture shows it.
@@ -217,8 +271,8 @@ const fakeDomain = "acrne.com"
 // and each step.
 //
 // The picture and what its symbols mean stay together, in view; under
-// them, which message — not signed and not encrypted, or signed and
-// encrypted — and its steps, the picture showing that one.
+// them, which message — signed or not, encrypted or not — and its steps,
+// the picture showing that one.
 func educateSection() widget.Component {
 	scene := newRouteScene()
 	key := widgets.NewWrap()
@@ -227,12 +281,13 @@ func educateSection() widget.Component {
 		key.Add(newSymbolItem(sy))
 	}
 	list := widgets.NewColumn().WithGap(14)
-	show := func(plain bool) {
-		scene.plain = plain
+	signed, encrypted := false, false
+	show := func() {
+		scene.signed, scene.encrypted = signed, encrypted
 		scene.RequestLayout()
 		scene.Invalidate()
 		list.ClearChildren()
-		for i, st := range stepsFor(plain) {
+		for i, st := range scenarioSteps(signed, encrypted) {
 			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
 			if len(st.tags) > 0 {
 				about.Add(altRow(st.tags))
@@ -245,9 +300,15 @@ func educateSection() widget.Component {
 		list.RequestLayout()
 		list.Invalidate()
 	}
-	which := widgets.NewSegmented([]string{"Not signed, not encrypted", "Signed and encrypted"}, 0, nil)
-	which.OnChange = func(i int) { show(i == 0) }
-	show(true)
+	// Which message: signed or not, encrypted or not — four, each its
+	// steps, the picture showing it.
+	sign := widgets.NewSegmented([]string{"Not signed", "Signed"}, 0, nil)
+	sign.OnChange = func(i int) { signed = i == 1; show() }
+	encrypt := widgets.NewSegmented([]string{"Not encrypted", "Encrypted"}, 0, nil)
+	encrypt.OnChange = func(i int) { encrypted = i == 1; show() }
+	show()
+	which := widgets.NewWrap(sign, encrypt)
+	which.Gap, which.LineGap = 12, 8
 	words := widgets.NewColumn(which, widgets.NewTitle("Step by step"), list).WithGap(14)
 	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
 }

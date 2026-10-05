@@ -43,7 +43,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 		t.Fatalf("the picture takes %d at least", narrowest)
 	}
 	for _, width := range []int{narrowest, 460, 560} {
-		for _, plain := range []bool{true, false} {
+		for _, sc := range []struct{ signed, encrypted bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
 			a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 			w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
 			if err != nil {
@@ -52,23 +52,26 @@ func TestEducateIsOnePicture(t *testing.T) {
 			page := educateSection()
 			w.SetContent(page)
 			a.PumpOnce()
-			// Which message: the first is shown first; the other by choosing
-			// it.
-			var which *widgets.Segmented
+			// Which message: signed or not, encrypted or not, neither
+			// first; the others by choosing them.
+			var which []*widgets.Segmented
 			widget.Walk(page, func(c widget.Component) {
 				if v, ok := c.(*widgets.Segmented); ok {
-					which = v
+					which = append(which, v)
 				}
 			})
-			if which == nil || which.Selected != 0 {
-				t.Fatalf("at %d: no choice of message, or not the plain one first", width)
+			if len(which) != 2 || which[0].Selected != 0 || which[1].Selected != 0 ||
+				!slices.Equal(which[0].Segments, []string{"Not signed", "Signed"}) || !slices.Equal(which[1].Segments, []string{"Not encrypted", "Encrypted"}) {
+				t.Fatalf("at %d: the choice of message is not signed or not, encrypted or not, neither first", width)
 			}
-			if !plain {
-				which.Selected = 1
-				which.OnChange(1)
-				a.PumpOnce()
+			for i, on := range []bool{sc.signed, sc.encrypted} {
+				if on {
+					which[i].Selected = 1
+					which[i].OnChange(1)
+				}
 			}
-			steps := stepsFor(plain)
+			a.PumpOnce()
+			steps := scenarioSteps(sc.signed, sc.encrypted)
 			var scenes []*routeScene
 			var numbers []int
 			var titles []*strong
@@ -251,9 +254,9 @@ func TestEducateIsOnePicture(t *testing.T) {
 			// Each carried message: inside its tunnel, or on its line; with
 			// what it carries by then; its number on the line too.
 			want := map[int]envelope{2: {lock: true, seal: true}, 4: {lock: true, seal: true, stamp: true}, 6: {lock: true, seal: true, stamp: true}, 8: {stamp: true, bad: true}}
-			if plain {
-				want = map[int]envelope{2: {}, 4: {stamp: true}, 6: {stamp: true}, 8: {stamp: true, bad: true}}
-			}
+			want[2] = envelope{lock: sc.encrypted, seal: sc.signed}
+			want[4] = envelope{lock: sc.encrypted, seal: sc.signed, stamp: true}
+			want[6] = want[4]
 			got := map[int]envelope{}
 			for _, e := range g.envs {
 				got[e.step] = e.e
@@ -312,7 +315,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 				}
 			}
 			wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags, "dns": dnsTags}
-			if plain {
+			if !sc.signed && !sc.encrypted {
 				delete(wantTags, "e2e")
 				if len(chipsOf["e2e"]) > 0 || slices.ContainsFunc(g.lines, func(l routeLine) bool { return l.ink == inkAccent }) {
 					t.Errorf("at %d: a plain message, drawn end to end", width)
@@ -353,7 +356,13 @@ func TestEducateIsOnePicture(t *testing.T) {
 			w.Close()
 		}
 	}
-	for i, st := range slices.Concat(plainSteps, steps) {
+	var all []step
+	for _, sig := range []bool{false, true} {
+		for _, enc := range []bool{false, true} {
+			all = append(all, scenarioSteps(sig, enc)...)
+		}
+	}
+	for i, st := range all {
 		var all []string
 		for _, p := range st.points {
 			all = append(all, p.text)
@@ -376,7 +385,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(steps[7].points[0].text, fakeDomain) || !strings.Contains(plainSteps[7].points[0].text, fakeDomain) {
+	if !strings.Contains(throughStep.points[0].text, fakeDomain) {
 		t.Errorf("step 8 does not name %s", fakeDomain)
 	}
 }
@@ -455,4 +464,47 @@ func TestEducatePinsThePicture(t *testing.T) {
 	w.SetSize(560, 900)
 	a.PumpOnce()
 	pinned(true)
+}
+
+// Each message's steps say what is done to it and nothing of what is not:
+// unsigned, steps 1 and 7 say nothing of a signature; unencrypted,
+// nothing of a session key or decrypting; and no point is only that
+// something is not done.
+func TestEducateSaysOnlyWhatIsDone(t *testing.T) {
+	for _, signed := range []bool{false, true} {
+		for _, encrypted := range []bool{false, true} {
+			st := scenarioSteps(signed, encrypted)
+			for _, n := range []int{0, 6} {
+				var words []string
+				words = append(words, st[n].title)
+				for _, p := range st[n].points {
+					words = append(words, p.text)
+					words = append(words, p.sub...)
+				}
+				said := strings.ToLower(strings.Join(words, "\n"))
+				if !signed && (strings.Contains(said, "signature") || strings.Contains(said, "sign")) {
+					t.Errorf("signed %v, encrypted %v: step %d speaks of signing:\n%s", signed, encrypted, n+1, said)
+				}
+				if !encrypted && (strings.Contains(said, "session key") || strings.Contains(said, "decrypt") || strings.Contains(said, "encrypt")) {
+					t.Errorf("signed %v, encrypted %v: step %d speaks of encrypting:\n%s", signed, encrypted, n+1, said)
+				}
+				signs, crypts := "signs it", "encrypts it" // what YOU do, in step 1
+				if n == 6 {
+					signs, crypts = "signature", "decrypts it" // and TARGET, in 7
+				}
+				if signed && !strings.Contains(said, signs) || encrypted && !strings.Contains(said, crypts) {
+					t.Errorf("signed %v, encrypted %v: step %d leaves out what is done:\n%s", signed, encrypted, n+1, said)
+				}
+			}
+			for _, s := range st {
+				for _, p := range s.points {
+					for _, text := range append([]string{p.text}, p.sub...) {
+						if strings.HasPrefix(text, "No signature") || strings.HasPrefix(text, "No encryption") {
+							t.Errorf("signed %v, encrypted %v: %q says only what is not done", signed, encrypted, text)
+						}
+					}
+				}
+			}
+		}
+	}
 }
