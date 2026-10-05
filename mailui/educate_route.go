@@ -145,6 +145,7 @@ type routeLayout struct {
 	marks        []sceneMark
 	chips        []placedChip
 	envs         []placedEnv
+	stops        []paintengine2d.Point // where the message goes no further
 	h            float32
 }
 
@@ -316,17 +317,29 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	thH, thV := eb.Dy()+s.dip(8), eb.Dx()+s.dip(8) // the tunnels across, and down
 	head := s.dip(9)
 	l := s.l
-	e2e, hop2, hop4, hop6 := e2eTags, submitStep(l.tls).tags, relayStep(l).tags, fetchStep(l.tls).tags
-	dnsTags := dnsTagsFor(l)
+	// What is turned off still has its place, in red: DNS's four records,
+	// MTA-STS and DANE with TLS, and OpenPGP and S/MIME.
+	e2e, hop2, hop6 := e2eTags, submitStep(l.tls).tags, fetchStep(l.tls).tags
+	hop4 := relayStep(l).tags
+	if l.tls {
+		hop4 = relayStep(lesson{tls: true, mtaSTS: true, dane: true}).tags
+	}
+	dnsTags := one("MX", "SPF", "DKIM", "DMARC")
 	endToEnd := l.signed || l.encrypted
+	missing := map[string]bool{"MX": !l.mx, "SPF": !l.spf, "DKIM": !l.dkim, "DMARC": !l.dmarc,
+		"MTA-STS": l.tls && !l.mtaSTS, "DANE": l.tls && !l.dane, "OpenPGP": !endToEnd, "S/MIME": !endToEnd}
 	group := func(cs []placedChip, name string) {
 		for i := range cs {
 			cs[i].group = name
+			cs[i].missing = missing[cs[i].name] && name != "2" && name != "6"
 		}
 		g.chips = append(g.chips, cs...)
 	}
 	_, e2eW, e2eH := placeDown(lk, e2e, 0, 0, true)
 	attacker := []string{"Attacker", fakeDomain}
+	if !l.dmarc {
+		attacker = append(attacker, "or your domain") // nothing stops it forging yours
+	}
 	var aw float32
 	for _, l := range attacker {
 		aw = max(aw, font.Advance(l))
@@ -412,7 +425,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	under := xa-aw/2-(R+min(theirW/2, w-m-R))-s.dip(8) >= 0
 	need := mid + h4 + s.dip(4) + dnd/2
 	if !under {
-		need = mid + h4 + s.dip(10) + 2*fh + s.dip(4) + dnd/2
+		need = mid + h4 + s.dip(10) + float32(len(attacker))*fh + s.dip(4) + dnd/2
 	}
 	// Step 6's tags: over its tunnel, under DNS, where they fit between
 	// the line from YOU to TARGET and tunnel 4.
@@ -444,7 +457,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		groupTop = mid
 		e2eTop = foot4 - s.dip(4) - e2eH
 	}
-	if endToEnd {
+	{
 		cE, _, _ := placeDown(lk, e2e, L, e2eTop, true)
 		group(cE, "e2e")
 	}
@@ -457,7 +470,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		cD[i].alt = i
 	}
 	group(cD, "dns")
-	ay := y2 - dnd/2 - s.dip(4) - 2*fh
+	ay := y2 - dnd/2 - s.dip(4) - float32(len(attacker))*fh
 	if under {
 		ay = y2 + dnd/2 + s.dip(4)
 	}
@@ -483,7 +496,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		group(c6, "6")
 	}
 	if under {
-		foot = max(foot, ay+2*fh)
+		foot = max(foot, ay+float32(len(attacker))*fh)
 	}
 	g.h = foot + m
 
@@ -503,9 +516,20 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	along := R - thV/2 - s.dip(5)
 	corner := pt(along, yd)
 	// The connections: tunnels with TLS, plain lines without.
+	// The connections: tunnels with TLS; without, red lines — in the
+	// clear.
 	ink, tH, tV := inkGood, thH, thV
 	if !l.tls {
-		ink, tH, tV = inkMuted, 0, 0
+		ink, tH, tV = inkBad, 0, 0
+	}
+	// DNS's lines are red where what they look up is not there: the MX
+	// record your server asks, the records their server checks.
+	askYours, askTheirs := inkMuted, inkMuted
+	if !l.mx {
+		askYours = inkBad
+	}
+	if !l.spf || !l.dkim || !l.dmarc {
+		askTheirs = inkBad
 	}
 	tunnel2 := routeLine{a: pt(L+r+s.dip(4), g.y1), b: pt(R-r-s.dip(4), g.y1), ink: ink, head: true, tube: tH}
 	tunnel4 := routeLine{a: pt(R, top4), b: pt(R, foot4), ink: ink, head: true, tube: tV}
@@ -516,13 +540,13 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	}
 	g.lines = append(g.lines,
 		tunnel2, tunnel4, tunnel6, fake,
-		routeLine{a: dnsTop, b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: inkMuted, dashed: true},
-		routeLine{a: pt(xd+dnsW/2+s.dip(2), yd), b: corner, ink: inkMuted, dashed: true},
-		routeLine{a: corner, b: pt(along, y2-thH/2-s.dip(3)), ink: inkMuted, dashed: true},
+		routeLine{a: dnsTop, b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: askYours, dashed: true},
+		routeLine{a: pt(xd+dnsW/2+s.dip(2), yd), b: corner, ink: askTheirs, dashed: true},
+		routeLine{a: corner, b: pt(along, y2-thH/2-s.dip(3)), ink: askTheirs, dashed: true},
 	)
 	// On each line that carries the message: its number at the start, the
 	// envelope between it and the arrow's head.
-	carry := func(l routeLine, n int, e envelope) {
+	carry := func(l routeLine, n int, e envelope, stopped bool) {
 		dir := l.b.Sub(l.a).Normalize()
 		at := l.a.Add(dir.Mul(s.dip(3) + mk/2))
 		g.marks = append(g.marks, sceneMark{n, at.X, at.Y})
@@ -531,17 +555,39 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		c := from.Lerp(to, 0.5)
 		// The envelope's marks stand out to its right and over and under
 		// it: centre the whole of it.
+		if stopped {
+			// It goes no further: a stop where it would be.
+			g.stops = append(g.stops, c)
+			return
+		}
 		box := envBox(lk, c)
 		c = c.Sub(box.Center().Sub(c))
 		g.envs = append(g.envs, placedEnv{c: c, e: e, step: n})
 	}
 	sent := envelope{lock: l.encrypted, seal: l.signed}
-	carry(tunnel2, 2, sent)
+	carry(tunnel2, 2, sent, false)
 	sent.stamp = l.dkim
-	carry(tunnel4, 4, sent)
-	carry(tunnel6, 6, sent)
-	carry(fake, 8, envelope{stamp: true, bad: true})
+	carry(tunnel4, 4, sent, false)
+	// DMARC with neither SPF nor DKIM: TARGET SERVER rejects it.
+	carry(tunnel6, 6, sent, rejected(l))
+	carry(fake, 8, envelope{stamp: true, bad: true}, false)
 	return g
+}
+
+// rejected says TARGET SERVER refuses l's message: DMARC with nothing
+// that can pass it.
+func rejected(l lesson) bool { return l.dmarc && !l.spf && !l.dkim }
+
+// stopSize is a stop's size across.
+const stopSize = 22
+
+// drawStop draws a stop centred at c: a red disc with a cross.
+func drawStop(ctx *paintengine2d.Context, lk style.LookAndFeel, c paintengine2d.Point) {
+	p := lk.Palette()
+	d := style.Dip(lk, stopSize)
+	ctx.DrawCircle(c, d/2, paintengine2d.Fill(p.Ink(p.Danger)))
+	sz := d * 0.6
+	style.DrawToolIcon(ctx, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), style.IconClose, p.TextOnAccent, style.IconSetOf(lk))
 }
 
 // flat is groups' tags, one after another.
@@ -635,7 +681,14 @@ func (s *routeScene) Paint(ctx *paintengine2d.Context) {
 		}
 		font.Draw(ctx, t.text, at(t.at), ink)
 	}
+	for _, st := range g.stops {
+		drawStop(ctx, lk, at(st))
+	}
 	for _, c := range g.chips {
+		if c.missing {
+			drawMissingChip(ctx, lk, c.name, c.r.Translate(b.Min))
+			continue
+		}
 		drawChip(ctx, lk, c.name, c.r.Translate(b.Min))
 	}
 	for _, e := range g.envs {

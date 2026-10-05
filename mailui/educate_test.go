@@ -178,6 +178,14 @@ func TestEducateIsOnePicture(t *testing.T) {
 			for _, e := range g.envs {
 				envs = append(envs, box{"envelope " + string(rune('0'+e.step)), envBox(lk, e.c), 0, e.step})
 			}
+			// A stop is where the message would have been, on step 6's line.
+			stop := style.Dip(lk, stopSize)
+			for _, st := range g.stops {
+				envs = append(envs, box{"stop", paintengine2d.XYWH(st.X-stop/2, st.Y-stop/2, stop, stop), stop / 2, 6})
+			}
+			if (len(g.stops) == 1) != rejected(les) || len(g.stops) > 1 {
+				t.Errorf("at %d, %+v: %d stops", width, les, len(g.stops))
+			}
 			meet := func(x, y box) bool {
 				switch {
 				case x.radius > 0 && y.radius > 0:
@@ -204,7 +212,11 @@ func TestEducateIsOnePicture(t *testing.T) {
 			// The lines and tunnels: through nothing but their own number and
 			// envelope; a line through no tunnel either.
 			stepOf := map[routeLine]int{}
-			for _, e := range g.envs {
+			carried := slices.Clone(g.envs)
+			for _, st := range g.stops {
+				carried = append(carried, placedEnv{c: st, step: 6})
+			}
+			for _, e := range carried {
 				for _, l := range g.lines {
 					if l.head && l.ink != inkAccent && (l.tube > 0 && l.body().Contains(e.c) || l.tube == 0 && distToSegment(e.c, l.a, l.b) < 3) {
 						stepOf[l] = e.step
@@ -258,10 +270,16 @@ func TestEducateIsOnePicture(t *testing.T) {
 			for _, e := range g.envs {
 				got[e.step] = e.e
 			}
+			if rejected(les) {
+				delete(want, 6) // stopped: it goes no further
+			}
 			for n, e := range want {
 				if got[n] != e {
 					t.Errorf("at %d: step %d carries %+v, want %+v", width, n, got[n], e)
 				}
+			}
+			if _, carriedOn := got[6]; carriedOn == rejected(les) {
+				t.Errorf("at %d, %+v: step 6 carries it: %v", width, les, carriedOn)
 			}
 			for l, n := range stepOf {
 				for _, e := range envs {
@@ -276,7 +294,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 				}
 			}
 			if len(stepOf) != 4 {
-				t.Errorf("at %d: %d lines carry the message, want 4", width, len(stepOf))
+				t.Errorf("at %d: %d lines carry the message or stop it, want 4", width, len(stepOf))
 			}
 			for _, rn := range routeNames {
 				found := false
@@ -294,29 +312,79 @@ func TestEducateIsOnePicture(t *testing.T) {
 
 			// The tags: each step's groups, drawn by it; alternatives across
 			// its line.
+			// What is in use is drawn as it is; what is turned off where it
+			// would be, in red, struck through.
 			byGroup := map[string][][]string{}
 			chipsOf := map[string]map[int][]placedChip{}
+			var gone []string
 			for _, c := range g.chips {
 				if chipsOf[c.group] == nil {
 					chipsOf[c.group] = map[int][]placedChip{}
 				}
 				chipsOf[c.group][c.alt] = append(chipsOf[c.group][c.alt], c)
+				if c.missing {
+					gone = append(gone, c.name)
+				}
 			}
 			for grp, alts := range chipsOf {
 				for i := 0; i < len(alts); i++ {
 					var names []string
 					for _, c := range alts[i] {
-						names = append(names, c.name)
+						if !c.missing {
+							names = append(names, c.name)
+						}
 					}
-					byGroup[grp] = append(byGroup[grp], names)
+					if len(names) > 0 {
+						byGroup[grp] = append(byGroup[grp], names)
+					}
 				}
+			}
+			var off []string
+			for _, o := range []struct {
+				name string
+				off  bool
+			}{
+				{"OpenPGP", !les.signed && !les.encrypted}, {"S/MIME", !les.signed && !les.encrypted},
+				{"MTA-STS", les.tls && !les.mtaSTS}, {"DANE", les.tls && !les.dane},
+				{"MX", !les.mx}, {"SPF", !les.spf}, {"DKIM", !les.dkim}, {"DMARC", !les.dmarc},
+			} {
+				if o.off {
+					off = append(off, o.name)
+				}
+			}
+			slices.Sort(gone)
+			slices.Sort(off)
+			if !slices.Equal(gone, off) {
+				t.Errorf("at %d, %+v: drawn as missing %v, want %v", width, les, gone, off)
 			}
 			wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags, "dns": dnsTagsFor(les)}
 			if !les.signed && !les.encrypted {
 				delete(wantTags, "e2e")
-				if len(chipsOf["e2e"]) > 0 || slices.ContainsFunc(g.lines, func(l routeLine) bool { return l.ink == inkAccent }) {
+				if slices.ContainsFunc(g.lines, func(l routeLine) bool { return l.ink == inkAccent }) {
 					t.Errorf("at %d: a plain message, drawn end to end", width)
 				}
+			}
+			// Red where it goes wrong: the connections without TLS, DNS's
+			// line to your server without MX, to theirs without any of
+			// SPF, DKIM and DMARC.
+			for _, l := range g.lines {
+				switch {
+				case l.head && l.ink != inkAccent && stepOf[l] >= 2 && stepOf[l] <= 6:
+					if (l.ink == inkBad) != !les.tls {
+						t.Errorf("at %d, %+v: step %d's connection red: %v", width, les, stepOf[l], l.ink == inkBad)
+					}
+				case l.dashed && l.ink != inkAccent && l.b.Y < l.a.Y:
+					if (l.ink == inkBad) != !les.mx {
+						t.Errorf("at %d, %+v: the MX lookup red: %v", width, les, l.ink == inkBad)
+					}
+				case l.dashed && l.ink != inkAccent:
+					if (l.ink == inkBad) != (!les.spf || !les.dkim || !les.dmarc) {
+						t.Errorf("at %d, %+v: the checks' lookup red: %v", width, les, l.ink == inkBad)
+					}
+				}
+			}
+			if forged := slices.ContainsFunc(g.texts, func(tx placedText) bool { return tx.text == "or your domain" && tx.bad }); forged != !les.dmarc {
+				t.Errorf("at %d, %+v: the attacker forges your domain: %v", width, les, forged)
 			}
 			for grp, tags := range wantTags {
 				if !slices.EqualFunc(byGroup[grp], tags, slices.Equal) {
@@ -658,5 +726,70 @@ func TestEducateExplainsWhatIsOff(t *testing.T) {
 		}{{l.mx, "MX"}, {l.spf, "SPF"}, {l.dkim, "DKIM"}, {l.dmarc, "DMARC"}} {
 			check(r.on == slices.Contains(dns, r.name), "DNS's tags: "+r.name)
 		}
+	}
+}
+
+// What goes wrong is said for every road: each thing left out, what
+// follows from it, and nothing when nothing is left out. The page shows
+// it under the ticks, in red, as they change.
+func TestEducateSaysWhatGoesWrong(t *testing.T) {
+	for _, l := range lessons() {
+		var said []string
+		for _, p := range problems(l) {
+			said = append(said, p.text)
+		}
+		has := func(prefix string) bool {
+			return slices.ContainsFunc(said, func(s string) bool { return strings.HasPrefix(s, prefix) })
+		}
+		for _, c := range []struct {
+			when   bool
+			prefix string
+		}{
+			{!l.signed, "Not signed"}, {!l.encrypted, "Not encrypted"},
+			{!l.tls, "No TLS"}, {l.tls && !l.mtaSTS && !l.dane, "Between servers, TLS can be stripped"},
+			{!l.mx, "No MX"}, {!l.spf, "No SPF"}, {!l.dkim, "No DKIM"},
+			{rejected(l), "DMARC fails it"}, {l.dmarc && l.spf && !l.dkim, "DMARC rests on SPF"},
+			{!l.dmarc, "No DMARC"},
+		} {
+			if has(c.prefix) != c.when {
+				t.Errorf("%+v: %q said: %v", l, c.prefix, has(c.prefix))
+			}
+		}
+		all := l.signed && l.encrypted && l.tls && l.mx && l.spf && l.dkim && l.dmarc && (l.mtaSTS || l.dane)
+		if (len(said) == 0) != all {
+			t.Errorf("%+v: %d things go wrong", l, len(said))
+		}
+	}
+
+	// On the page: under the ticks, red, changing with them.
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 900, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	page := educateSection()
+	w.SetContent(page)
+	a.PumpOnce()
+	shown := func() (red []string) {
+		widget.Walk(page, func(c widget.Component) {
+			if v, ok := c.(*widgets.Label); ok && v.Tone == widgets.ToneDanger && v.Text != "" {
+				red = append(red, v.Text)
+			}
+		})
+		return red
+	}
+	for _, l := range []lesson{firstLesson, func() lesson { l := firstLesson; l.mx = false; return l }()} {
+		choose(t, a, page, l)
+		var want []string
+		for _, p := range problems(l) {
+			want = append(want, p.text)
+		}
+		if got := shown(); !slices.Equal(got, want) {
+			t.Errorf("%+v: the page says %q goes wrong, want %q", l, got, want)
+		}
+		page = educateSection() // the ticks start over
+		w.SetContent(page)
+		a.PumpOnce()
 	}
 }

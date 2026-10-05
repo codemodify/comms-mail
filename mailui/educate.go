@@ -405,6 +405,94 @@ func targetStep(signed, encrypted bool) step {
 	return step{title, points, tags}
 }
 
+// problem is what goes wrong on a lesson's road, in a few words, and
+// what follows.
+type problem struct {
+	text string
+	sub  []string
+}
+
+// problems are what goes wrong with what l leaves out — the picture
+// shows where, in red — on the road's order: the message, the
+// connections, the domains. None, and nothing on the way reads or changes
+// the message.
+func problems(l lesson) []problem {
+	var out []problem
+	add := func(text string, sub ...string) { out = append(out, problem{text, sub}) }
+	if !l.signed {
+		add("Not signed: nothing proves you wrote it")
+	}
+	if !l.encrypted {
+		add("Not encrypted: every server on the way reads it",
+			"Stored readable at both providers")
+	}
+	if !l.tls {
+		add("No TLS: anyone on the network reads it",
+			"Your password or sign-in token too",
+			"The red lines: connections in the clear")
+	} else if !l.mtaSTS && !l.dane {
+		add("Between servers, TLS can be stripped",
+			"An attacker in between makes it plain")
+	}
+	if !l.mx {
+		add("No MX: YOUR SERVER cannot look TARGET SERVER up",
+			"It tries the domain's own address (A or AAAA)",
+			"None there: the mail bounces back to you")
+	}
+	if !l.spf {
+		add("No SPF: nothing lists your domain's servers",
+			"Any server can claim to send for it")
+	}
+	if !l.dkim {
+		add("No DKIM: nothing shows it arrived unchanged",
+			"Forwarded mail loses all proof")
+	}
+	switch {
+	case l.dmarc && !l.spf && !l.dkim:
+		add("DMARC fails it: TARGET SERVER rejects it",
+			"TARGET never gets it, nor your domain's other mail")
+	case l.dmarc && !l.dkim:
+		add("DMARC rests on SPF: forwarded mail fails it")
+	case !l.dmarc:
+		add("No DMARC: your exact domain can be forged",
+			"TARGET SERVER only guesses")
+	}
+	return out
+}
+
+// problemList is what goes wrong, in red; or, when nothing does, that.
+func problemList(ps []problem) widget.Component {
+	col := widgets.NewColumn().WithGap(6)
+	if len(ps) == 0 {
+		ok := widgets.NewIconLabel(style.IconCheck, "")
+		ok.Tone = widgets.ToneSuccess
+		row := widgets.NewRow(ok).WithGap(6).WithAlign(layout.AlignStart)
+		says := widgets.NewColumn(wrapLabel("Nothing on the way reads or changes it"))
+		hint := wrapLabel("Look-alikes still get through: step 8")
+		hint.Tone = widgets.ToneMuted
+		says.Add(hint)
+		row.AddFlex(says, 1)
+		col.Add(row)
+		return col
+	}
+	for _, p := range ps {
+		mark := widgets.NewIconLabel(style.IconWarning, "")
+		mark.Tone = widgets.ToneDanger
+		row := widgets.NewRow(mark).WithGap(6).WithAlign(layout.AlignStart)
+		text := wrapLabel(p.text)
+		text.Tone = widgets.ToneDanger
+		says := widgets.NewColumn(text).WithGap(2)
+		for _, sub := range p.sub {
+			l := wrapLabel(sub)
+			l.Tone = widgets.ToneMuted
+			says.Add(l)
+		}
+		row.AddFlex(says, 1)
+		col.Add(row)
+	}
+	return col
+}
+
 // fakeDomain is the attacker's look-alike domain, as the picture shows it.
 const fakeDomain = "acrne.com"
 
@@ -423,6 +511,7 @@ func educateSection() widget.Component {
 		key.Add(newSymbolItem(sy))
 	}
 	list := widgets.NewColumn().WithGap(14)
+	wrong := widgets.NewColumn()
 	l := firstLesson
 	var mtaSTS, dane *widgets.Checkbox
 	show := func() {
@@ -435,6 +524,9 @@ func educateSection() widget.Component {
 			mtaSTS.SetEnabled(l.tls)
 			dane.SetEnabled(l.tls)
 		}
+		wrong.ClearChildren()
+		wrong.Add(problemList(problems(l)))
+		wrong.RequestLayout()
 		list.ClearChildren()
 		for i, st := range scenarioSteps(l) {
 			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
@@ -469,7 +561,7 @@ func educateSection() widget.Component {
 		group("Domains:", check("MX", &l.mx), check("SPF", &l.spf), check("DKIM", &l.dkim), check("DMARC", &l.dmarc)),
 	).WithGap(6)
 	show()
-	words := widgets.NewColumn(which, widgets.NewTitle("Step by step"), list).WithGap(14)
+	words := widgets.NewColumn(which, widgets.NewTitle("What goes wrong"), wrong, widgets.NewTitle("Step by step"), list).WithGap(14)
 	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
 }
 
@@ -608,6 +700,23 @@ func drawChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r p
 	f.Draw(ctx, name, paintengine2d.Pt(r.Min.X+(r.Dx()-f.Advance(name))/2, r.Min.Y+(r.Dy()-f.Height())/2), ink)
 }
 
+// drawMissingChip draws name as a tag that is not there: dashed and in
+// red, struck through — where it would be, so its absence shows.
+func drawMissingChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r paintengine2d.Rect) {
+	p := lk.Palette()
+	ink := p.Ink(p.Danger)
+	rad := r.Dy() / 2
+	pen := paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25))
+	pen.Stroke.Dash = []float32{style.Dip(lk, 3), style.Dip(lk, 2)}
+	ctx.DrawRoundRect(r, rad, rad, paintengine2d.Fill(p.Field))
+	ctx.DrawRoundRect(r, rad, rad, pen)
+	f := lk.Font()
+	x := r.Min.X + (r.Dx()-f.Advance(name))/2
+	f.Draw(ctx, name, paintengine2d.Pt(x, r.Min.Y+(r.Dy()-f.Height())/2), ink)
+	y := r.Center().Y
+	ctx.DrawLine(paintengine2d.Pt(x-style.Dip(lk, 2), y), paintengine2d.Pt(x+f.Advance(name)+style.Dip(lk, 2), y), paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
+}
+
 // chipLines breaks names into lines of tags no wider than w, and says how
 // wide each line is; a tag wider than w has a line of its own.
 func chipLines(lk style.LookAndFeel, names []string, w float32) (lines [][]string, widths []float32) {
@@ -633,12 +742,14 @@ func chipLines(lk style.LookAndFeel, names []string, w float32) (lines [][]strin
 
 // placedChip is a tag where it is drawn; group is what it is drawn by in
 // the picture, and alt which of that step's groups of alternatives it is
-// in.
+// in. missing is a standard turned off: drawn where it would be, in red,
+// struck through.
 type placedChip struct {
-	name  string
-	r     paintengine2d.Rect
-	group string
-	alt   int
+	name    string
+	r       paintengine2d.Rect
+	group   string
+	alt     int
+	missing bool
 }
 
 // placeChips lays names out in lines no wider than w from top, each line
