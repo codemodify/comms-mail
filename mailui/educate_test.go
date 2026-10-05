@@ -7,6 +7,7 @@ import (
 
 	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit"
+	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
@@ -43,7 +44,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 		t.Fatalf("the picture takes %d at least", narrowest)
 	}
 	for _, width := range []int{narrowest, 460, 560} {
-		for _, sc := range scenarios() {
+		for _, les := range scenarios() {
 			a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 			w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
 			if err != nil {
@@ -52,27 +53,10 @@ func TestEducateIsOnePicture(t *testing.T) {
 			page := educateSection()
 			w.SetContent(page)
 			a.PumpOnce()
-			// Which message: signed or not, encrypted or not, neither
-			// first; the others by choosing them.
-			var which []*widgets.Segmented
-			widget.Walk(page, func(c widget.Component) {
-				if v, ok := c.(*widgets.Segmented); ok {
-					which = append(which, v)
-				}
-			})
-			if len(which) != 3 || which[0].Selected != 0 || which[1].Selected != 0 || which[2].Selected != 0 ||
-				!slices.Equal(which[0].Segments, []string{"Not signed", "Signed"}) || !slices.Equal(which[1].Segments, []string{"Not encrypted", "Encrypted"}) ||
-				!slices.Equal(which[2].Segments, []string{"With TLS", "Without TLS"}) {
-				t.Fatalf("at %d: the choice of message is not signed or not, encrypted or not, TLS or not; neither, with TLS first", width)
-			}
-			for i, chosen := range []bool{sc.signed, sc.encrypted, !sc.tls} {
-				if chosen {
-					which[i].Selected = 1
-					which[i].OnChange(1)
-				}
-			}
-			a.PumpOnce()
-			steps := scenarioSteps(sc.signed, sc.encrypted, sc.tls)
+			// Which message and road: the first lesson first, the others
+			// by ticking and unticking.
+			choose(t, a, page, les)
+			steps := scenarioSteps(les)
 			var scenes []*routeScene
 			var numbers []int
 			var titles []*strong
@@ -112,7 +96,13 @@ func TestEducateIsOnePicture(t *testing.T) {
 			if !slices.Equal(letters, wantLetters) {
 				t.Errorf("at %d: the points are lettered %v, want %v", width, letters, wantLetters)
 			}
-			if len(keys) != len(symbols) || len(symbols) != 6 {
+			shown := 0
+			for _, sy := range symbols {
+				if sy.when == nil || sy.when(les) {
+					shown++
+				}
+			}
+			if len(keys) != shown {
 				t.Errorf("at %d: %d symbols explained of %d", width, len(keys), len(symbols))
 			}
 			wantOrs := 0
@@ -259,8 +249,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 			// Each carried message: inside its tunnel, or on its line; with
 			// what it carries by then; its number on the line too.
 			want := map[int]envelope{2: {lock: true, seal: true}, 4: {lock: true, seal: true, stamp: true}, 6: {lock: true, seal: true, stamp: true}, 8: {stamp: true, bad: true}}
-			want[2] = envelope{lock: sc.encrypted, seal: sc.signed}
-			want[4] = envelope{lock: sc.encrypted, seal: sc.signed, stamp: true}
+			want[2] = envelope{lock: les.encrypted, seal: les.signed}
+			want[4] = envelope{lock: les.encrypted, seal: les.signed, stamp: les.dkim}
 			want[6] = want[4]
 			got := map[int]envelope{}
 			for _, e := range g.envs {
@@ -319,8 +309,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 					byGroup[grp] = append(byGroup[grp], names)
 				}
 			}
-			wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags, "dns": dnsTags}
-			if !sc.signed && !sc.encrypted {
+			wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags, "dns": dnsTagsFor(les)}
+			if !les.signed && !les.encrypted {
 				delete(wantTags, "e2e")
 				if len(chipsOf["e2e"]) > 0 || slices.ContainsFunc(g.lines, func(l routeLine) bool { return l.ink == inkAccent }) {
 					t.Errorf("at %d: a plain message, drawn end to end", width)
@@ -362,8 +352,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 		}
 	}
 	var all []step
-	for _, sc := range scenarios() {
-		all = append(all, scenarioSteps(sc.signed, sc.encrypted, sc.tls)...)
+	for _, sc := range lessons() {
+		all = append(all, scenarioSteps(sc)...)
 	}
 	for i, st := range all {
 		var all []string
@@ -391,28 +381,96 @@ func TestEducateIsOnePicture(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(throughStep.points[0].text, fakeDomain) {
+	if !strings.Contains(throughStep(firstLesson).points[0].text, fakeDomain) {
 		t.Errorf("step 8 does not name %s", fakeDomain)
 	}
 }
 
 func abs32(v float32) float32 { return max(v, -v) }
 
-// scenario is one of the messages Educate explains.
-type scenario struct{ signed, encrypted, tls bool }
-
-// scenarios are all eight: signed or not, encrypted or not, over
-// connections with TLS or without.
-func scenarios() []scenario {
-	var out []scenario
-	for _, tls := range []bool{true, false} {
+// scenarios are the lessons the picture is checked at: the first, and
+// signed or not, encrypted or not, TLS or not, with the domains doing all
+// they can; then each of the domains' standards turned off, all of them,
+// and DMARC with neither SPF nor DKIM.
+func scenarios() []lesson {
+	var out []lesson
+	for _, tls := range []bool{false, true} {
 		for _, signed := range []bool{false, true} {
 			for _, encrypted := range []bool{false, true} {
-				out = append(out, scenario{signed, encrypted, tls})
+				l := firstLesson
+				l.signed, l.encrypted, l.tls = signed, encrypted, tls
+				out = append(out, l)
 			}
 		}
 	}
+	all := lesson{signed: true, encrypted: true, tls: true, mx: true, spf: true, dkim: true, dmarc: true, mtaSTS: true, dane: true}
+	for _, off := range []func(*lesson){
+		func(l *lesson) { l.mx = false }, func(l *lesson) { l.spf = false }, func(l *lesson) { l.dkim = false },
+		func(l *lesson) { l.dmarc = false }, func(l *lesson) { l.mtaSTS = false }, func(l *lesson) { l.dane = false },
+		func(l *lesson) { l.mtaSTS, l.dane = false, false }, func(l *lesson) { l.spf, l.dkim = false, false },
+		func(l *lesson) {
+			l.mx, l.spf, l.dkim, l.dmarc, l.mtaSTS, l.dane = false, false, false, false, false, false
+		},
+	} {
+		l := all
+		off(&l)
+		out = append(out, l)
+	}
 	return out
+}
+
+// lessons are every lesson there is: 2⁹.
+func lessons() []lesson {
+	var out []lesson
+	for n := range 1 << 9 {
+		b := func(i int) bool { return n&(1<<i) != 0 }
+		out = append(out, lesson{b(0), b(1), b(2), b(3), b(4), b(5), b(6), b(7), b(8)})
+	}
+	return out
+}
+
+// choose sets page's ticks to l: the first lesson's are checked first —
+// nothing done to the message, no TLS, the domains doing all they can —
+// and MTA-STS and DANE can be ticked only with TLS.
+func choose(t *testing.T, a *app.Application, page widget.Component, l lesson) {
+	t.Helper()
+	boxes := map[string]*widgets.Checkbox{}
+	widget.Walk(page, func(c widget.Component) {
+		if v, ok := c.(*widgets.Checkbox); ok {
+			boxes[v.Text] = v
+		}
+	})
+	want := []struct {
+		name  string
+		first bool
+		to    bool
+	}{
+		{"Signed", false, l.signed}, {"Encrypted", false, l.encrypted}, {"TLS", false, l.tls},
+		{"MTA-STS", true, l.mtaSTS}, {"DANE", true, l.dane},
+		{"MX", true, l.mx}, {"SPF", true, l.spf}, {"DKIM", true, l.dkim}, {"DMARC", true, l.dmarc},
+	}
+	if len(boxes) != len(want) {
+		t.Fatalf("%d ticks, want %d", len(boxes), len(want))
+	}
+	for _, w := range want {
+		b := boxes[w.name]
+		if b == nil || b.Checked != w.first {
+			t.Fatalf("%s first ticked %v, want %v", w.name, b != nil && b.Checked, w.first)
+		}
+	}
+	if boxes["MTA-STS"].Enabled() || boxes["DANE"].Enabled() {
+		t.Fatal("MTA-STS and DANE can be ticked without TLS")
+	}
+	for _, w := range want {
+		if b := boxes[w.name]; b.Checked != w.to {
+			b.Checked = w.to
+			b.OnChange(w.to)
+		}
+	}
+	a.PumpOnce()
+	if boxes["MTA-STS"].Enabled() != l.tls {
+		t.Fatalf("MTA-STS can be ticked: %v, with TLS %v", boxes["MTA-STS"].Enabled(), l.tls)
+	}
 }
 
 // circleMeets says the circle at c of radius rad and r share a point.
@@ -494,10 +552,10 @@ func TestEducatePinsThePicture(t *testing.T) {
 // nothing of a session key or decrypting; and no point is only that
 // something is not done.
 func TestEducateSaysOnlyWhatIsDone(t *testing.T) {
-	for _, sc := range scenarios() {
+	for _, sc := range lessons() {
 		{
 			signed, encrypted := sc.signed, sc.encrypted
-			st := scenarioSteps(signed, encrypted, sc.tls)
+			st := scenarioSteps(sc)
 			// Without TLS, steps 2, 4 and 6 say nothing of it; with it,
 			// they say so.
 			for _, n := range []int{1, 3, 5} {
@@ -547,6 +605,56 @@ func TestEducateSaysOnlyWhatIsDone(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+// Turning off what the domains publish says what follows, and the
+// picture's tags lose it: no MX, the domain's own address; no DKIM, no
+// domain signature to check; DMARC with neither SPF nor DKIM, even your
+// own mail fails; with SPF alone, forwarding breaks it; no DMARC, your
+// exact domain can be forged; TLS between servers that nothing makes a
+// must can be stripped, and with MTA-STS or DANE stripping stops the mail.
+func TestEducateExplainsWhatIsOff(t *testing.T) {
+	for _, l := range lessons() {
+		st := scenarioSteps(l)
+		said := func(n int) string {
+			var words []string
+			for _, p := range st[n].points {
+				words = append(words, p.text)
+				words = append(words, p.sub...)
+			}
+			return strings.Join(words, "\n")
+		}
+		tagged := func(n int, name string) bool { return slices.Contains(flat(st[n].tags), name) }
+		check := func(ok bool, what string) {
+			t.Helper()
+			if !ok {
+				t.Errorf("%+v: %s", l, what)
+			}
+		}
+		check(l.mx == strings.Contains(said(2), "The MX record in DNS names TARGET SERVER"), "step 3 and MX")
+		check(!l.mx == strings.Contains(said(2), "A or AAAA"), "step 3 without MX")
+		check(l.mx == tagged(2, "MX") && l.dkim == tagged(2, "DKIM"), "step 3's tags")
+		check(!l.dkim == (strings.Contains(said(2), "No DKIM") && strings.Contains(said(4), "No DKIM signature")), "steps 3 and 5 without DKIM")
+		check(!l.spf == strings.Contains(said(4), "No SPF"), "step 5 without SPF")
+		check((l.dmarc && !l.spf && !l.dkim) == strings.Contains(said(4), "Even your own mail fails it"), "DMARC with neither")
+		check((l.dmarc && l.spf && !l.dkim) == strings.Contains(said(4), "Only SPF can pass it"), "DMARC with SPF alone")
+		check((l.dmarc && !l.spf && l.dkim) == strings.Contains(said(4), "Only DKIM can pass it"), "DMARC with DKIM alone")
+		check(!l.dmarc == (strings.Contains(said(4), "No DMARC") && strings.Contains(said(7), "Without DMARC")), "steps 5 and 8 without DMARC")
+		check(l.spf == tagged(4, "SPF") && l.dkim == tagged(4, "DKIM") && l.dmarc == tagged(4, "DMARC"), "step 5's tags")
+		check((l.tls && !l.mtaSTS && !l.dane) == strings.Contains(said(3), "Nothing here makes TLS a must"), "TLS nothing makes a must")
+		check((l.tls && (l.mtaSTS || l.dane)) == strings.Contains(said(3), "stops the mail"), "TLS made a must")
+		check((l.tls && l.mtaSTS) == tagged(3, "MTA-STS") && (l.tls && l.dane) == tagged(3, "DANE"), "step 4's tags")
+		var dns []string
+		for _, grp := range dnsTagsFor(l) {
+			dns = append(dns, grp...)
+		}
+		for _, r := range []struct {
+			on   bool
+			name string
+		}{{l.mx, "MX"}, {l.spf, "SPF"}, {l.dkim, "DKIM"}, {l.dmarc, "DMARC"}} {
+			check(r.on == slices.Contains(dns, r.name), "DNS's tags: "+r.name)
 		}
 	}
 }

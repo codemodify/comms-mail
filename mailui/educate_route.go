@@ -24,23 +24,37 @@ import (
 // as tags; alternatives — either one does the job — stand across its line:
 // one over the other by a line across, side by side by a line down.
 
-// signed and encrypted are the message drawn: its envelope with a seal,
-// a padlock, both or neither; and OpenPGP and S/MIME from YOU to TARGET
-// when either. tls is its connections: tunnels, or plain lines.
+// l is the message and road drawn: its envelope with a seal, a padlock,
+// both or neither, and your domain's postmark with DKIM; OpenPGP and
+// S/MIME from YOU to TARGET when signed or encrypted; its connections
+// tunnels with TLS, plain lines without; and the standards in use, and
+// none that are not.
 type routeScene struct {
 	widget.Base
-	signed, encrypted, tls bool
+	l lesson
 }
 
 func newRouteScene() *routeScene {
-	s := &routeScene{tls: true}
+	s := &routeScene{l: firstLesson}
 	s.Init(s)
 	return s
 }
 
-// dnsTags are what the servers look up in DNS, drawn by it; dnsName is
-// its name, and port, in its disc.
-var dnsTags = one("MX", "SPF", "DKIM", "DMARC")
+// dnsTagsFor are what the servers look up in DNS, drawn by it: what the
+// domains publish, of MX, SPF, DKIM and DMARC. dnsName is its name, and
+// port, in its pill.
+func dnsTagsFor(l lesson) [][]string {
+	var out [][]string
+	for _, r := range []struct {
+		on   bool
+		name string
+	}{{l.mx, "MX"}, {l.spf, "SPF"}, {l.dkim, "DKIM"}, {l.dmarc, "DMARC"}} {
+		if r.on {
+			out = append(out, alt(r.name))
+		}
+	}
+	return out
+}
 
 const dnsName = "DNS:53"
 
@@ -170,7 +184,7 @@ func (s *routeScene) columns(w float32) routeColumns {
 	thV := eb.Dx() + s.dip(8)
 	named := func(i int) float32 { return mk + s.dip(4) + font.Advance(routeNames[i].name) }
 	_, e2eW, _ := placeDown(lk, e2eTags, 0, 0, true)
-	_, hop4W, _ := placeDown(lk, relayStep(false, true).tags, 0, 0, false)
+	_, hop4W, _ := placeDown(lk, relayStep(lesson{tls: true, mtaSTS: true, dane: true}).tags, 0, 0, false)
 	var aw float32
 	for _, l := range []string{"Attacker", fakeDomain} {
 		aw = max(aw, font.Advance(l))
@@ -299,8 +313,10 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	eb := envBox(lk, paintengine2d.Pt(0, 0))
 	thH, thV := eb.Dy()+s.dip(8), eb.Dx()+s.dip(8) // the tunnels across, and down
 	head := s.dip(9)
-	e2e, hop2, hop4, hop6 := e2eTags, submitStep(s.tls).tags, relayStep(false, s.tls).tags, fetchStep(s.tls).tags
-	endToEnd := s.signed || s.encrypted
+	l := s.l
+	e2e, hop2, hop4, hop6 := e2eTags, submitStep(l.tls).tags, relayStep(l).tags, fetchStep(l.tls).tags
+	dnsTags := dnsTagsFor(l)
+	endToEnd := l.signed || l.encrypted
 	group := func(cs []placedChip, name string) {
 		for i := range cs {
 			cs[i].group = name
@@ -493,7 +509,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	}
 	// The connections: tunnels with TLS, plain lines without.
 	ink, tH, tV := inkGood, thH, thV
-	if !s.tls {
+	if !l.tls {
 		ink, tH, tV = inkMuted, 0, 0
 	}
 	tunnel2 := routeLine{a: pt(L+r+s.dip(4), g.y1), b: pt(R-r-s.dip(4), g.y1), ink: ink, head: true, tube: tH}
@@ -523,9 +539,9 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		c = c.Sub(box.Center().Sub(c))
 		g.envs = append(g.envs, placedEnv{c: c, e: e, step: n})
 	}
-	sent := envelope{lock: s.encrypted, seal: s.signed}
+	sent := envelope{lock: l.encrypted, seal: l.signed}
 	carry(tunnel2, 2, sent)
-	sent.stamp = true
+	sent.stamp = l.dkim
 	carry(tunnel4, 4, sent)
 	carry(tunnel6, 6, sent)
 	carry(fake, 8, envelope{stamp: true, bad: true})

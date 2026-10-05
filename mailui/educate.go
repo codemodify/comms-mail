@@ -52,28 +52,6 @@ func one(names ...string) [][]string {
 // signing, and for encrypting.
 var e2eTags = [][]string{alt("OpenPGP", "S/MIME")}
 
-// The steps every message takes the same way: 3 and 8.
-var (
-	domainStep = step{"YOUR SERVER signs it and finds TARGET SERVER", []point{
-		pt("DKIM signs body and headers, for your domain",
-			"With the domain's key, kept on the server",
-			"Not your personal key: it proves the domain"),
-		pt("Its public key is in your domain's DNS",
-			"At selector._domainkey.yourdomain"),
-		pt("The MX record in DNS names TARGET SERVER"),
-	}, one("DKIM", "MX")}
-	throughStep = step{"What gets through anyway", []point{
-		pt("acrne.com, posing as your supplier acme.com",
-			"\"rn\" reads as \"m\""),
-		pt("Its own SPF, DKIM and DMARC: all pass",
-			"The attacker owns that domain"),
-		pt("A real account, broken into: passes too"),
-		pt("Checks prove the domain, not the person"),
-		pt("Confirm payment changes another way"),
-		pt("Distrust attachments and links you did not expect"),
-	}, one("SPF", "DKIM", "DMARC")}
-)
-
 // What YOU do, by what is done: sign, encrypt, and what either brings.
 var (
 	signPoints = []point{
@@ -118,13 +96,76 @@ var (
 	}
 )
 
-// scenarioSteps are the eight steps of a message signed or not, encrypted
-// or not, over connections with TLS or without: each saying what is done,
-// and nothing of what is not. A protocol's tag has its default port:
+// lesson is the message and the road Educate explains: what YOU do to
+// the message, whether its connections use TLS, and what the domains on
+// the way publish and do.
+type lesson struct {
+	signed, encrypted, tls bool
+	mx, spf, dkim, dmarc   bool
+	mtaSTS, dane           bool
+}
+
+// firstLesson is the one shown first: nothing done to the message, no
+// TLS, and the domains doing all they can — turned off one by one to see
+// what each is for.
+var firstLesson = lesson{mx: true, spf: true, dkim: true, dmarc: true, mtaSTS: true, dane: true}
+
+// scenarioSteps are the eight steps of l's message: what is done, and
+// what follows from what is not. A protocol's tag has its default port:
 // SMTP:25, SMTP:TLS:465, SMTP:STARTTLS:587.
-func scenarioSteps(signed, encrypted, tls bool) []step {
-	return []step{youStep(signed, encrypted), submitStep(tls), domainStep, relayStep(encrypted, tls),
-		checkStep(encrypted), fetchStep(tls), targetStep(signed, encrypted), throughStep}
+func scenarioSteps(l lesson) []step {
+	return []step{youStep(l.signed, l.encrypted), submitStep(l.tls), domainStep(l), relayStep(l),
+		checkStep(l), fetchStep(l.tls), targetStep(l.signed, l.encrypted), throughStep(l)}
+}
+
+// domainStep is 3: YOUR SERVER signs it, with DKIM, and finds TARGET
+// SERVER, by its MX record.
+func domainStep(l lesson) step {
+	title := "YOUR SERVER finds TARGET SERVER"
+	var points []point
+	var tags [][]string
+	if l.dkim {
+		title = "YOUR SERVER signs it and finds TARGET SERVER"
+		points = append(points,
+			pt("DKIM signs body and headers, for your domain",
+				"With the domain's key, kept on the server",
+				"Not your personal key: it proves the domain"),
+			pt("Its public key is in your domain's DNS",
+				"At selector._domainkey.yourdomain"))
+		tags = append(tags, alt("DKIM"))
+	} else {
+		points = append(points, pt("No DKIM: your server adds no domain signature",
+			"Nothing proves it left your domain unchanged"))
+	}
+	if l.mx {
+		points = append(points, pt("The MX record in DNS names TARGET SERVER"))
+		tags = append(tags, alt("MX"))
+	} else {
+		points = append(points, pt("No MX record: the domain's own address is used",
+			"Its A or AAAA record in DNS",
+			"Neither there: the mail cannot be delivered"))
+	}
+	return step{title, points, tags}
+}
+
+// throughStep is 8: what gets through anyway.
+func throughStep(l lesson) step {
+	points := []point{
+		pt("acrne.com, posing as your supplier acme.com",
+			"\"rn\" reads as \"m\""),
+		pt("Its own SPF, DKIM and DMARC: all pass",
+			"The attacker owns that domain"),
+		pt("A real account, broken into: passes too"),
+	}
+	if !l.dmarc {
+		points = append(points, pt("Without DMARC: your exact domain, forged",
+			"From: you@yourdomain, sent by anyone"))
+	}
+	points = append(points,
+		pt("Checks prove the domain, not the person"),
+		pt("Confirm payment changes another way"),
+		pt("Distrust attachments and links you did not expect"))
+	return step{"What gets through anyway", points, one("SPF", "DKIM", "DMARC")}
 }
 
 // submitStep is 2: comms-mail hands it to YOUR SERVER.
@@ -207,60 +248,116 @@ func youStep(signed, encrypted bool) step {
 	return step{title, points, e2eTags}
 }
 
-// relayStep is 4: server to server.
-func relayStep(encrypted, tls bool) step {
+// relayStep is 4: server to server — encrypted with STARTTLS when the
+// servers use TLS, and that a must with MTA-STS or DANE.
+func relayStep(l lesson) step {
 	last := pt("Each server reads the message")
-	if tls {
+	if l.tls {
 		last.sub = []string{"TLS encrypts the connection, not the stored mail"}
 	}
-	if encrypted {
+	if l.encrypted {
 		last = pt("Each server has the message, still encrypted",
 			"Step 1's encryption keeps what it says hidden")
-		if tls {
+		if l.tls {
 			last.sub = append([]string{"TLS encrypts the connection, not the stored mail"}, last.sub...)
 		}
 	}
-	if !tls {
+	if !l.tls {
 		return step{"Server to server", []point{
 			pt("SMTP, on port 25"),
 			pt("In the clear: anyone on the way reads it"),
 			last,
 		}, [][]string{alt("SMTP:25")}}
 	}
-	return step{"Server to server", []point{
+	points := []point{
 		pt("SMTP, on port 25"),
 		pt("STARTTLS encrypts, if both offer it",
 			"Often without checking the certificate"),
-		pt("An attacker in between can strip the offer",
-			"The mail then goes on unencrypted"),
-		pt("MTA-STS: a policy over HTTPS makes TLS a must",
-			"Published at mta-sts.domain, kept by senders"),
-		pt("DANE: the certificate pinned in DNSSEC",
-			"TLSA records, in signed DNS"),
-		last,
-	}, [][]string{alt("SMTP:STARTTLS:25"), alt("MTA-STS", "DANE")}}
+	}
+	var must []string
+	if l.mtaSTS || l.dane {
+		points = append(points, pt("An attacker stripping the offer stops the mail",
+			"It does not go on unencrypted"))
+	} else {
+		points = append(points, pt("An attacker in between can strip the offer",
+			"The mail then goes on unencrypted",
+			"Nothing here makes TLS a must"))
+	}
+	if l.mtaSTS {
+		points = append(points, pt("MTA-STS: a policy over HTTPS makes TLS a must",
+			"Published at mta-sts.domain, kept by senders"))
+		must = append(must, "MTA-STS")
+	}
+	if l.dane {
+		dane := pt("DANE: the certificate pinned in DNSSEC",
+			"TLSA records, in signed DNS")
+		if l.mtaSTS {
+			dane.sub = append(dane.sub, "With both, a sender that knows DANE uses it")
+		}
+		points = append(points, dane)
+		must = append(must, "DANE")
+	}
+	tags := [][]string{alt("SMTP:STARTTLS:25")}
+	if len(must) > 0 {
+		tags = append(tags, must)
+	}
+	return step{"Server to server", append(points, last), tags}
 }
 
-// checkStep is 5: TARGET SERVER checks the sender, and keeps the message.
-func checkStep(encrypted bool) step {
+// checkStep is 5: TARGET SERVER checks the sender — with what your
+// domain publishes — and keeps the message.
+func checkStep(l lesson) step {
+	var points []point
+	var tags [][]string
+	if l.spf {
+		points = append(points, pt("SPF: is the sending server on the domain's list?",
+			"Checks the bounce address, not the visible From",
+			"Fails when mail is forwarded"))
+		tags = append(tags, alt("SPF"))
+	} else {
+		points = append(points, pt("No SPF: no list of your domain's servers",
+			"The check finds none: it proves nothing"))
+	}
+	if l.dkim {
+		points = append(points, pt("DKIM: does the signature verify, unchanged?",
+			"Survives forwarding; mailing lists can break it"))
+		tags = append(tags, alt("DKIM"))
+	} else {
+		points = append(points, pt("No DKIM signature to check",
+			"Nothing shows the message arrived unchanged"))
+	}
+	switch {
+	case l.dmarc && !l.spf && !l.dkim:
+		points = append(points, pt("DMARC, with neither SPF nor DKIM: all fails",
+			"Even your own mail fails it",
+			"Quarantine or reject: none of it arrives"))
+		tags = append(tags, alt("DMARC"))
+	case l.dmarc:
+		pass := pt("DMARC: does one pass for the visible From?",
+			"Aligned: the domain that passed is From's")
+		if !l.dkim {
+			pass.sub = append(pass.sub, "Only SPF can pass it: forwarding breaks that")
+		}
+		if !l.spf {
+			pass.sub = append(pass.sub, "Only DKIM can pass it")
+		}
+		points = append(points, pass, pt("DMARC, failing: none, quarantine or reject",
+			"The domain's owner chooses, in its DNS"))
+		tags = append(tags, alt("DMARC"))
+	default:
+		points = append(points, pt("No DMARC: nothing ties SPF, DKIM to From",
+			"A forged From with your domain may pass",
+			"TARGET SERVER falls back to its own guesses"))
+	}
 	stored := "As it came: readable by TARGET's provider"
-	if encrypted {
+	if l.encrypted {
 		stored = "As it came: what it says stays encrypted"
 	}
-	return step{"TARGET SERVER checks the sender", []point{
-		pt("SPF: is the sending server on the domain's list?",
-			"Checks the bounce address, not the visible From",
-			"Fails when mail is forwarded"),
-		pt("DKIM: does the signature verify, unchanged?",
-			"Survives forwarding; mailing lists can break it"),
-		pt("DMARC: does one pass for the visible From?",
-			"Aligned: the domain that passed is From's"),
-		pt("DMARC, failing: none, quarantine or reject",
-			"The domain's owner chooses, in its DNS"),
+	points = append(points,
 		pt("ARC: keeps results through forwarders"),
 		pt("The verdict goes into Authentication-Results"),
-		pt("Spam and malware filtered, then stored", stored),
-	}, one("SPF", "DKIM", "DMARC", "ARC")}
+		pt("Spam and malware filtered, then stored", stored))
+	return step{"TARGET SERVER checks the sender", points, append(tags, alt("ARC"))}
 }
 
 // targetStep is 7: what TARGET's app does with it.
@@ -313,23 +410,35 @@ const fakeDomain = "acrne.com"
 // and each step.
 //
 // The picture and what its symbols mean stay together, in view; under
-// them, which message — signed or not, encrypted or not — and its steps,
-// the picture showing that one.
+// them, which message and road — what YOU do to it, TLS or not, what the
+// domains publish — and its steps; the picture and its key showing that
+// one, and nothing of what is turned off.
 func educateSection() widget.Component {
 	scene := newRouteScene()
 	key := widgets.NewWrap()
 	key.Gap, key.LineGap = 16, 6
-	for _, sy := range symbols {
-		key.Add(newSymbolItem(sy))
-	}
 	list := widgets.NewColumn().WithGap(14)
-	signed, encrypted, tls := false, false, true
+	l := firstLesson
+	var mtaSTS, dane *widgets.Checkbox
 	show := func() {
-		scene.signed, scene.encrypted, scene.tls = signed, encrypted, tls
+		scene.l = l
 		scene.RequestLayout()
 		scene.Invalidate()
+		key.ClearChildren()
+		for _, sy := range symbols {
+			if sy.when == nil || sy.when(l) {
+				key.Add(newSymbolItem(sy))
+			}
+		}
+		key.RequestLayout()
+		// MTA-STS and DANE make TLS between servers a must: without TLS
+		// there is nothing for them to do.
+		if mtaSTS != nil {
+			mtaSTS.SetEnabled(l.tls)
+			dane.SetEnabled(l.tls)
+		}
 		list.ClearChildren()
-		for i, st := range scenarioSteps(signed, encrypted, tls) {
+		for i, st := range scenarioSteps(l) {
 			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
 			if len(st.tags) > 0 {
 				about.Add(altRow(st.tags))
@@ -342,17 +451,26 @@ func educateSection() widget.Component {
 		list.RequestLayout()
 		list.Invalidate()
 	}
-	// Which message: signed or not, encrypted or not, over connections
-	// with TLS or without — eight, each its steps, the picture showing it.
-	sign := widgets.NewSegmented([]string{"Not signed", "Signed"}, 0, nil)
-	sign.OnChange = func(i int) { signed = i == 1; show() }
-	encrypt := widgets.NewSegmented([]string{"Not encrypted", "Encrypted"}, 0, nil)
-	encrypt.OnChange = func(i int) { encrypted = i == 1; show() }
-	conn := widgets.NewSegmented([]string{"With TLS", "Without TLS"}, 0, nil)
-	conn.OnChange = func(i int) { tls = i == 0; show() }
+	check := func(text string, on *bool) *widgets.Checkbox {
+		c := widgets.NewCheckbox(text, *on, nil)
+		c.OnChange = func(v bool) { *on = v; show() }
+		return c
+	}
+	group := func(name string, boxes ...*widgets.Checkbox) widget.Component {
+		w := widgets.NewWrap(widgets.NewLabel(name))
+		w.Gap, w.LineGap = 12, 6
+		for _, b := range boxes {
+			w.Add(b)
+		}
+		return w
+	}
+	mtaSTS, dane = check("MTA-STS", &l.mtaSTS), check("DANE", &l.dane)
+	which := widgets.NewColumn(
+		group("Message:", check("Signed", &l.signed), check("Encrypted", &l.encrypted)),
+		group("Connections:", check("TLS", &l.tls), mtaSTS, dane),
+		group("Domains:", check("MX", &l.mx), check("SPF", &l.spf), check("DKIM", &l.dkim), check("DMARC", &l.dmarc)),
+	).WithGap(6)
 	show()
-	which := widgets.NewWrap(sign, encrypt, conn)
-	which.Gap, which.LineGap = 12, 8
 	words := widgets.NewColumn(which, widgets.NewTitle("Step by step"), list).WithGap(14)
 	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
 }
@@ -660,25 +778,23 @@ func altRow(groups [][]string) *widgets.Wrap {
 
 // ---- what the symbols mean ----
 
-// symbol is one of the picture's symbols, and what it means.
+// symbol is one of the picture's symbols, and what it means; when, if
+// set, says the picture draws it.
 type symbol struct {
 	draw func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect)
 	says string
+	when func(lesson) bool
 }
 
 var symbols = []symbol{
-	{envelopeSymbol(envelope{}), "A message"},
-	{envelopeSymbol(envelope{seal: true}), "Signed by you"},
-	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET"},
-	{envelopeSymbol(envelope{stamp: true}), "Signed by your domain"},
+	{envelopeSymbol(envelope{}), "A message", nil},
+	{envelopeSymbol(envelope{seal: true}), "Signed by you", func(l lesson) bool { return l.signed }},
+	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET", func(l lesson) bool { return l.encrypted }},
+	{envelopeSymbol(envelope{stamp: true}), "Signed by its domain", nil}, // the attacker's, if not yours
 	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
 		y := box.Center().Y
 		drawTube(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y), box.Dy()*0.8)
-	}, "TLS"},
-	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
-		y := box.Center().Y
-		drawPlainLine(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y))
-	}, "No TLS"},
+	}, "TLS", func(l lesson) bool { return l.tls }},
 }
 
 // envelopeSymbol draws e in the middle of a symbol's box.
