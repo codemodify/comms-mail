@@ -89,6 +89,7 @@ func newReader(s *session) *reader {
 	r.sender = newSenderPart()
 	r.sec = newSecurityPart()
 	r.sec.unlock.OnClick = r.unlockSecretVault
+	r.sec.unlockKeys.OnClick = r.unlockKeys
 	r.invite = newInviteCard(s)
 
 	// Short labels: the row fits the narrowest reading pane (the header

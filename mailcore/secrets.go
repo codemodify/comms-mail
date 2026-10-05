@@ -552,6 +552,12 @@ type SecretsStatus struct {
 	// EncryptedFile the encrypted file: the daemon's own paths.
 	PlainFile     string `json:"plainFile,omitempty"`
 	EncryptedFile string `json:"encryptedFile,omitempty"`
+	// KeysFile is the plain file for comms-mail's own keys (keys.json).
+	KeysFile string `json:"keysFile,omitempty"`
+	// EncryptedUsers keep secrets in the encrypted file: "passwords",
+	// "openpgp", "smime". EncryptedOpen: it is unlocked for this run.
+	EncryptedUsers []string `json:"encryptedUsers,omitempty"`
+	EncryptedOpen  bool     `json:"encryptedOpen,omitempty"`
 }
 
 // absPath is p made absolute, or p when it cannot be.
@@ -659,6 +665,7 @@ func (s *LocalStore) saveConfig(cfg MailConfig) error {
 	if cfg.SecretStore == StoreSecretVault {
 		cfg.SecretVault = s.cfg.SecretVault
 	}
+	cfg.OpenPGP, cfg.SMIME = s.cfg.OpenPGP, s.cfg.SMIME
 	if !keepsPlainPasswords(cfg.SecretStore) {
 		for i := range cfg.Accounts {
 			a := &cfg.Accounts[i]
@@ -698,8 +705,9 @@ func (s *LocalStore) withSecrets(id string, a AccountConfig) AccountConfig {
 func (s *LocalStore) SecretsStatus() SecretsStatus {
 	kind := s.secretKind()
 	st := SecretsStatus{Supported: true, Store: kind, KeyringName: keyringName(), KeyringBackend: keyringBackend(),
-		SecretVault: s.secretVaultChoice(),
-		PlainFile:   absPath(ConfigPath()), EncryptedFile: absPath(s.vaultOf().path)}
+		SecretVault: s.secretVaultChoice(), KeysFile: absPath(plainKeysPath()),
+		EncryptedUsers: s.encryptedUsers(), EncryptedOpen: s.vaultOf().Exists() && s.vaultOf().Unlocked(),
+		PlainFile: absPath(ConfigPath()), EncryptedFile: absPath(s.vaultOf().path)}
 	if err := s.storeFor(kind).Ready(); err == nil {
 		st.Ready = true
 	} else if errors.Is(err, ErrLocked) {
@@ -771,7 +779,7 @@ func (s *LocalStore) UseStoreIn(kind, passphrase, vault string) error {
 		}
 		return nil
 	}
-	src := s.storeFor(cur)
+	src := s.passwordStore(cur)
 	if err := src.Ready(); err != nil {
 		return fmt.Errorf("the secrets in %s cannot be read now: %w", StoreLabel(cur), err)
 	}
@@ -791,13 +799,9 @@ func (s *LocalStore) UseStoreIn(kind, passphrase, vault string) error {
 	}
 	switch kind {
 	case StoreEncrypted:
-		v := s.vaultOf()
-		if v.Exists() {
-			if err := v.Reset(); err != nil { // left from an earlier choice
-				return err
-			}
-		}
-		if err := v.Create(passphrase, values); err != nil {
+		// Added to the file when comms-mail's own keys are kept in it;
+		// else made anew, replacing one left from an earlier choice.
+		if err := s.intoEncrypted("passwords", passphrase, values); err != nil {
 			return err
 		}
 	case StoreKeyring:
@@ -881,7 +885,7 @@ func (s *LocalStore) moveSecretVault(name string) error {
 	if err := sv.Ready(); err != nil {
 		return fmt.Errorf("the secrets in %s cannot be read now: %w", StoreLabel(StoreSecretVault), err)
 	}
-	names, err := sv.Names()
+	names, err := scopedStore{sv, isPasswordName}.Names()
 	if err != nil {
 		return err
 	}
@@ -966,8 +970,8 @@ func (s *LocalStore) UnlockSecrets(passphrase string) error {
 
 // ChangePassphrase locks the encrypted file with a new passphrase.
 func (s *LocalStore) ChangePassphrase(old, next string) error {
-	if s.secretKind() != StoreEncrypted {
-		return errors.New("the secrets are not in an encrypted file")
+	if len(s.encryptedUsers()) == 0 {
+		return errors.New("nothing is kept in the encrypted file")
 	}
 	return s.vaultOf().ChangePassphrase(old, next)
 }

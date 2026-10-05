@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -306,8 +307,9 @@ func sectionParts(c widget.Component) (texts []string, buttons map[string]*widge
 }
 
 // Settings › Security › Keys shows your keys for each address you send
-// from, and makes an OpenPGP key with secretvault; the .p12 password is
-// asked in a field that holds bytes, and handed over once.
+// from, a format at a time, and makes an OpenPGP key with secretvault; the
+// .p12 password is asked in a field that holds bytes, and handed over
+// once.
 func TestYourKeysInSettings(t *testing.T) {
 	s, a, sv, _ := securityDaemon(t)
 	if _, err := s.cli.PutAccount(mailcore.AccountConfig{ID: "home", Address: "ada@example.com",
@@ -323,13 +325,29 @@ func TestYourKeysInSettings(t *testing.T) {
 	a.PumpOnce()
 	texts, buttons := sectionParts(section)
 	joined := strings.Join(texts, "\n")
-	if !strings.Contains(joined, "ada@example.com") || !strings.Contains(joined, "No OpenPGP key") || !strings.Contains(joined, "No S/MIME certificate") {
+	if !strings.Contains(joined, "ada@example.com") || !strings.Contains(joined, "No OpenPGP key") || strings.Contains(joined, "S/MIME certificate") {
 		t.Fatalf("Your keys says:\n%s", joined)
 	}
 	mk := buttons["Make an OpenPGP key"]
-	if mk == nil || buttons["Import S/MIME…"] == nil {
+	if mk == nil {
 		t.Fatalf("buttons %v", buttons)
 	}
+	// S/MIME, a page of its own.
+	format := func(i int) {
+		widget.Walk(section, func(c widget.Component) {
+			if sg, ok := c.(*widgets.Segmented); ok {
+				sg.Selected = i
+				sg.OnChange(i)
+			}
+		})
+		a.PumpOnce()
+	}
+	format(1)
+	texts, buttons = sectionParts(section)
+	if joined = strings.Join(texts, "\n"); !strings.Contains(joined, "No S/MIME certificate") || buttons["Import S/MIME…"] == nil || strings.Contains(joined, "OpenPGP key") {
+		t.Fatalf("S/MIME says:\n%s", joined)
+	}
+	format(0)
 	mk.OnClick()
 	for i := 0; i < 3; i++ {
 		a.PumpOnce()
@@ -368,14 +386,21 @@ func TestYourKeysInSettings(t *testing.T) {
 		t.Fatal("the field kept the password")
 	}
 
-	// Another store: secretvault keeps the keys, and the tab says so.
+	// The passwords kept elsewhere: secretvault still keeps the keys.
 	if err := s.cli.UseStore(mailcore.StorePlain, ""); err != nil {
 		t.Fatal(err)
 	}
 	refresh()
 	a.PumpOnce()
+	if texts, _ = sectionParts(section); !strings.Contains(strings.Join(texts, "\n"), "OpenPGP key 0WNK EY01 2345") {
+		t.Fatalf("passwords elsewhere:\n%s", strings.Join(texts, "\n"))
+	}
+	// secretvault gone: the page says so.
+	sv.Stop()
+	refresh()
+	a.PumpOnce()
 	texts, buttons = sectionParts(section)
-	if joined = strings.Join(texts, "\n"); !strings.Contains(joined, "secretvault keeps your keys") || buttons["Make an OpenPGP key"] != nil {
+	if joined = strings.Join(texts, "\n"); !strings.Contains(joined, "not running") || buttons["Make an OpenPGP key"] != nil {
 		t.Fatalf("without secretvault:\n%s", joined)
 	}
 }
@@ -436,5 +461,85 @@ func TestSenderWarningsInTheReadingPane(t *testing.T) {
 	open(s, a, ids["Lunch"])
 	if _, texts := lines(); len(texts) != 0 || s.rd.sender.view.Visible() {
 		t.Fatalf("a sender with nothing to say: %q", texts)
+	}
+}
+
+// Keys done by comms-mail itself: picking Built into comms-mail shows
+// where its keys are to be kept; the encrypted file asks a passphrase
+// twice; Apply makes it so, the place marked in use. A key made then is
+// comms-mail's own, with a backup to save and a remove, and other
+// people's keys get a list of their own.
+func TestKeysBuiltIntoCommsMail(t *testing.T) {
+	cli, _ := vaultDaemon(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	section, _ := keysSection(a, cli)
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 1400, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	w.SetContent(section)
+	a.PumpOnce()
+	radio := func(text string) *widgets.RadioButton {
+		var found *widgets.RadioButton
+		widget.Walk(section, func(c widget.Component) {
+			if rb, ok := c.(*widgets.RadioButton); ok && placeTitle(rb.Text) == text {
+				found = rb
+			}
+		})
+		return found
+	}
+	fields := func() []*widgets.TextField {
+		var out []*widgets.TextField
+		widget.Walk(section, func(c widget.Component) {
+			if f, ok := c.(*widgets.TextField); ok && f.Password {
+				out = append(out, f)
+			}
+		})
+		return out
+	}
+	if radio("Encrypted file") != nil {
+		t.Fatal("where keys are kept shows while secretvault does the work")
+	}
+	radio("Built into comms-mail").SetSelected(true)
+	a.PumpOnce()
+	enc := radio("Encrypted file")
+	if enc == nil {
+		t.Fatal("no places to keep the keys")
+	}
+	enc.SetSelected(true)
+	a.PumpOnce()
+	f := fields()
+	if len(f) != 2 {
+		t.Fatalf("%d passphrase fields", len(f))
+	}
+	f[0].SetText("correct horse battery")
+	f[1].SetText("correct horse battery")
+	_, buttons := sectionParts(section)
+	if apply := buttons["Apply"]; apply == nil || !apply.Enabled() {
+		t.Fatal("no Apply")
+	} else {
+		apply.OnClick()
+	}
+	a.PumpOnce()
+	v, _ := cli.KeysView(mailcore.FormatOpenPGP)
+	if v.Place.Engine != mailcore.EngineOwn || v.Place.Store != mailcore.StoreEncrypted || !v.Place.Ready {
+		t.Fatalf("after Apply: %+v", v.Place)
+	}
+	if !slices.Contains(inUseShown(section), "Built into comms-mail") || !slices.Contains(inUseShown(section), "Encrypted file") {
+		t.Fatalf("in use: %v", inUseShown(section))
+	}
+	texts, buttons := sectionParts(section)
+	if buttons["Make an OpenPGP key"] == nil || !strings.Contains(strings.Join(texts, "\n"), "Other people's keys") {
+		t.Fatalf("own engine page:\n%s\n%v", strings.Join(texts, "\n"), buttons)
+	}
+	buttons["Make an OpenPGP key"].OnClick()
+	a.PumpOnce()
+	texts, buttons = sectionParts(section)
+	if !strings.Contains(strings.Join(texts, "\n"), "OpenPGP key ") || buttons["Save a backup…"] == nil || buttons["Remove…"] == nil || buttons["Import a key…"] == nil {
+		t.Fatalf("after making a key:\n%s\n%v", strings.Join(texts, "\n"), buttons)
+	}
+	if v, _ := cli.KeysView(mailcore.FormatOpenPGP); len(v.Addresses) == 0 || v.Addresses[0].PGP == nil {
+		t.Fatalf("no key: %+v", v.Addresses)
 	}
 }

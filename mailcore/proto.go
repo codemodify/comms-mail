@@ -86,6 +86,12 @@ const (
 	MethodKeysList        = "keys.list"
 	MethodKeysMakePGP     = "keys.makePGP"
 	MethodKeysImportSMIME = "keys.importSMIME"
+	MethodKeysView        = "keys.view"
+	MethodKeysUse         = "keys.use"
+	MethodKeysUnlock      = "keys.unlock"
+	MethodKeysImport      = "keys.import"
+	MethodKeysRemove      = "keys.remove"
+	MethodKeysBackup      = "keys.backup"
 	MethodMessagesSearch  = "messages.search"
 	MethodSearchServer    = "messages.searchServer"
 	MethodContactsSuggest = "contacts.suggest"
@@ -235,6 +241,24 @@ type messageIDParams struct {
 
 type makePGPParams struct {
 	Address string `json:"address"`
+}
+
+// keysParams are a keys.* call's: the format, and what the call needs.
+type keysParams struct {
+	Format     string `json:"format"`
+	Engine     string `json:"engine,omitempty"`
+	Store      string `json:"store,omitempty"`
+	Vault      string `json:"vault,omitempty"`
+	Passphrase []byte `json:"passphrase,omitempty"`
+	Data       []byte `json:"data,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Own        bool   `json:"own,omitempty"`
+}
+
+// keyBackup is keys.backup's answer.
+type keyBackup struct {
+	Data []byte `json:"data"`
+	Name string `json:"name"`
 }
 
 type importSMIMEParams struct {

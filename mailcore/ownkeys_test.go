@@ -61,12 +61,18 @@ func TestOwnKeysInSecretVault(t *testing.T) {
 	sv.Unlock()
 	waitFor(t, "the unlock was not noticed", func() bool { return st.SecretsStatus().Ready })
 
-	// Another store: secretvault keeps the keys, so there are none here.
+	// The passwords kept elsewhere: secretvault still keeps the keys.
 	if err := st.UseStore(StoreEncrypted, "correct horse battery"); err != nil {
 		t.Fatal(err)
 	}
-	if keys := st.OwnKeys(); keys.Available || !strings.Contains(keys.Why, "secretvault") {
-		t.Fatalf("another store: %+v", keys)
+	if keys := st.OwnKeys(); !keys.Available || len(keys.Addresses) == 0 {
+		t.Fatalf("passwords elsewhere: %+v", keys)
+	}
+	// secretvault not running: the keys page says so.
+	sv.Stop()
+	theSecretVault.reset()
+	if keys := st.OwnKeys(); keys.Available || !strings.Contains(keys.Why, "not running") {
+		t.Fatalf("secretvault gone: %+v", keys)
 	}
 }
 

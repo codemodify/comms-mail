@@ -187,7 +187,8 @@ func callTimeout(method string) time.Duration {
 		return 30 * time.Minute
 	case MethodComposeSend, MethodMessagesPart, MethodMessagesOpen, MethodMessagesGet, MethodMessagesSource,
 		MethodMessagesInvite, MethodInviteReply, MethodMessagesImages, MethodMessagesRaw, MethodMessagesSecurity, MethodComposeKeys,
-		MethodKeysList, MethodKeysMakePGP, MethodKeysImportSMIME:
+		MethodKeysList, MethodKeysMakePGP, MethodKeysImportSMIME,
+		MethodKeysView, MethodKeysUse, MethodKeysUnlock, MethodKeysImport, MethodKeysRemove, MethodKeysBackup:
 		return 5 * time.Minute
 	case MethodImportMail:
 		return 30 * time.Minute // a large mbox takes a while
@@ -350,6 +351,53 @@ func (c *Client) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
 	var r OwnKeys
 	err := c.call(MethodKeysImportSMIME, importSMIMEParams{PKCS12: pkcs12, Password: password}, &r)
 	return r, err
+}
+
+// KeysView is Settings › Security › Keys for format (FormatOpenPGP,
+// FormatSMIME).
+func (c *Client) KeysView(format string) (KeysView, error) {
+	var r KeysView
+	err := c.call(MethodKeysView, keysParams{Format: format}, &r)
+	return r, err
+}
+
+// UseKeys has engine do format's work and, for comms-mail's own, keeps its
+// keys in store (vault: secretvault's vault, "" its default; passphrase
+// for the encrypted file, wiped once sent).
+func (c *Client) UseKeys(format, engine, store, vault string, passphrase []byte) error {
+	defer clear(passphrase)
+	return c.call(MethodKeysUse, keysParams{Format: format, Engine: engine, Store: store, Vault: vault, Passphrase: passphrase}, nil)
+}
+
+// UnlockKeys opens where comms-mail keeps format's keys, for this run.
+func (c *Client) UnlockKeys(format string, passphrase []byte) error {
+	defer clear(passphrase)
+	return c.call(MethodKeysUnlock, keysParams{Format: format, Passphrase: passphrase}, nil)
+}
+
+// ImportKeys brings in keys of format from data; passphrase opens a
+// protected key or a .p12 (ErrPassphraseNeeded's text when one is needed).
+func (c *Client) ImportKeys(format string, data, passphrase []byte) (int, error) {
+	defer clear(passphrase)
+	var r struct {
+		Imported int `json:"imported"`
+	}
+	err := c.call(MethodKeysImport, keysParams{Format: format, Data: data, Passphrase: passphrase}, &r)
+	return r.Imported, err
+}
+
+// RemoveKey forgets a key of format: yours (own) or someone else's.
+func (c *Client) RemoveKey(format, id string, own bool) error {
+	return c.call(MethodKeysRemove, keysParams{Format: format, ID: id, Own: own}, nil)
+}
+
+// KeyBackup is your key of format with id, locked with passphrase, and the
+// file name to save it as.
+func (c *Client) KeyBackup(format, id string, passphrase []byte) ([]byte, string, error) {
+	defer clear(passphrase)
+	var r keyBackup
+	err := c.call(MethodKeysBackup, keysParams{Format: format, ID: id, Passphrase: passphrase}, &r)
+	return r.Data, r.Name, err
 }
 
 // SigningKeys says whether secretvault can sign as from (and whether it

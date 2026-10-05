@@ -35,6 +35,10 @@ type MailConfig struct {
 	// SecretVault is the secretvault vault they are kept in, with the
 	// secretvault store; empty for secretvault's default vault.
 	SecretVault string `json:"secretVault,omitempty"`
+	// OpenPGP and SMIME are who does each format's work, and where
+	// comms-mail's own keys are kept (keychoice.go).
+	OpenPGP *KeyChoice `json:"openpgp,omitempty"`
+	SMIME   *KeyChoice `json:"smime,omitempty"`
 }
 
 // AccountConfig is one IMAP or POP3 login plus SMTP submission.

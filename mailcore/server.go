@@ -354,6 +354,47 @@ func (s *Server) dispatch(req Request) Response {
 		} else {
 			result = OwnKeys{}
 		}
+	case MethodKeysView, MethodKeysUse, MethodKeysUnlock, MethodKeysImport, MethodKeysRemove, MethodKeysBackup:
+		ls, ok := s.Store.(*LocalStore)
+		if !ok {
+			if req.Method == MethodKeysView {
+				result = KeysView{Why: "the demo keeps no keys"}
+				break
+			}
+			err = fmt.Errorf("mail: this store keeps no keys")
+			break
+		}
+		var p keysParams
+		if p, err = decodeParams[keysParams](req.Params); err != nil {
+			break
+		}
+		if !validFormat(p.Format) {
+			err = fmt.Errorf("mail: no key format %q", p.Format)
+			break
+		}
+		switch req.Method {
+		case MethodKeysView:
+			result = ls.KeysView(p.Format)
+		case MethodKeysUse:
+			err = ls.UseKeys(p.Format, p.Engine, p.Store, string(p.Passphrase), p.Vault)
+			clear(p.Passphrase)
+		case MethodKeysUnlock:
+			err = ls.UnlockKeys(p.Format, string(p.Passphrase))
+			clear(p.Passphrase)
+		case MethodKeysImport:
+			var n int
+			n, err = ls.ImportKeys(p.Format, p.Data, p.Passphrase)
+			result = map[string]int{"imported": n}
+		case MethodKeysRemove:
+			err = ls.RemoveKey(p.Format, p.ID, p.Own)
+		case MethodKeysBackup:
+			var b keyBackup
+			b.Data, b.Name, err = ls.KeyBackup(p.Format, p.ID, p.Passphrase)
+			result = b
+		}
+		if err == nil && result == nil {
+			result = map[string]bool{"ok": true}
+		}
 	case MethodKeysMakePGP, MethodKeysImportSMIME:
 		ls, ok := s.Store.(*LocalStore)
 		if !ok {

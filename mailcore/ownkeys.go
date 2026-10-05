@@ -3,6 +3,7 @@ package mailcore
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -80,8 +81,8 @@ func (s *LocalStore) ownAddresses() []string {
 // OwnKeys asks secretvault which of your addresses it holds keys for. It
 // never asks secretvault to unlock.
 func (s *LocalStore) OwnKeys() OwnKeys {
-	if s.secretKind() != StoreSecretVault {
-		return OwnKeys{Why: "secretvault keeps your keys: choose it in Settings › Security › Passwords."}
+	if err := theSecretVault.available(); err != nil {
+		return OwnKeys{Why: "secretvault, which keeps your keys here, is not running: start it, or have comms-mail do it itself (Built into comms-mail, above)."}
 	}
 	out := OwnKeys{Available: true}
 	switch err := (secretVaultStore{theSecretVault}).Ready(); {
@@ -152,9 +153,6 @@ func (s *LocalStore) MakePGPKey(address string) (OwnKeys, error) {
 	if address == "" {
 		return OwnKeys{}, errors.New("no address to make a key for")
 	}
-	if err := s.secretVaultOpen(); err != nil {
-		return OwnKeys{}, err
-	}
 	name := ""
 	s.mu.Lock()
 	for _, id := range s.identities {
@@ -164,6 +162,12 @@ func (s *LocalStore) MakePGPKey(address string) (OwnKeys, error) {
 		}
 	}
 	s.mu.Unlock()
+	if s.engineOf(FormatOpenPGP) == EngineOwn {
+		return OwnKeys{}, s.makePGPKeyOwn(address, name)
+	}
+	if err := s.secretVaultOpen(); err != nil {
+		return OwnKeys{}, err
+	}
 	p := map[string]any{"emails": []string{address}}
 	if name != "" {
 		p["name"] = name
@@ -182,6 +186,10 @@ func (s *LocalStore) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
 	defer clear(password)
 	if len(pkcs12) == 0 {
 		return OwnKeys{}, errors.New("the file is empty")
+	}
+	if s.engineOf(FormatSMIME) == EngineOwn {
+		_, err := s.importSMIMEOwnOrCerts(slices.Clone(pkcs12), slices.Clone(password))
+		return OwnKeys{}, err
 	}
 	if err := s.secretVaultOpen(); err != nil {
 		return OwnKeys{}, err
@@ -207,8 +215,8 @@ func (s *LocalStore) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
 // secretVaultOpen is nil when secretvault is the store and unlocked: the
 // person asked for this, so a locked one is said, not waited for.
 func (s *LocalStore) secretVaultOpen() error {
-	if s.secretKind() != StoreSecretVault {
-		return errors.New("secretvault keeps your keys: choose it in Settings › Security › Passwords first")
+	if err := theSecretVault.available(); err != nil {
+		return errors.New("secretvault, which keeps your keys here, is not running")
 	}
 	if err := (secretVaultStore{theSecretVault}).Ready(); err != nil {
 		if errors.Is(err, ErrLocked) {

@@ -280,12 +280,19 @@ func TestMessageSecurityThroughSecretVault(t *testing.T) {
 	sv.Unlock()
 	waitFor(t, "the unlock was not noticed", func() bool { return st.SecretsStatus().Ready })
 
-	// Another store in use: protected mail says secretvault reads it.
+	// The passwords kept elsewhere: secretvault still checks the mail,
+	// which is chosen apart from them (Settings › Security › Keys).
 	if err := st.UseStore(StoreEncrypted, "correct horse battery"); err != nil {
 		t.Fatal(err)
 	}
-	if sec, _ := st.MessageSecurity(ids["..."], true); sec.Checked || sec.Encrypted != "full" || !strings.Contains(sec.Why, "choose it in Settings") {
-		t.Fatalf("another store: %+v", sec)
+	if sec, _ := st.MessageSecurity(ids["..."], true); !sec.Checked || !sec.Decrypted {
+		t.Fatalf("passwords elsewhere: %+v", sec)
+	}
+	// secretvault not running: the mail says so, checked by nobody.
+	sv.Stop()
+	theSecretVault.reset()
+	if sec, _ := st.MessageSecurity(ids["..."], true); sec.Checked || sec.Encrypted != "full" || !strings.Contains(sec.Why, "not running") {
+		t.Fatalf("secretvault gone: %+v", sec)
 	}
 }
 

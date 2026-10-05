@@ -8,11 +8,11 @@ import (
 )
 
 // Signed and encrypted mail. comms-mail tells them apart by their
-// structure, as every mail program does, and that is all it does itself:
-// checking a signature, judging whose key made it, and decrypting are
-// secretvault's (secretvault.go), which keeps the person's keys and
-// contacts and does that work in its own daemon. comms-mail has PGP and
-// S/MIME only while secretvault is the store in use.
+// structure, as every mail program does. Checking a signature, judging
+// whose key made it, and decrypting are done by the engine chosen for the
+// message's format (keychoice.go): secretvault (secretvault.go), which
+// keeps the person's keys and contacts and does that work in its own
+// daemon, or comms-mail's own (ownread.go).
 
 // recogniseProtection reads how a message is protected from its outermost
 // structure, without checking or opening anything.
@@ -108,6 +108,9 @@ type MessageSecurity struct {
 	// DecryptError why it was not.
 	Decrypted    bool   `json:"decrypted,omitempty"`
 	DecryptError string `json:"decryptError,omitempty"`
+	// KeysLocked is the format whose own keys could not be used because
+	// where comms-mail keeps them is locked (comms-mail's own engine).
+	KeysLocked string `json:"keysLocked,omitempty"`
 	// Content is the message inside the encryption (or an opaque S/MIME
 	// signature): its text, HTML and parts.
 	Content *Message `json:"content,omitempty"`
@@ -161,9 +164,9 @@ func recognised(raw []byte) (MessageSecurity, Message) {
 	return out, m
 }
 
-// whyNoSecretVault is what the reading pane says of protected mail while
-// another store is in use.
-const whyNoSecretVault = "secretvault checks signed and encrypted mail: choose it in Settings › Security › Passwords to read this one."
+// whyNoSecretVault is what the reading pane says of protected mail when
+// secretvault, which is to check it, is not there.
+const whyNoSecretVault = "secretvault checks this kind of mail here, and it is not running: start it, or let comms-mail check it itself in Settings › Security › Keys."
 
 // MessageSecurityOf is MessageSecurity for a store that keeps no secrets
 // (the demo): what the structure says, checked by nobody.
@@ -190,7 +193,18 @@ func (s *LocalStore) MessageSecurity(id MessageID, decrypt bool) (MessageSecurit
 	if !m.Signed && !m.Encrypted && !m.Autocrypt {
 		return sec, nil
 	}
-	if s.secretKind() != StoreSecretVault {
+	format := messageFormat(raw)
+	if format == "" {
+		format = FormatOpenPGP // an Autocrypt header alone offers an OpenPGP key
+	}
+	if s.engineOf(format) == EngineOwn {
+		if !m.Signed && !m.Encrypted {
+			s.ownInspect(raw, false, m) // the key it offers is recorded
+			return sec, nil
+		}
+		return s.ownInspect(raw, decrypt, m), nil
+	}
+	if err := theSecretVault.available(); err != nil {
 		if m.Signed || m.Encrypted {
 			sec.Why = whyNoSecretVault
 		}

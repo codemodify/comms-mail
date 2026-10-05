@@ -10,15 +10,20 @@ import (
 
 // The reading pane's say on signed and encrypted mail: a line for the
 // encryption and one for each signature, each with its mark, under the
-// header. secretvault checks the message and opens what is encrypted to
-// you (mailcore.MessageSecurity); what it decrypts is shown and held in
-// this window only — never cached or indexed.
+// header. The engine chosen for the message's format — secretvault, or
+// comms-mail's own — checks it and opens what is encrypted to you
+// (mailcore.MessageSecurity); what is decrypted is shown and held in this
+// window only — never cached or indexed.
 
-// securityPart is the lines and the button to unlock secretvault.
+// securityPart is the lines and the buttons to unlock secretvault, or
+// where comms-mail keeps its own keys.
 type securityPart struct {
-	view   *widgets.FlexBox
-	lines  *widgets.FlexBox
-	unlock *widgets.Button
+	view       *widgets.FlexBox
+	lines      *widgets.FlexBox
+	unlock     *widgets.Button
+	unlockKeys *widgets.Button
+	// keysFormat is the format whose own keys are locked.
+	keysFormat string
 	// id is the message the lines are about; content what secretvault
 	// decrypted of it.
 	id      mailcore.MessageID
@@ -29,7 +34,10 @@ func newSecurityPart() *securityPart {
 	p := &securityPart{lines: widgets.NewColumn().WithGap(2)}
 	p.unlock = newButton("Unlock secretvault…", nil)
 	p.unlock.SetVisible(false)
-	p.view = widgets.NewColumn(p.lines, foldRow(p.unlock)).WithGap(4)
+	p.unlockKeys = newButton("Unlock your keys…", nil)
+	p.unlockKeys.Icon = style.IconLock
+	p.unlockKeys.SetVisible(false)
+	p.view = widgets.NewColumn(p.lines, foldRow(p.unlock, p.unlockKeys)).WithGap(4)
 	p.view.SetVisible(false)
 	return p
 }
@@ -38,6 +46,7 @@ func (p *securityPart) clear() {
 	p.id, p.content = "", nil
 	p.lines.ClearChildren()
 	p.unlock.SetVisible(false)
+	p.unlockKeys.SetVisible(false)
 	p.view.SetVisible(false)
 }
 
@@ -73,7 +82,9 @@ func (p *securityPart) show(sec mailcore.MessageSecurity) {
 		p.line(style.IconWarning, w)
 	}
 	p.unlock.SetVisible(sec.Locked)
-	p.view.SetVisible(len(p.lines.Children()) > 0 || sec.Locked)
+	p.keysFormat = sec.KeysLocked
+	p.unlockKeys.SetVisible(sec.KeysLocked != "")
+	p.view.SetVisible(len(p.lines.Children()) > 0 || sec.Locked || sec.KeysLocked != "")
 	p.view.RequestLayout()
 }
 
@@ -106,7 +117,7 @@ func signatureLine(sig mailcore.SignatureCheck) (style.ToolIcon, string) {
 	case "bad":
 		return style.IconError, "The signature does not match: the message was changed after " + who + " signed it" + part
 	case "unknown-key":
-		return style.IconQuestion, "Signed with a key secretvault does not have, so it cannot be checked" + part
+		return style.IconQuestion, "Signed with a key you do not have, so it cannot be checked" + part
 	default:
 		problem := sig.Problem
 		if problem == "" {
@@ -139,6 +150,12 @@ func levelWords(level string) string {
 		return "recorded in a transparency log"
 	case "tofu":
 		return "seen before (not verified)"
+	case "own":
+		return "your own key"
+	case "imported":
+		return "with a key you brought in yourself"
+	case "certificate":
+		return "certified by an authority your computer trusts"
 	}
 	return "verified"
 }
@@ -195,6 +212,36 @@ func (r *reader) showContent(c mailcore.Message) {
 	md := c
 	md.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(c))
 	r.md.show(md)
+}
+
+// unlockKeys opens where comms-mail keeps the locked format's keys — the
+// encrypted file asks for its passphrase, the keyring and secretvault show
+// their own prompts — then checks the message showing again.
+func (r *reader) unlockKeys() {
+	m, format := r.msg, r.sec.keysFormat
+	again := func() {
+		if r.msg.ID == m.ID {
+			r.sec.id = ""
+			r.loadSecurity(m)
+		}
+	}
+	r.s.async(func() (any, error) { return r.s.cli.KeysView(format) }, func(v any, err error) {
+		if err != nil {
+			widgets.Warn(r.view, "Your keys", err.Error(), nil)
+			return
+		}
+		if v.(mailcore.KeysView).Place.Store == mailcore.StoreEncrypted {
+			openUnlockKeys(r.s.app, r.s.cli, format, again)
+			return
+		}
+		r.s.async(func() (any, error) { return nil, r.s.cli.UnlockKeys(format, nil) }, func(_ any, err error) {
+			if err != nil {
+				widgets.Warn(r.view, "Your keys", "They stayed locked: "+err.Error(), nil)
+				return
+			}
+			again()
+		})
+	})
 }
 
 // unlockSecretVault asks secretvault to unlock (with its own prompt), then

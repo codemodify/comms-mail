@@ -95,7 +95,7 @@ new ones turn up.
   security tool, Credential Manager through advapi32) and compiled, not
   yet run on those systems.
 
-## Security (decided 2026-09-28, revised 2026-10-03; docs/security/security-primer.md)
+## Security (decided 2026-09-28, revised 2026-10-03 and 2026-10-04; docs/security/security-primer.md)
 - **Sender warnings** — done 2026-10-03 (docs/mail.md, Who sent it). Left:
   the message list still shows only the display name and has no mark for
   a failed check or a look-alike; the topmost `Authentication-Results` is
@@ -107,12 +107,18 @@ new ones turn up.
   opened, not as it arrives; the list has no signed / encrypted mark; an
   encrypted message cannot have Bcc recipients; the Write window cannot
   say before Send which recipients lack a key (asked of secretvault).
-- **PGP and S/MIME** — only through secretvault, which keeps the private
-  keys and signs and decrypts in its own daemon: comms-mail writes no
-  crypto of its own (decided 2026-10-03; this replaces building in Proton
-  `go-crypto` and our own CMS). Your keys are in Settings › Security ›
-  Keys (made, imported and kept by secretvault; done 2026-10-03). Without
-  secretvault as the store there is no PGP or S/MIME.
+- **PGP and S/MIME** — each format by secretvault or by comms-mail's own
+  engine, chosen in Settings › Security › Keys (decided 2026-10-04, done
+  the same day; the 2026-10-03 "secretvault only" now its default). Built
+  in: OpenPGP with ProtonMail's go-crypto, S/MIME with our own CMS
+  (`internal/cms`, standard library only); its private keys kept where
+  you choose, like the passwords and apart from them. secretvault no
+  longer needs to keep the passwords to do the crypto: its daemon running
+  is enough. Left for the built-in engine: no key lookup beyond mail and
+  files (WKD, keyservers, LDAP); certificate revocation (CRL, OCSP) is not
+  checked; no key expiry or renewal reminders; one OpenPGP key per
+  address is used (the newest); attachments inside an encrypted message
+  are, as with secretvault, not listed yet.
 - **Asked of secretvault** — S/MIME roots beyond an organisation's own CA
   (a public CA's certificate does not verify as trusted today); a check
   before Send of which recipients can be encrypted to; an Autocrypt header

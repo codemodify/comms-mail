@@ -205,7 +205,7 @@ func TestSendWaitsWhileSecretVaultIsLocked(t *testing.T) {
 }
 
 // What cannot be sent as asked is the writer's to see, and nothing goes:
-// Bcc with encryption, a refusal, signing without secretvault.
+// Bcc with encryption, a refusal, signing with secretvault not running.
 func TestSendRefusedNotSent(t *testing.T) {
 	smtp := startFakeSMTP(t)
 	st, sv := sendingStore(t, smtp)
@@ -222,7 +222,9 @@ func TestSendRefusedNotSent(t *testing.T) {
 	if err := st.UseStore(StoreEncrypted, "correct horse battery"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.SendViaSMTP("w", "", outgoing(&Protection{Sign: true}), nil); err == nil || !strings.Contains(err.Error(), "secretvault") {
+	sv.Stop()
+	theSecretVault.reset()
+	if _, err := st.SendViaSMTP("w", "", outgoing(&Protection{Sign: true}), nil); err == nil || !strings.Contains(err.Error(), "not running") {
 		t.Fatalf("without secretvault: %v", err)
 	}
 	if k := st.SigningKeys("ada@example.com"); k.Available {

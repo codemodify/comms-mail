@@ -590,7 +590,11 @@ secretvault, which does that work itself (see the security primer).
 - The RPC log records these requests by name only, never a passphrase.
 
 `secrets.status`, `secrets.use` (`{store, passphrase, vault}` — `vault` the secretvault vault, "" its default), `secrets.unlock`,
-`vault.change` and `vault.reset` are the daemon's side of this. A store
+`vault.change` and `vault.reset` are the daemon's side of this, and for
+comms-mail's own keys `keys.view` (`{format}`), `keys.use` (`{format,
+engine, store, vault, passphrase}`), `keys.unlock`, `keys.import`
+(`{format, data, passphrase}`), `keys.remove` (`{format, id, own}`) and
+`keys.backup` (`{format, id, passphrase}` → `{data, name}`). A store
 that keeps no secrets (the demo) reports `supported: false`, and the window
 asks nothing. Tests never reach your real keyring or secretvault: they
 run the keyring code against a fake Secret Service on a private D-Bus, and
@@ -632,13 +636,26 @@ the person: that is what signatures are for (below).
 
 comms-mail tells signed and encrypted mail apart by its structure —
 PGP/MIME (`multipart/signed`, `multipart/encrypted`), S/MIME (detached
-`smime.p7s`, opaque or enveloped `smime.p7m`) and inline OpenPGP — and
-does nothing else with it itself. Checking a signature, judging whose key
-made it and decrypting are **secretvault**'s, which keeps your keys and
-contacts in its own daemon (`mail.inspect`). So PGP and S/MIME work while
-secretvault is the store in use (see *Where passwords are kept*); with
-another store, a signed or encrypted message says so and that secretvault
-reads it.
+`smime.p7s`, opaque or enveloped `smime.p7m`) and inline OpenPGP.
+Checking a signature, judging whose key made it, decrypting, signing and
+encrypting are done, **format by format**, by the engine chosen in
+**Settings › Security › Keys** — apart from where the passwords are kept:
+
+| | **Secret Vault** (the default) | **Built into comms-mail** |
+| --- | --- | --- |
+| Who does the work | secretvault, in its own daemon (`mail.inspect`, `mail.compose`) | comms-maild itself: OpenPGP with ProtonMail's go-crypto, S/MIME with comms-mail's own CMS (`internal/cms`, standard library only) |
+| Your private keys | in secretvault; comms-mail never holds one | where you choose, like the passwords and independently of them: System Keyring, a Secret Vault vault (Default or Custom), the encrypted file, or a plain file (`keys.json` beside `mail.json`) |
+| Other people's keys | secretvault's contacts | comms-mail's own list: OpenPGP keys from Autocrypt headers and attached keys (first seen in mail), S/MIME certificates from signed mail whose certificate holds, and what you bring in from a file |
+| Trust | secretvault's verdicts (in person, organisation, published, …) | OpenPGP: your own key, a key you brought in (verified), or first seen in mail (not verified); a key for another address than From is someone else's. S/MIME: a certificate issued, through the certificates the message carries, by an authority this computer trusts, for the From address — or one you brought in |
+
+The two formats are chosen separately, so OpenPGP can be comms-mail's own
+while secretvault does S/MIME, or the other way round. Your keys and the
+passwords can share a place: each keeps to its own names there
+(`pass/…`, `oauth/…`, `keys/<format>/…`), moving one never takes the
+other with it, and the encrypted file — one file, one passphrase, for
+whatever is kept in it — is deleted only when nothing is left in it.
+The keys' public halves, and other people's keys, are not secret: they
+are in the data folder, `keys/index.json`.
 
 - **As it arrives.** An encrypted message keeps no text: its ciphertext is
   neither shown, nor kept as its body, nor indexed for search, and its
@@ -647,71 +664,93 @@ reads it.
   Messages cached by an older comms-mail are read again from their raw
   source when opened.
 - **When you open one,** comms-maild hands the message, as received, to
-  secretvault (`messages.security`), and an encrypted one is decrypted
-  there — secretvault asks you the first time comms-maild wants to
-  decrypt. Under the header, a line for each layer:
+  the engine for its format (`messages.security`), which checks it and
+  opens what is encrypted to you — secretvault asks you the first time
+  comms-maild wants to decrypt; comms-mail's own opens with your keys from
+  where they are kept, peeling layer after layer (signed inside encrypted,
+  and so on). Under the header, a line for each layer:
   - a check — *Signed by Alice, verified in person* (or vouched for by the
-    organisation, published by the address's domain, …);
+    organisation, your own key, a key you brought in, certified by an
+    authority your computer trusts, …);
   - a question — the signature holds but whose key it is was never
-    verified, or the key is not among your contacts, or secretvault does
-    not have it;
+    verified, or the key is not among your contacts, or you do not have it;
   - a warning or an error — the key belongs to someone else's address, the
     message was changed after it was signed, or the signature cannot be
-    trusted (expired, revoked, untrusted root …);
+    trusted (expired, revoked, a certificate from an authority this
+    computer does not trust …);
   - a lock — *Encrypted: opened with your key*, or why it was not.
-- **What secretvault decrypts** is shown in the Message and Markdown tabs
-  under the real subject (an encrypted message's outer subject is often
-  `...`), and held in that window only: it is never written to the cache
-  or the search index. The message you reply to or move stays the one
-  received.
-- **Keys a message carries** — an Autocrypt header, an S/MIME signer's
-  certificate — are passed to secretvault's contacts (`trust.seen`), which
-  records how each was seen; nothing is trusted for arriving.
-- **While secretvault is locked** nothing is checked and nobody is asked:
-  the line says so, with **Unlock secretvault…**, which asks secretvault
-  to show its own prompt.
+- **What is decrypted** is shown in the Message and Markdown tabs under
+  the real subject (an encrypted message's outer subject is often `...`),
+  and held in that window only: it is never written to the cache or the
+  search index. The message you reply to or move stays the one received.
+- **Keys a message carries** — an Autocrypt header, an attached key, an
+  S/MIME signer's certificate — go to the engine's contacts: secretvault
+  records how each was seen (`trust.seen`); comms-mail's own records an
+  Autocrypt key only for the sender's own address, and a certificate only
+  when it holds. Nothing is trusted for arriving.
+- **While the keys are locked** — secretvault, or where comms-mail keeps
+  its own — nothing is opened and nobody is asked: the line says so, with
+  **Unlock secretvault…** or **Unlock your keys…** (the encrypted file's
+  passphrase; the keyring and secretvault show their own prompts).
 
-Your keys — **Settings › Security › Keys** (asked of secretvault again each time the page shows):
+Your keys — **Settings › Security › Keys**, OpenPGP and S/MIME a page
+each (switched at the top), asked again each time it shows:
 
-- For each address you send from (each identity's and account's), the
-  OpenPGP key and the S/MIME certificates secretvault holds for it.
-  comms-mail asks secretvault about those addresses only (`pgp.public`,
-  `smime.list`), never for a list of what else your vault holds, and
-  never holds a private key.
-- **Make an OpenPGP key** has secretvault make one for the address, under
-  the name you send as (`pgp.generate`); **Copy public key** puts its
-  public half on the clipboard, to give to the people who write to you.
-- **Import S/MIME…** brings in a certificate and its key from a `.p12` /
-  `.pfx` file: its password is asked in a field that holds bytes, never a
-  string, and the file and the password are handed to secretvault
-  (`smime.import`) and wiped.
-- While secretvault is locked the tab says so, with **Unlock
-  secretvault…**; with another store, that secretvault keeps the keys.
-  The tab asks secretvault again each time it is shown.
+- **Who signs, encrypts, checks and opens:** *Built into comms-mail*,
+  with where its keys are kept — the same places as the passwords, each
+  with its path and a green check on the one in use; the encrypted file
+  asks a new passphrase twice, or, when it already keeps other secrets,
+  its own passphrase if it is not open — or *Secret Vault*. **Apply** makes
+  it so, moving comms-mail's own keys to a new place (written there first,
+  taken out of the old one last). Keys secretvault keeps stay in it.
+- **Your keys,** for each address you send from: the OpenPGP key and the
+  S/MIME certificates. With secretvault, comms-mail asks it about those
+  addresses only (`pgp.public`, `smime.list`) and never holds a private
+  key; **Make an OpenPGP key** has secretvault make one (`pgp.generate`)
+  and **Import S/MIME…** hands a `.p12` / `.pfx` and its password to it
+  (`smime.import`). Built in, **Make an OpenPGP key** makes an Ed25519 /
+  X25519 key under the name you send as; **Import a key…** brings in an
+  OpenPGP key from a file (yours — asking its passphrase when it has one —
+  or someone else's); **Import S/MIME…** brings in your certificate and
+  its key from a `.p12`; **Save a backup…** writes your key, locked with a
+  passphrase you choose (typed twice), as `.asc` or `.p12`; **Remove…**
+  deletes it, once you say so. **Copy public key** puts an OpenPGP key's
+  public half on the clipboard. Passwords and passphrases are asked in
+  fields that hold bytes, never strings, and wiped.
+- **Other people's keys** (built in): how each came and when it was last
+  seen, **Import…** (an OpenPGP public key, or `.pem` / `.cer`
+  certificates) and **Remove**.
 
 Sending:
 
-- **Write has Sign and Encrypt** (the *Security* row, shown while
-  secretvault is the store). **Sign is on whenever secretvault holds a key
-  for the From address** — an OpenPGP key or an S/MIME certificate
-  (`compose.keys`, which never asks secretvault to unlock); with no key it
-  is off and says so, and while secretvault is locked it is on and the
-  message is signed if a key turns out to be there. **Encrypt** is off,
-  and on for a reply to, or forward of, an encrypted message — which
-  quotes what secretvault decrypted, under the real subject.
-- **On Send**, comms-maild builds the message as always and secretvault
-  makes it signed and encrypted (`mail.compose`): signed with your key for
-  From, encrypted to each recipient's key from your contacts and to your
-  own, OpenPGP where everyone has a key, else S/MIME. What goes out is
-  what secretvault returned, and so is the copy in **Sent** — never the
-  plain text, and readable to you through secretvault.
-- **While secretvault is locked** the message waits in the Outbox, as for
-  a locked password store, and is signed and encrypted when it goes.
-  Anything else secretvault refuses — a recipient with no key, no key for
-  From — comes back to the Write window, and nothing is sent. An encrypted
-  message cannot have Bcc recipients (secretvault encrypts to the
-  recipients the message names, and Bcc is not among them), and Sign or
-  Encrypt without secretvault is refused.
+- **Write has Sign and Encrypt** (the *Security* row, shown while an
+  engine is there for a format). **Sign is on whenever there is a key for
+  the From address** — an OpenPGP key or an S/MIME certificate
+  (`compose.keys`, which never asks anything to unlock); with no key it is
+  off and says so, and while the keys are locked it is on and the message
+  is signed if a key turns out to be there. **Encrypt** is off, and on for
+  a reply to, or forward of, an encrypted message — which quotes what was
+  decrypted, under the real subject.
+- **On Send**, comms-maild builds the message as always and the engine
+  makes it signed and encrypted: signed with your key for From, encrypted
+  to each recipient's key and to your own, so Sent stays readable.
+  OpenPGP is tried first, then S/MIME — the first whose engine can do what
+  was asked (with secretvault doing both, it picks, as it always has).
+  Signed alone, it is `multipart/signed`; encrypted, PGP/MIME
+  `multipart/encrypted` or S/MIME `enveloped-data` (signed first, inside),
+  the real subject inside (RFC 9788) and `...` outside. What goes out is
+  what the engine returned, and so is the copy in **Sent** — never the
+  plain text. Built in, a signed part is made 7-bit safe first (text as
+  quoted-printable), so the signature holds however it travels, and mail
+  from an address with a comms-mail OpenPGP key offers it in an
+  **Autocrypt** header, signed or not.
+- **While the keys are locked** the message waits in the Outbox, as for a
+  locked password store, and is signed and encrypted when it goes.
+  Anything else that cannot be done as asked — a recipient with no key, no
+  key for From — comes back to the Write window, and nothing is sent. An
+  encrypted message cannot have Bcc recipients (it is encrypted to the
+  recipients it names, and Bcc is not among them), and Sign or Encrypt
+  with no engine to do it is refused.
 - **A draft of a message to be encrypted is kept on this machine only**:
   never written to the server's Drafts, and a copy saved there before
   Encrypt was ticked is taken off it. Drafts and messages waiting in the

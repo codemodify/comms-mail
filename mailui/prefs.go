@@ -566,7 +566,7 @@ func passwordsSection(a *app.Application, win *app.Window, cli *mailcore.Client)
 		if len(inUse) > 0 {
 			under[st.Store] = widgets.NewColumn(inUse...).WithGap(6)
 		}
-		c := newStoreChoices(st, true, under)
+		c := newStoreChoices(st, "passwords", true, under)
 		apply := newButton("Apply", nil)
 		apply.Tip = "Move your passwords and sign-ins to the place picked"
 		apply.SetEnabled(false)
