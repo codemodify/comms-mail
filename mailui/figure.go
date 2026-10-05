@@ -22,13 +22,13 @@ const (
 
 // inks are a picture's colours, from the look.
 type inks struct {
-	text, muted, good, disc, discEdge paintengine2d.Color
+	text, muted, good, bad, disc, discEdge paintengine2d.Color
 }
 
 func inksOf(lk style.LookAndFeel) inks {
 	p := lk.Palette()
 	return inks{
-		text: p.Text, muted: p.TextMuted, good: p.Ink(p.Success),
+		text: p.Text, muted: p.TextMuted, good: p.Ink(p.Success), bad: p.Ink(p.Danger),
 		disc: p.Field, discEdge: p.Border,
 	}
 }
