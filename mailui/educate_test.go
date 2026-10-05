@@ -55,6 +55,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 		var numbers []int
 		var titles []*strong
 		var keys []*symbolItem
+		var letters []string
 		ors := 0
 		widget.Walk(page, func(c widget.Component) {
 			switch v := c.(type) {
@@ -70,10 +71,21 @@ func TestEducateIsOnePicture(t *testing.T) {
 				if v.Text == "or" {
 					ors++
 				}
+			case *letter:
+				letters = append(letters, v.text)
 			}
 		})
 		if len(scenes) != 1 || len(steps) != 8 || !slices.Equal(numbers, []int{1, 2, 3, 4, 5, 6, 7, 8}) {
 			t.Fatalf("at %d: %d pictures, steps numbered %v", width, len(scenes), numbers)
+		}
+		var wantLetters []string
+		for _, st := range steps {
+			for i := range st.points {
+				wantLetters = append(wantLetters, string(rune('a'+i)))
+			}
+		}
+		if !slices.Equal(letters, wantLetters) {
+			t.Errorf("at %d: the points are lettered %v, want %v", width, letters, wantLetters)
 		}
 		if len(keys) != len(symbols) || len(symbols) != 6 {
 			t.Errorf("at %d: %d symbols explained of %d", width, len(keys), len(symbols))
@@ -307,13 +319,20 @@ func TestEducateIsOnePicture(t *testing.T) {
 		w.Close()
 	}
 	for i, st := range steps {
+		says := strings.ToLower(strings.Join(st.points, "\n"))
 		for _, n := range flat(st.tags) {
-			if !strings.Contains(strings.ToLower(st.says), strings.ToLower(n)) {
+			if !strings.Contains(says, strings.ToLower(n)) {
 				t.Errorf("step %d (%s) has the tag %s and does not say it", i+1, st.title, n)
 			}
 		}
+		// A few words each.
+		for _, p := range st.points {
+			if n := len(strings.Fields(p)); n > 9 {
+				t.Errorf("step %d: %q is %d words", i+1, p, n)
+			}
+		}
 	}
-	if !strings.Contains(steps[7].says, fakeDomain) {
+	if !strings.Contains(strings.Join(steps[7].points, " "), fakeDomain) {
 		t.Errorf("step 8 does not name %s", fakeDomain)
 	}
 }

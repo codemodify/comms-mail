@@ -11,19 +11,20 @@ import (
 )
 
 // Settings › Security › Educate: email security, step by step, as a
-// message goes from you to the recipient — the picture of its route
+// message goes from YOU to TARGET — the picture of its route
 // (educate_route.go), each step numbered and its standards drawn by it as
-// tags, and under it each step again: what is done, by whom, with which
-// standard, and what it does not protect. A standard is the same tag
-// everywhere, so the picture and the words read together.
+// tags, and under it each step again: its points, a few words each, of
+// what does what. A standard is the same tag everywhere, so the picture
+// and the words read together.
 
 // step is one of the picture's numbered steps. tags are the standards it
-// uses, each named in says, in groups: a group of more than one is
+// uses, each named in its points, in groups: a group of more than one is
 // alternatives, either one doing the job — drawn across the step's line in
 // the picture, and joined by "or" under it.
 type step struct {
-	title, says string
-	tags        [][]string
+	title  string
+	points []string
+	tags   [][]string
 }
 
 // alt is a group of alternatives; one is a group of one.
@@ -38,30 +39,69 @@ func one(names ...string) [][]string {
 }
 
 var steps = []step{
-	{"You sign and encrypt",
-		"comms-mail signs the message with your private key, then encrypts it with a fresh session key, locked to each recipient's public key and to yours. OpenPGP keys are your own, trusted by fingerprint; S/MIME certificates are issued by a certificate authority. The subject goes inside; outside it reads \"...\". Sender, recipients, date and size stay visible, and there is no forward secrecy: a stolen private key opens every past message sent to it.",
-		[][]string{alt("OpenPGP", "S/MIME")}},
-	{"comms-mail hands it to your server",
-		"It connects on port 465 (TLS from the first byte) or 587 (STARTTLS), checks the server's certificate, and never carries on unencrypted. It signs in with your password, or an OAuth token that is scoped, revocable and never your password, and hands the message over with SMTP.",
-		[][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}},
-	{"Your server signs it and finds theirs",
-		"Your server signs the message for your domain with DKIM: a signature over the body and main headers, checked against a public key in your domain's DNS. It looks up the recipient domain's MX record to find the server that accepts its mail.",
-		one("DKIM", "MX")},
-	{"Server to server",
-		"Servers talk SMTP on port 25, encrypted by STARTTLS only when both offer it: an attacker in between can strip the offer. MTA-STS (a policy served over HTTPS) or DANE (the certificate pinned in DNSSEC) make encryption mandatory and the certificate checked. Each server still reads the message: TLS protects the hop, not the stops.",
-		[][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}},
-	{"Their server checks the sender",
-		"SPF: is the sending server on the list in the sender domain's DNS? DKIM: does the signature verify, so nothing changed? DMARC: does either pass for the domain in the visible From, and if not, does that domain ask for none, quarantine or reject? ARC carries earlier results through forwarders and mailing lists. The verdict goes into the Authentication-Results header, filters look for spam and malware, and the message is stored.",
-		one("SPF", "DKIM", "DMARC", "ARC")},
-	{"The recipient's app fetches it",
-		"The recipient's mail app signs in and downloads over TLS: IMAP (port 993) keeps mail on the server, the same on every device; POP3 (port 995) takes it down to one.",
-		[][]string{alt("TLS"), alt("IMAP", "POP3")}},
-	{"The recipient's app verifies and opens it",
-		"It trusts only the topmost Authentication-Results, written by its own provider, and warns when a check failed. It verifies the OpenPGP or S/MIME signature and that the signer is the From address, then decrypts with the recipient's private key. comms-mail also flags look-alike domains and misleading names, and blocks remote images, which would tell the sender when and where the mail was opened.",
-		[][]string{alt("OpenPGP", "S/MIME")}},
-	{"What gets through anyway",
-		"An attacker registers acrne.com to pass as your supplier acme.com, publishes SPF, DKIM and DMARC for it, and passes step 5; so does mail from a real account that was broken into. The checks prove which domain sent a message, not who wrote it or whether the request is genuine: confirm payment changes another way, and distrust attachments and links you did not expect.",
-		one("SPF", "DKIM", "DMARC")},
+	{"YOU sign and encrypt", []string{
+		"Your private key signs it",
+		"A fresh session key encrypts it",
+		"TARGET's public key locks that key, and yours",
+		"OpenPGP: your own keys, trusted by fingerprint",
+		"S/MIME: certificates from an authority",
+		"The subject goes inside; outside reads \"...\"",
+		"Still visible: sender, recipients, date, size",
+		"No forward secrecy: a stolen key opens old mail",
+	}, [][]string{alt("OpenPGP", "S/MIME")}},
+	{"comms-mail hands it to YOUR SERVER", []string{
+		"TLS from the first byte: port 465",
+		"Or STARTTLS: port 587",
+		"The server's certificate is checked",
+		"Never carries on unencrypted",
+		"Signs in: password, or OAuth token",
+		"OAuth: scoped, revocable, no password",
+		"SMTP hands the message over",
+	}, [][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}},
+	{"YOUR SERVER signs it and finds TARGET SERVER", []string{
+		"DKIM signs body and headers, for your domain",
+		"Its public key is in your domain's DNS",
+		"The MX record in DNS names TARGET SERVER",
+	}, one("DKIM", "MX")},
+	{"Server to server", []string{
+		"SMTP, on port 25",
+		"STARTTLS encrypts, if both offer it",
+		"An attacker in between can strip the offer",
+		"MTA-STS: a policy over HTTPS makes TLS a must",
+		"DANE: the certificate pinned in DNSSEC",
+		"Each server still reads the message",
+	}, [][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}},
+	{"TARGET SERVER checks the sender", []string{
+		"SPF: is the sending server on the domain's list?",
+		"DKIM: does the signature verify, unchanged?",
+		"DMARC: does one pass for the visible From?",
+		"DMARC, failing: none, quarantine or reject",
+		"ARC: keeps results through forwarders",
+		"The verdict goes into Authentication-Results",
+		"Spam and malware filtered, then stored",
+	}, one("SPF", "DKIM", "DMARC", "ARC")},
+	{"TARGET fetches it", []string{
+		"Signs in, over TLS",
+		"IMAP (993): stays on the server, synced",
+		"POP3 (995): downloaded to one device",
+	}, [][]string{alt("TLS"), alt("IMAP", "POP3")}},
+	{"TARGET verifies and opens it", []string{
+		"Trusts only its own provider's verdict",
+		"Warns when a check failed",
+		"Verifies the OpenPGP or S/MIME signature",
+		"The signer must be the From address",
+		"TARGET's private key decrypts it",
+		"comms-mail flags look-alikes and false names",
+		"Remote images blocked: they report opens",
+	}, [][]string{alt("OpenPGP", "S/MIME")}},
+	{"What gets through anyway", []string{
+		"acrne.com, posing as your supplier acme.com",
+		"Its own SPF, DKIM and DMARC: all pass",
+		"A real account, broken into: passes too",
+		"Checks prove the domain, not the person",
+		"Confirm payment changes another way",
+		"Distrust attachments and links you did not expect",
+	}, one("SPF", "DKIM", "DMARC")},
 }
 
 // fakeDomain is the attacker's look-alike domain, as the picture shows it.
@@ -77,7 +117,7 @@ func educateSection() widget.Component {
 	}
 	col := widgets.NewColumn(key, widgets.NewTitle("Step by step")).WithGap(14)
 	for i, st := range steps {
-		about := widgets.NewColumn(newStrong(st.title), altRow(st.tags), wrapLabel(st.says)).WithGap(6)
+		about := widgets.NewColumn(newStrong(st.title), altRow(st.tags), pointList(st.points)).WithGap(6)
 		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
 		row.AddFlex(about, 1)
 		col.Add(row)
@@ -302,6 +342,42 @@ func (c *protoChip) Paint(ctx *paintengine2d.Context) {
 	drawChip(ctx, c.Look(), c.name, paintengine2d.XYWH(b.Min.X, b.Min.Y, w, h))
 }
 
+// pointList is a step's points, lettered a, b, c…: a few words each.
+func pointList(points []string) *widgets.FlexBox {
+	col := widgets.NewColumn().WithGap(2)
+	for i, p := range points {
+		row := widgets.NewRow(newLetter(string(rune('a' + i)))).WithGap(6).WithAlign(layout.AlignStart)
+		row.AddFlex(wrapLabel(p), 1)
+		col.Add(row)
+	}
+	return col
+}
+
+// letter is a point's letter, muted, in a column of its own width so the
+// points line up.
+type letter struct {
+	widget.Base
+	text string
+}
+
+func newLetter(text string) *letter {
+	l := &letter{text: text}
+	l.Init(l)
+	return l
+}
+
+func (l *letter) Measure(c layout.Constraints) paintengine2d.Point {
+	return c.Constrain(paintengine2d.Pt(style.Dip(l.Look(), 14), l.Look().Font().Height()))
+}
+
+func (l *letter) Arrange(r paintengine2d.Rect) { l.SetBounds(r) }
+
+func (l *letter) Paint(ctx *paintengine2d.Context) {
+	b := l.LocalBounds()
+	f := l.Look().Font()
+	f.Draw(ctx, l.text, paintengine2d.Pt(b.Max.X-f.Advance(l.text), b.Min.Y), l.Look().Palette().TextMuted)
+}
+
 // altRow is groups' tags in a row that wraps, a group of alternatives
 // kept together and joined by "or".
 func altRow(groups [][]string) *widgets.Wrap {
@@ -337,7 +413,7 @@ type symbol struct {
 var symbols = []symbol{
 	{envelopeSymbol(envelope{}), "A message"},
 	{envelopeSymbol(envelope{seal: true}), "Signed by you"},
-	{envelopeSymbol(envelope{lock: true}), "Encrypted to the recipient"},
+	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET"},
 	{envelopeSymbol(envelope{stamp: true}), "Signed by your domain"},
 	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
 		y := box.Center().Y

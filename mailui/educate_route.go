@@ -35,12 +35,11 @@ func newRouteScene() *routeScene {
 // dnsTags are what the servers look up in DNS, drawn by it.
 var dnsTags = one("MX", "SPF", "DKIM", "DMARC")
 
-// routeNames are the four, with the number of the step each takes:
-// you, your server, their server, the recipient.
+// routeNames are the four, with the number of the step each takes.
 var routeNames = [4]struct {
 	name string
 	step int
-}{{"You", 1}, {"Your server", 3}, {"Their server", 5}, {"Recipient", 7}}
+}{{"YOU", 1}, {"YOUR SERVER", 3}, {"TARGET SERVER", 5}, {"TARGET", 7}}
 
 // routeDisc is a person or a server; text, when set, is written in it in
 // place of a picture.
