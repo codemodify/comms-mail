@@ -62,25 +62,43 @@ func TestEducateIsOnePicture(t *testing.T) {
 			var titles []*strong
 			var keys []*symbolItem
 			var letters []string
+			var stepTabs *widgets.TabView
 			ors := 0
 			widget.Walk(page, func(c widget.Component) {
 				switch v := c.(type) {
 				case *routeScene:
 					scenes = append(scenes, v)
-				case *numberMark:
-					numbers = append(numbers, v.n)
-				case *strong:
-					titles = append(titles, v)
 				case *symbolItem:
 					keys = append(keys, v)
-				case *widgets.Label:
-					if v.Text == "or" {
-						ors++
-					}
-				case *letter:
-					letters = append(letters, v.text)
+				case *widgets.TabView:
+					stepTabs = v
 				}
 			})
+			// The steps are a tab each, titled by their number: each one
+			// seen by showing it.
+			if stepTabs == nil || !slices.Equal(stepTabs.Bar().Titles, []string{"1", "2", "3", "4", "5", "6", "7", "8"}) {
+				t.Fatalf("at %d: the steps are not tabs 1 to 8", width)
+			}
+			for i := range 8 {
+				stepTabs.Select(i)
+				a.PumpOnce()
+				widget.Walk(stepTabs, func(c widget.Component) {
+					switch v := c.(type) {
+					case *numberMark:
+						numbers = append(numbers, v.n)
+					case *strong:
+						titles = append(titles, v)
+					case *widgets.Label:
+						if v.Text == "or" {
+							ors++
+						}
+					case *letter:
+						letters = append(letters, v.text)
+					}
+				})
+			}
+			stepTabs.Select(0)
+			a.PumpOnce()
 			if len(scenes) != 1 || len(steps) != 8 || !slices.Equal(numbers, []int{1, 2, 3, 4, 5, 6, 7, 8}) {
 				t.Fatalf("at %d: %d pictures, steps numbered %v", width, len(scenes), numbers)
 			}
@@ -791,5 +809,28 @@ func TestEducateSaysWhatGoesWrong(t *testing.T) {
 		page = educateSection() // the ticks start over
 		w.SetContent(page)
 		a.PumpOnce()
+	}
+}
+
+// The numbers are white on the look's blue, readable (4.5:1) whatever the
+// look — the light and dark ones, and metal-ocean, whose text on its
+// light blue accent is black.
+func TestEducateNumbersAreWhiteOnBlue(t *testing.T) {
+	for _, lk := range []style.LookAndFeel{style.LightLook(), style.DarkLook(),
+		style.Themed(style.LightLook(), style.ThemeOverride{Pack: "metal-ocean"})} {
+		disc, ink := numberInks(lk)
+		if ink != white || contrast(ink, disc) < 4.5 {
+			t.Errorf("%s: %v on %v, %.1f:1", lk.Name(), ink, disc, contrast(ink, disc))
+		}
+		// Still the look's blue, only darker: the same hue's leaning.
+		a := lk.Palette().Accent
+		if (a.B >= a.R) != (disc.B >= disc.R) {
+			t.Errorf("%s: the disc %v is not the accent %v darkened", lk.Name(), disc, a)
+		}
+	}
+	for _, c := range []paintengine2d.Color{paintengine2d.RGB(0.72, 0.81, 0.9), paintengine2d.RGB(1, 1, 0.4), paintengine2d.RGB(0, 0, 0.5)} {
+		if contrast(white, whiteOn(c)) < 4.5 {
+			t.Errorf("white on %v: %.1f:1", whiteOn(c), contrast(white, whiteOn(c)))
+		}
 	}
 }

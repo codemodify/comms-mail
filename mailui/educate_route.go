@@ -585,9 +585,9 @@ const stopSize = 22
 func drawStop(ctx *paintengine2d.Context, lk style.LookAndFeel, c paintengine2d.Point) {
 	p := lk.Palette()
 	d := style.Dip(lk, stopSize)
-	ctx.DrawCircle(c, d/2, paintengine2d.Fill(p.Ink(p.Danger)))
+	ctx.DrawCircle(c, d/2, paintengine2d.Fill(whiteOn(p.Ink(p.Danger))))
 	sz := d * 0.6
-	style.DrawToolIcon(ctx, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), style.IconClose, p.TextOnAccent, style.IconSetOf(lk))
+	style.DrawToolIcon(ctx, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), style.IconClose, white, style.IconSetOf(lk))
 }
 
 // flat is groups' tags, one after another.

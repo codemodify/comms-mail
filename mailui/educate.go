@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/codemodify/paintengine2d"
@@ -510,7 +511,15 @@ func educateSection() widget.Component {
 	for _, sy := range symbols {
 		key.Add(newSymbolItem(sy))
 	}
-	list := widgets.NewColumn().WithGap(14)
+	// The steps, a tab each — 1 to 8, as the picture numbers them —
+	// rather than one after another.
+	pages := make([]*widgets.FlexBox, 8)
+	var tabs []widgets.Tab
+	for i := range pages {
+		pages[i] = widgets.NewColumn()
+		tabs = append(tabs, widgets.Tab{Title: strconv.Itoa(i + 1), Content: widgets.NewPad(8, pages[i])})
+	}
+	stepTabs := widgets.NewTabView(tabs...)
 	wrong := widgets.NewColumn()
 	l := firstLesson
 	var mtaSTS, dane *widgets.Checkbox
@@ -527,7 +536,6 @@ func educateSection() widget.Component {
 		wrong.ClearChildren()
 		wrong.Add(problemList(problems(l)))
 		wrong.RequestLayout()
-		list.ClearChildren()
 		for i, st := range scenarioSteps(l) {
 			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
 			if len(st.tags) > 0 {
@@ -536,10 +544,12 @@ func educateSection() widget.Component {
 			about.Add(pointList(st.points))
 			row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
 			row.AddFlex(about, 1)
-			list.Add(row)
+			pages[i].ClearChildren()
+			pages[i].Add(row)
+			pages[i].RequestLayout()
 		}
-		list.RequestLayout()
-		list.Invalidate()
+		stepTabs.RequestLayout()
+		stepTabs.Invalidate()
 	}
 	check := func(text string, on *bool) *widgets.Checkbox {
 		c := widgets.NewCheckbox(text, *on, nil)
@@ -561,7 +571,7 @@ func educateSection() widget.Component {
 		group("Domains:", check("MX", &l.mx), check("SPF", &l.spf), check("DKIM", &l.dkim), check("DMARC", &l.dmarc)),
 	).WithGap(6)
 	show()
-	words := widgets.NewColumn(which, widgets.NewTitle("What goes wrong"), wrong, widgets.NewTitle("Step by step"), list).WithGap(14)
+	words := widgets.NewColumn(which, widgets.NewTitle("What goes wrong"), wrong, widgets.NewTitle("Step by step"), stepTabs).WithGap(14)
 	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
 }
 
@@ -670,13 +680,52 @@ func (m *numberMark) Paint(ctx *paintengine2d.Context) {
 	drawNumber(ctx, m.Look(), m.n, paintengine2d.Pt(b.Min.X+s/2, b.Min.Y+max(s, m.Look().BoldFont().Height())/2), s)
 }
 
-// drawNumber draws n in a disc of size s centred at c.
+// drawNumber draws n in a disc of size s centred at c: white on the
+// look's blue.
 func drawNumber(ctx *paintengine2d.Context, lk style.LookAndFeel, n int, c paintengine2d.Point, s float32) {
-	p := lk.Palette()
-	ctx.DrawCircle(c, s/2, paintengine2d.Fill(p.Accent))
+	disc, ink := numberInks(lk)
+	ctx.DrawCircle(c, s/2, paintengine2d.Fill(disc))
 	f := lk.BoldFont()
 	t := strconv.Itoa(n)
-	f.Draw(ctx, t, paintengine2d.Pt(c.X-f.Advance(t)/2, c.Y-f.Height()/2), p.TextOnAccent)
+	f.Draw(ctx, t, paintengine2d.Pt(c.X-f.Advance(t)/2, c.Y-f.Height()/2), ink)
+}
+
+// white is the numbers' and the stop's ink, whatever the look.
+var white = paintengine2d.RGB(1, 1, 1)
+
+// numberInks are a number's disc and figure: the look's accent, darkened
+// as far as white on it needs to be read (4.5:1), and white — where a
+// look's own text-on-accent can be black, on a light blue.
+func numberInks(lk style.LookAndFeel) (disc, ink paintengine2d.Color) {
+	return whiteOn(lk.Palette().Accent), white
+}
+
+// whiteOn is c, darkened toward black until white on it reads at 4.5:1.
+func whiteOn(c paintengine2d.Color) paintengine2d.Color {
+	c.A = 1
+	for i := 0; i < 20 && contrast(white, c) < 4.5; i++ {
+		c = c.Lerp(paintengine2d.RGB(0, 0, 0), 0.1)
+		c.A = 1
+	}
+	return c
+}
+
+// contrast is the WCAG contrast ratio of a and b.
+func contrast(a, b paintengine2d.Color) float64 {
+	la, lb := luminance(a), luminance(b)
+	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+}
+
+// luminance is c's relative luminance (WCAG).
+func luminance(c paintengine2d.Color) float64 {
+	lin := func(v float32) float64 {
+		x := float64(v)
+		if x <= 0.03928 {
+			return x / 12.92
+		}
+		return math.Pow((x+0.055)/1.055, 2.4)
+	}
+	return 0.2126*lin(c.R) + 0.7152*lin(c.G) + 0.0722*lin(c.B)
 }
 
 // ---- tags ----
