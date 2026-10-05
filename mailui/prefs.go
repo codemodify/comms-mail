@@ -17,7 +17,7 @@ import (
 // OpenPrefs opens Settings: Accounts / Signatures / Tags.
 func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: "Settings", Width: 760, Height: 900, MinWidth: 710, MinHeight: 440,
+		Title: "Settings", Width: 960, Height: 900, MinWidth: 710, MinHeight: 440,
 	})
 	if err != nil {
 		return nil, err
@@ -463,7 +463,9 @@ func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, on
 	list.Selected = 0
 	show(0) // each page asked once as it was made
 	split := widgets.NewSplitter(widgets.SplitColumns, list, widgets.NewPad(4, pages))
-	split.Ratio = 0.25
+	// The topics are a few short words: the room is the pages'.
+	split.Ratio = 0.16
+	split.MinA = 130
 	return split, shown
 }
 

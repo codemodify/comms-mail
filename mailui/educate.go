@@ -556,48 +556,66 @@ func educateSection() widget.Component {
 		c.OnChange = func(v bool) { *on = v; show() }
 		return c
 	}
-	group := func(name string, boxes ...*widgets.Checkbox) widget.Component {
-		w := widgets.NewWrap(widgets.NewLabel(name))
-		w.Gap, w.LineGap = 12, 6
-		for _, b := range boxes {
-			w.Add(b)
-		}
-		return w
-	}
+	// All the ticks on one line: the message's, the connections', the
+	// domains' — a little room between the three.
 	mtaSTS, dane = check("MTA-STS", &l.mtaSTS), check("DANE", &l.dane)
-	which := widgets.NewColumn(
-		group("Message:", check("Signed", &l.signed), check("Encrypted", &l.encrypted)),
-		group("Connections:", check("TLS", &l.tls), mtaSTS, dane),
-		group("Domains:", check("MX", &l.mx), check("SPF", &l.spf), check("DKIM", &l.dkim), check("DMARC", &l.dmarc)),
-	).WithGap(6)
+	ticks := widgets.NewWrap()
+	ticks.Gap, ticks.LineGap = 8, 6
+	for i, grp := range [][]*widgets.Checkbox{
+		{check("Signed", &l.signed), check("Encrypted", &l.encrypted)},
+		{check("TLS", &l.tls), mtaSTS, dane},
+		{check("MX", &l.mx), check("SPF", &l.spf), check("DKIM", &l.dkim), check("DMARC", &l.dmarc)},
+	} {
+		if i > 0 {
+			ticks.Add(widgets.NewSpacerSize(6, 0))
+		}
+		for _, c := range grp {
+			ticks.Add(c)
+		}
+	}
 	show()
-	words := widgets.NewColumn(which, widgets.NewTitle("What goes wrong"), wrong, widgets.NewTitle("Step by step"), stepTabs).WithGap(14)
-	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
+	side := widgets.NewColumn(widgets.NewTitle("What goes wrong"), wrong).WithGap(10)
+	slot := widgets.NewColumn()
+	words := widgets.NewColumn(ticks, slot, widgets.NewTitle("Step by step"), stepTabs).WithGap(14)
+	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), side, slot, scene, words)
 }
 
 // educatePage keeps the picture in view while the words under it scroll,
 // so each step can be read with the picture beside it — when the page is
 // tall enough to leave the words room (pinMin); when not, the picture
-// scrolls with them.
+// scrolls with them. What goes wrong stands beside the picture, in view
+// with it, where the page is wide enough for both; else among the words,
+// under the ticks.
 type educatePage struct {
 	widget.Base
-	top    widget.Component // what stays in view: the picture, and its key
-	scene  *routeScene
-	words  widget.Component
-	rule   *widgets.Separator
-	body   *widgets.FlexBox // what scrolls: the words, and the picture when not pinned
-	scroll *widgets.ScrollView
-	pinned bool
+	picture widget.Component // the picture, and its key
+	side    widget.Component // what goes wrong
+	slot    *widgets.FlexBox // where side goes among the words
+	scene   *routeScene
+	words   widget.Component
+	rule    *widgets.Separator
+	body    *widgets.FlexBox // what scrolls: the words, and the picture when not pinned
+	scroll  *widgets.ScrollView
+	built   bool // pinned and beside say how it is put together
+	pinned  bool
+	beside  bool
 }
 
 // pinMin is the room the words keep under a pinned picture: some lines
 // of them.
 const pinMin = 120
 
-func newEducatePage(top widget.Component, scene *routeScene, words widget.Component) *educatePage {
-	p := &educatePage{top: top, scene: scene, words: words, rule: widgets.NewSeparator()}
+// sideMin is the least what goes wrong takes beside the picture; sideGap
+// is between them.
+const (
+	sideMin = 220
+	sideGap = 16
+)
+
+func newEducatePage(picture, side widget.Component, slot *widgets.FlexBox, scene *routeScene, words widget.Component) *educatePage {
+	p := &educatePage{picture: picture, side: side, slot: slot, scene: scene, words: words, rule: widgets.NewSeparator()}
 	p.Init(p)
-	p.body = widgets.NewColumn(top, words).WithGap(14)
+	p.body = widgets.NewColumn().WithGap(14)
 	p.scroll = widgets.NewScrollView(widgets.NewPad(4, p.body))
 	p.Add(p.scroll)
 	return p
@@ -616,34 +634,67 @@ func (p *educatePage) Measure(c layout.Constraints) paintengine2d.Point {
 	return c.Constrain(paintengine2d.Pt(w, h))
 }
 
+// sideWidth is what goes wrong's width beside a picture in inner.
+func (p *educatePage) sideWidth(inner float32) float32 {
+	return min(max(inner*0.36, style.Dip(p.Look(), sideMin)), style.Dip(p.Look(), 340))
+}
+
 func (p *educatePage) Arrange(r paintengine2d.Rect) {
 	p.SetBounds(r)
-	pad := style.Dip(p.Look(), 4)
+	lk := p.Look()
+	pad := style.Dip(lk, 4)
 	inner := r.Dx() - 2*pad
-	topH := p.top.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
 	ruleH := p.rule.Measure(layout.Constraints{MaxW: r.Dx(), MaxH: -1}).Y
-	pin := r.Dy()-(pad+topH+pad+ruleH) >= style.Dip(p.Look(), pinMin)
-	if pin != p.pinned {
-		p.pinned = pin
+	sw := p.sideWidth(inner)
+	pw := inner - sw - style.Dip(lk, sideGap)
+	pins := func(topH float32) bool { return r.Dy()-(pad+topH+pad+ruleH) >= style.Dip(lk, pinMin) }
+	// What goes wrong beside the picture, both in view, where they fit;
+	// else the picture alone in view; else everything scrolls.
+	beside := pw >= p.scene.MinWidth()
+	var topH float32
+	if beside {
+		topH = max(p.picture.Measure(layout.Constraints{MaxW: pw, MaxH: -1}).Y, p.side.Measure(layout.Constraints{MaxW: sw, MaxH: -1}).Y)
+		beside = pins(topH)
+	}
+	if !beside {
+		topH = p.picture.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
+	}
+	pin := pins(topH)
+	if !p.built || pin != p.pinned || beside != p.beside {
+		p.built, p.pinned, p.beside = true, pin, beside
+		for _, c := range []widget.Component{p.picture, p.side, p.rule, p.scroll} {
+			p.Remove(c)
+		}
 		p.body.ClearChildren()
-		if pin {
-			p.Remove(p.scroll)
-			p.Add(p.top)
-			p.Add(p.rule)
-			p.Add(p.scroll)
+		p.slot.ClearChildren()
+		if beside {
+			p.Add(p.picture)
+			p.Add(p.side)
 		} else {
-			p.Remove(p.top)
-			p.Remove(p.rule)
-			p.body.Add(p.top)
+			p.slot.Add(p.side)
+		}
+		if pin {
+			if !beside {
+				p.Add(p.picture)
+			}
+			p.Add(p.rule)
+		} else {
+			p.body.Add(p.picture)
 		}
 		p.body.Add(p.words)
+		p.Add(p.scroll)
 		p.scroll.ScrollTo(0)
 	}
 	if !pin {
 		p.scroll.Arrange(r)
 		return
 	}
-	p.top.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, topH))
+	if beside {
+		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, pw, topH))
+		p.side.Arrange(paintengine2d.XYWH(r.Min.X+pad+pw+style.Dip(lk, sideGap), r.Min.Y+pad, sw, topH))
+	} else {
+		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, topH))
+	}
 	top := r.Min.Y + pad + topH + pad
 	p.rule.Arrange(paintengine2d.XYWH(r.Min.X, top, r.Dx(), ruleH))
 	p.scroll.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(r.Min.X, top+ruleH), Max: r.Max})

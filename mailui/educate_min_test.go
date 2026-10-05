@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/codemodify/uitoolkit"
@@ -11,15 +12,16 @@ import (
 )
 
 // Settings › Security › Educate has the room its picture needs at
-// Settings' smallest size, and keeps the picture in view at its first —
-// as first shown, and with everything turned on, which draws the most.
+// Settings' smallest size, and at its first keeps the picture in view,
+// what goes wrong beside it — as first shown, and with everything turned
+// on, which draws the most.
 func TestEducateFitsSettings(t *testing.T) {
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
 	cli := demoClient(t)
 	for _, sz := range []struct {
 		w, h   int
 		pinned bool
-	}{{710, 440, false}, {760, 900, true}} { // Settings' smallest, and its first
+	}{{710, 440, false}, {960, 900, true}} { // Settings' smallest, and its first
 		a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 		w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: sz.w, Height: sz.h, Headless: true})
 		if err != nil {
@@ -59,16 +61,26 @@ func TestEducateFitsSettings(t *testing.T) {
 		if got, need := ed.scene.Bounds().Dx(), ed.scene.MinWidth(); got < need {
 			t.Errorf("%dx%d: the picture has %v wide and needs %v", sz.w, sz.h, got, need)
 		}
-		if ed.pinned != sz.pinned {
-			t.Errorf("%dx%d: the picture pinned %v", sz.w, sz.h, ed.pinned)
+		if ed.pinned != sz.pinned || ed.beside != sz.pinned {
+			t.Errorf("%dx%d: the picture pinned %v, what goes wrong beside it %v", sz.w, sz.h, ed.pinned, ed.beside)
 		}
 		if sz.pinned {
+			// The ticks all on one line.
+			var ys []float32
+			widget.Walk(ed, func(c widget.Component) {
+				if v, ok := c.(*widgets.Checkbox); ok {
+					ys = append(ys, widget.DeviceOrigin(v).Y)
+				}
+			})
+			if len(ys) != 9 || slices.Min(ys) != slices.Max(ys) {
+				t.Errorf("%dx%d: the ticks are not on one line: %v", sz.w, sz.h, ys)
+			}
 			// Everything turned on draws the most, and stays in view too.
 			all := lesson{signed: true, encrypted: true, tls: true, mx: true, spf: true, dkim: true, dmarc: true, mtaSTS: true, dane: true}
 			choose(t, a, page, all)
 			a.PumpOnce()
-			if !ed.pinned {
-				t.Errorf("%dx%d: everything on, the picture is not pinned", sz.w, sz.h)
+			if !ed.pinned || !ed.beside {
+				t.Errorf("%dx%d: everything on, the picture pinned %v, what goes wrong beside it %v", sz.w, sz.h, ed.pinned, ed.beside)
 			}
 		}
 		w.Close()

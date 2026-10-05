@@ -58,6 +58,10 @@ func dnsTagsFor(l lesson) [][]string {
 
 const dnsName = "DNS:UDP:53"
 
+// dnsRecords are the records the picture draws by DNS — those turned off
+// struck through.
+var dnsRecords = one("MX", "SPF", "DKIM", "DMARC")
+
 // routeNames are the four, with the number of the step each takes.
 var routeNames = [4]struct {
 	name string
@@ -178,12 +182,19 @@ func (s *routeScene) columns(w float32) routeColumns {
 	lk := s.Look()
 	font := lk.Font()
 	m, mk := s.dip(4), s.dip(markSize)
-	d := min(max(w*0.11, s.dip(34)), s.dip(48))
+	d := min(max(w*0.1, s.dip(32)), s.dip(42))
 	r := d / 2
 	dnd := d * 0.72
 	eb := envBox(lk, paintengine2d.Pt(0, 0))
 	thV := eb.Dx() + s.dip(8)
 	named := func(i int) float32 { return mk + s.dip(4) + font.Advance(routeNames[i].name) }
+	// DNS's pill, and its records two a line.
+	dnsW := font.Advance(dnsName) + s.dip(16)
+	_, records := chipLines(lk, flat(dnsRecords), widestChip(lk, []string{"DKIM"})+widestChip(lk, []string{"DMARC"})+s.dip(chipGap))
+	var recordsW float32
+	for _, rw := range records {
+		recordsW = max(recordsW, rw)
+	}
 	_, e2eW, _ := placeDown(lk, e2eTags, 0, 0, true)
 	_, hop4W, _ := placeDown(lk, relayStep(lesson{tls: true, mtaSTS: true, dane: true}).tags, 0, 0, false)
 	var aw float32
@@ -191,13 +202,12 @@ func (s *routeScene) columns(w float32) routeColumns {
 		aw = max(aw, font.Advance(l))
 	}
 	carries := s.dip(3) + mk + s.dip(4) + eb.Dx() + s.dip(6) + s.dip(9)
-	// Room for the names either side, and for DNS's pill between the line
-	// from YOU to TARGET and tunnel 4.
-	between := max(named(0)/2+named(1)/2, named(3)/2+named(2)/2, font.Advance(dnsName)+s.dip(16)+s.dip(18)+thV/2) + s.dip(12)
+	// Room for the names either side.
+	between := max(named(0)/2+named(1)/2, named(3)/2+named(2)/2) + s.dip(12)
 	return routeColumns{
 		between: between,
 		L:       m + max(e2eW/2, r, named(0)/2, named(3)/2) + s.dip(2),
-		right:   max(hop4W+thV/2+s.dip(6), max(dnd/2, aw/2)+dnd/2+s.dip(7)+carries+r, w*0.3),
+		right:   max(max(hop4W, dnsW, recordsW)+thV/2+s.dip(6), max(dnd/2, aw/2)+dnd/2+s.dip(7)+carries+r, w*0.28),
 		r:       r,
 		carries: carries,
 	}
@@ -310,7 +320,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	fh := font.Height()
 	m, mk, gap := s.dip(4), s.dip(markSize), s.dip(chipGap)
 	var g routeLayout
-	d := min(max(w*0.11, s.dip(34)), s.dip(48))
+	d := min(max(w*0.1, s.dip(32)), s.dip(42))
 	r := d / 2
 	dnd := d * 0.72
 	eb := envBox(lk, paintengine2d.Pt(0, 0))
@@ -324,7 +334,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	if l.tls {
 		hop4 = relayStep(lesson{tls: true, mtaSTS: true, dane: true}).tags
 	}
-	dnsTags := one("MX", "SPF", "DKIM", "DMARC")
+	dnsTags := dnsRecords
 	endToEnd := l.signed || l.encrypted
 	missing := map[string]bool{"MX": !l.mx, "SPF": !l.spf, "DKIM": !l.dkim, "DMARC": !l.dmarc,
 		"MTA-STS": l.tls && !l.mtaSTS, "DANE": l.tls && !l.dane, "OpenPGP": !endToEnd, "S/MIME": !endToEnd}
@@ -335,7 +345,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		}
 		g.chips = append(g.chips, cs...)
 	}
-	_, e2eW, e2eH := placeDown(lk, e2e, 0, 0, true)
+	_, _, e2eH := placeDown(lk, e2e, 0, 0, true)
 	attacker := []string{"Attacker", fakeDomain}
 	if !l.dmarc {
 		attacker = append(attacker, "or your domain") // nothing stops it forging yours
@@ -375,101 +385,61 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	// Step 2's tags over the top row, over the discs too.
 	c2, h2 := placeAlong(lk, hop2, (L+R)/2, m, w-2*m, m, w-m)
 	group(c2, "2")
-	g.y1 = m + h2 + s.dip(6) + max(r, thH/2)
-	nameTop := g.y1 + max(r, thH/2) + s.dip(6)
+	g.y1 = m + h2 + s.dip(4) + max(r, thH/2)
+	nameTop := g.y1 + max(r, thH/2) + s.dip(4)
 	f0, _ := name(0, L, nameTop)
 	f1, _ := name(1, R, nameTop)
 	topFoot := max(f0, f1)
 
-	// The middle: OpenPGP and S/MIME across the line from you to the
-	// recipient; DNS between the servers; step 4's tags right of its
-	// tunnel.
-	mid := topFoot + s.dip(8)
-	// DNS is a pill with its name and port: as wide as they are, a line
-	// tall.
+	// Right of tunnel 4: DNS, what the servers look up there, and under
+	// them step 4's tags. In the middle: OpenPGP and S/MIME across the line
+	// from YOU to TARGET, and step 6's tags over its tunnel.
+	mid := topFoot + s.dip(6)
+	rx := R + thV/2 + s.dip(6) // the right column's left
 	dnsW, dnsT := font.Advance(dnsName)+s.dip(16), fh+s.dip(10)
-	// DNS beside OpenPGP and S/MIME where there is room, else under them,
-	// right of the line from you to the recipient.
-	dnsLeft, dnsRight := L+e2eW/2+s.dip(10), R-thV/2-s.dip(8)
-	stacked := dnsRight-dnsLeft < max(dnsW, widestChip(lk, flat(dnsTags)))
-	if stacked {
-		dnsLeft = L + s.dip(10)
+	dnsTop := mid + s.dip(14) // room for its line up to YOUR SERVER
+	xd, yd := rx+dnsW/2, dnsTop+dnsT/2
+	cD, dnsH := placeChips(lk, flat(dnsTags), rx, dnsTop+dnsT+gap, w-m-rx, true)
+	for i := range cD {
+		cD[i].alt = i
 	}
-	besideW := dnsRight - dnsLeft - dnsW - s.dip(8)
-	lines, widths := chipLines(lk, flat(dnsTags), besideW)
-	beside := len(lines) <= 2 && widestChip(lk, flat(dnsTags)) <= besideW
-	xd, tagsX, tagsW := (dnsLeft+dnsRight)/2, (dnsLeft+dnsRight)/2, dnsRight-dnsLeft
-	if beside {
-		var tw float32
-		for _, lw := range widths {
-			tw = max(tw, lw)
-		}
-		x0 := (dnsLeft + dnsRight - (tw + s.dip(8) + dnsW)) / 2
-		xd, tagsX, tagsW = x0+tw+s.dip(8)+dnsW/2, x0+tw/2, tw
-	} else if stacked {
-		// Under OpenPGP and S/MIME: the disc by the servers, its line to
-		// yours clear of them.
-		xd = dnsRight - dnsW/2
-	}
-	_, dnsH := placeChips(lk, flat(dnsTags), tagsX, 0, tagsW, false)
-	dnsGroup := dnsT + gap + dnsH
-	if beside {
-		dnsGroup = max(dnsT, dnsH)
-	}
-	c4, _, h4 := placeDown(lk, hop4, R+thV/2+s.dip(6), mid, false)
+	group(cD, "dns")
+	top4tags := dnsTop + dnsT + gap + dnsH + s.dip(10)
+	c4, _, h4 := placeDown(lk, hop4, rx, top4tags, false)
 	group(c4, "4")
+	rightFoot := top4tags + h4
 	xa := w - m - max(dnd/2, aw/2)
 	// The attacker's words under it, beside their server's name, where
 	// they fit; over it, under step 4's tags, where not.
 	theirW := mk + s.dip(4) + font.Advance(routeNames[2].name)
 	under := xa-aw/2-(R+min(theirW/2, w-m-R))-s.dip(8) >= 0
-	need := mid + h4 + s.dip(4) + dnd/2
+	need := rightFoot + s.dip(4) + dnd/2
 	if !under {
-		need = mid + h4 + s.dip(10) + float32(len(attacker))*fh + s.dip(4) + dnd/2
+		need = rightFoot + s.dip(10) + float32(len(attacker))*fh + s.dip(4) + dnd/2
 	}
-	// Step 6's tags: over its tunnel, under DNS, where they fit between
-	// the line from YOU to TARGET and tunnel 4.
+	// Step 6's tags over its tunnel, under OpenPGP and S/MIME, where they
+	// fit between the line from YOU to TARGET and tunnel 4.
 	left6m, right6m := L+s.dip(10), R-thV/2-s.dip(8)
 	_, h6m := placeAlong(lk, hop6, 0, 0, right6m-left6m, -1e6, 1e6)
-	inMiddle := !stacked && widestChip(lk, flat(hop6)) <= right6m-left6m
-	middle := max(e2eH+s.dip(8), dnsGroup, carries)
-	if stacked {
-		middle = max(e2eH+s.dip(10)+dnsGroup, carries)
-	}
+	inMiddle := widestChip(lk, flat(hop6)) <= right6m-left6m
+	middle := max(e2eH+s.dip(8), carries)
 	if inMiddle {
-		middle = max(max(e2eH+s.dip(8), dnsGroup)+s.dip(10)+h6m, carries)
+		middle = max(e2eH+s.dip(10)+h6m, carries)
 	}
-	g.y2 = max(mid+middle+s.dip(8)+max(r, thH/2), need)
+	g.y2 = max(mid+middle+s.dip(6)+max(r, thH/2), need)
 	y2 := g.y2
 	top4, foot4 := topFoot+s.dip(4), y2-max(r, thH/2)-s.dip(4) // the lines down
 
-	upper := foot4 - s.dip(4) // the foot of OpenPGP, S/MIME and DNS
+	upper := foot4 - s.dip(4) // the foot of OpenPGP and S/MIME
 	if inMiddle {
 		c6, _ := placeAlong(lk, hop6, (left6m+right6m)/2, foot4-s.dip(4)-h6m, right6m-left6m, left6m, right6m)
 		group(c6, "6")
 		upper = foot4 - s.dip(4) - h6m - s.dip(10)
 	}
-	e2eTop := (mid + upper - e2eH) / 2
-	groupTop := mid + (upper-mid-dnsGroup)/2
-	if stacked {
-		// DNS on top, its lines up to your server and down to theirs
-		// clear of OpenPGP and S/MIME, which go under it.
-		groupTop = mid
-		e2eTop = foot4 - s.dip(4) - e2eH
-	}
 	{
-		cE, _, _ := placeDown(lk, e2e, L, e2eTop, true)
+		cE, _, _ := placeDown(lk, e2e, L, (mid+upper-e2eH)/2, true)
 		group(cE, "e2e")
 	}
-	yd, tagsTop := groupTop+dnsT/2, groupTop+dnsT+gap
-	if beside {
-		yd, tagsTop = groupTop+dnsGroup/2, groupTop+(dnsGroup-dnsH)/2
-	}
-	cD, _ := placeChips(lk, flat(dnsTags), tagsX, tagsTop, tagsW, false)
-	for i := range cD {
-		cD[i].alt = i
-	}
-	group(cD, "dns")
 	ay := y2 - dnd/2 - s.dip(4) - float32(len(attacker))*fh
 	if under {
 		ay = y2 + dnd/2 + s.dip(4)
@@ -509,12 +479,10 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		{c: paintengine2d.Pt(xa, y2), d: dnd, pict: pictPerson, bad: true},
 	}
 	pt := paintengine2d.Pt
-	// The lines leave the pill from its corners on the servers' side.
-	dnsTop := pt(xd+dnsW/2-dnsT/2, yd-dnsT/2-s.dip(2))
-	// To theirs: across from DNS's right to beside tunnel 4, then down
-	// along it — clear of whatever is under DNS.
-	along := R - thV/2 - s.dip(5)
-	corner := pt(along, yd)
+	// DNS's lines: up to under YOUR SERVER's name, and down beside tunnel
+	// 4 to TARGET SERVER — clear of step 4's tags right of it.
+	toYours := pt(rx+s.dip(10), dnsTop-s.dip(2))
+	along := R + thV/2 + s.dip(3)
 	// The connections: tunnels with TLS, plain lines without.
 	// The connections: tunnels with TLS; without, red lines — in the
 	// clear.
@@ -540,9 +508,9 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	}
 	g.lines = append(g.lines,
 		tunnel2, tunnel4, tunnel6, fake,
-		routeLine{a: dnsTop, b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: askYours, dashed: true},
-		routeLine{a: pt(xd+dnsW/2+s.dip(2), yd), b: corner, ink: askTheirs, dashed: true},
-		routeLine{a: corner, b: pt(along, y2-thH/2-s.dip(3)), ink: askTheirs, dashed: true},
+		routeLine{a: toYours, b: pt(toYours.X, topFoot+s.dip(3)), ink: askYours, dashed: true},
+		routeLine{a: pt(rx-s.dip(1), yd), b: pt(along, yd), ink: askTheirs, dashed: true},
+		routeLine{a: pt(along, yd), b: pt(along, y2-thH/2-s.dip(3)), ink: askTheirs, dashed: true},
 	)
 	// On each line that carries the message: its number at the start, the
 	// envelope between it and the arrow's head.
