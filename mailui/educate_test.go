@@ -14,16 +14,17 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// Educate is one picture: the three hops, numbered 1 to 3 and each with
-// its standards drawn on it, and the look-alike, 4, coming in from a
-// stranger. Everything is inside the picture; the tags clear of the discs,
-// the numbers, the names and one another; the look-alike's line clear of
-// the names and the tags. Under it a line for each number, and a word on
-// every standard the picture shows or the lines name, and on none they do
-// not. All of it at a wide window and one as narrow as Settings goes,
-// nothing cut short, and the picture's box as tall as what it draws.
+// Educate is one picture of a message's route, its steps numbered 1 to 8
+// once each — on their arrows, or by their names — and a numbered line
+// for each step under it. In the picture nothing is outside it, cut
+// short, or over anything else, and no line runs through words, tags,
+// discs or numbers but its own (OpenPGP and S/MIME sit on the line from
+// you to the recipient). Every tag drawn is one of its step's, and every
+// step names each of its standards in its words. All of it at a wide
+// window, a middling one and one as narrow as Settings goes, the
+// picture's box as tall as what it draws.
 func TestEducateIsOnePicture(t *testing.T) {
-	for _, width := range []int{330, 560} { // Educate's pane, narrowest and usual
+	for _, width := range []int{330, 450, 560} {
 		a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 		w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
 		if err != nil {
@@ -32,12 +33,12 @@ func TestEducateIsOnePicture(t *testing.T) {
 		page := educateSection()
 		w.SetContent(page)
 		a.PumpOnce()
-		var scenes []*hopsScene
+		var scenes []*routeScene
 		var numbers []int
 		var titles []*strong
 		widget.Walk(page, func(c widget.Component) {
 			switch v := c.(type) {
-			case *hopsScene:
+			case *routeScene:
 				scenes = append(scenes, v)
 			case *numberMark:
 				numbers = append(numbers, v.n)
@@ -45,11 +46,13 @@ func TestEducateIsOnePicture(t *testing.T) {
 				titles = append(titles, v)
 			}
 		})
-		if len(scenes) != 1 {
-			t.Fatalf("at %d: %d pictures", width, len(scenes))
+		if len(scenes) != 1 || len(steps) != 8 || !slices.Equal(numbers, []int{1, 2, 3, 4, 5, 6, 7, 8}) {
+			t.Fatalf("at %d: %d pictures, steps numbered %v", width, len(scenes), numbers)
 		}
-		if len(hops) != 3 || !slices.Equal(numbers, []int{1, 2, 3, 4}) {
-			t.Fatalf("at %d: numbered %v, for %d hops and the look-alike", width, numbers, len(hops))
+		for _, s := range titles {
+			if strings.Join(s.lines, " ") != s.text {
+				t.Errorf("at %d: a title is cut: %q", width, s.lines)
+			}
 		}
 		sc := scenes[0]
 		b := sc.Bounds()
@@ -58,246 +61,172 @@ func TestEducateIsOnePicture(t *testing.T) {
 		}
 		g := sc.layoutAt(b.Dx())
 		local := sc.LocalBounds()
-		inside := func(r paintengine2d.Rect) bool {
-			return r.Min.X >= local.Min.X && r.Max.X <= local.Max.X && r.Min.Y >= local.Min.Y && r.Max.Y <= local.Max.Y
-		}
-		font := sc.Look().Font()
-		fh := font.Height()
+		lk := sc.Look()
+		font := lk.Font()
+		m := style.Dip(lk, markSize)
 
-		// The names, the stranger's words and DNS's, where they are drawn.
-		var words []paintengine2d.Rect
-		centred := func(lines []string, cx, y float32) float32 {
-			for _, l := range lines {
-				if strings.HasSuffix(l, "…") {
-					t.Errorf("at %d: words are cut: %q", width, l)
-				}
-				r := paintengine2d.XYWH(cx-font.Advance(l)/2, y, font.Advance(l), fh)
-				if !inside(r) {
-					t.Errorf("at %d: %q is outside the picture", width, l)
-				}
-				words = append(words, r)
-				y += fh
-			}
-			return y
+		// Everything, as boxes — discs and numbers as the circles they
+		// are — with what it is.
+		type box struct {
+			what   string
+			r      paintengine2d.Rect
+			group  string  // a tag's
+			radius float32 // a circle's, in r
 		}
-		for i := range sceneNames {
-			centred(g.labels[i], g.x(float32(i)), g.labelsY)
-		}
-		var row []string
-		for _, w := range g.words {
-			row = append(row, w.text)
-			r := paintengine2d.XYWH(w.at.X, w.at.Y, font.Advance(w.text), fh)
-			if strings.HasSuffix(w.text, "…") || !inside(r) {
-				t.Errorf("at %d: %q is cut, or outside the picture", width, w.text)
-			}
-			for _, o := range words {
-				if r.Overlaps(o) {
-					t.Errorf("at %d: %q is over other words", width, w.text)
-				}
-			}
-			words = append(words, r)
-		}
-		if want := slices.Concat(g.stranger, g.fake, g.dnsLabel); !slices.Equal(row, want) {
-			t.Errorf("at %d: the row under the names says %q, not %q", width, row, want)
-		}
-		if strings.Join(g.fake, "") != fakeDomain {
-			t.Errorf("at %d: the look-alike shows %q", width, g.fake)
-		}
-		// Both ways of laying out that row are tried: beside at the usual
-		// width, under at the narrowest.
-		if g.beside != (width == 560) {
-			t.Errorf("at %d: the row's words and tags beside their discs: %v", width, g.beside)
-		}
-
-		// What the tags keep clear of: the discs, the numbers, the words.
-		disc := func(cx, cy, d float32) paintengine2d.Rect { return paintengine2d.XYWH(cx-d/2, cy-d/2, d, d) }
-		var discs []paintengine2d.Rect
-		for i := range sceneNames {
-			discs = append(discs, disc(g.x(float32(i)), g.y1, g.d))
-		}
-		discs = append(discs, disc(g.x(0.5), g.rowY, g.dnd), disc(g.x(2), g.rowY, g.dnd))
-		for _, w := range words {
-			for _, d := range discs {
-				if w.Overlaps(d) {
-					t.Errorf("at %d: words %v are over a disc", width, w)
-				}
+		var discs, texts, marks, chips []box
+		for i, d := range g.discs {
+			discs = append(discs, box{"disc " + string(rune('0'+i)) + " " + d.text, paintengine2d.XYWH(d.c.X-d.d/2, d.c.Y-d.d/2, d.d, d.d), "", d.d / 2})
+			if d.text != "" && font.Advance(d.text) > d.d-style.Dip(lk, 4) {
+				t.Errorf("at %d: %q does not fit its disc", width, d.text)
 			}
 		}
-		keepClear := append(slices.Clone(words), discs...)
-		marks := sc.marks(g, local)
-		m := style.Dip(sc.Look(), markSize)
-		var numberBoxes []paintengine2d.Rect
-		for i, mk := range marks {
-			r := paintengine2d.XYWH(mk.x-m/2, mk.y-m/2, m, m)
-			if mk.n != i+1 || !inside(r) {
-				t.Errorf("at %d: number %d is at %v, outside the picture", width, mk.n, r)
+		for _, tx := range g.texts {
+			if strings.HasSuffix(tx.text, "…") {
+				t.Errorf("at %d: %q is cut", width, tx.text)
 			}
-			for _, o := range numberBoxes {
-				if r.Overlaps(o) {
-					t.Errorf("at %d: number %d is over another", width, mk.n)
-				}
-			}
-			for _, o := range append(slices.Clone(words), discs...) {
-				if r.Overlaps(o) {
-					t.Errorf("at %d: number %d is over words or a disc", width, mk.n)
-				}
-			}
-			numberBoxes = append(numberBoxes, r)
+			texts = append(texts, box{"words " + tx.text, paintengine2d.XYWH(tx.at.X, tx.at.Y, font.Advance(tx.text), font.Height()), "", 0})
 		}
-		keepClear = append(keepClear, numberBoxes...)
-
-		drawn := map[string]bool{"DNS": len(g.dnsLabel) == 1 && g.dnsLabel[0] == "DNS"}
-		var chipBoxes []paintengine2d.Rect
-		for i, c := range g.chips {
-			drawn[c.name] = true
-			chipBoxes = append(chipBoxes, c.r)
-			if !inside(c.r) {
-				t.Errorf("at %d: %s is outside the picture: %v", width, c.name, c.r)
-			}
-			for _, k := range keepClear {
-				if c.r.Overlaps(k) {
-					t.Errorf("at %d: %s is over a disc, a number or words", width, c.name)
-				}
-			}
-			for _, o := range g.chips[i+1:] {
-				if c.r.Overlaps(o.r) {
-					t.Errorf("at %d: %s and %s overlap", width, c.name, o.name)
-				}
+		seen := map[int]int{}
+		for _, mk := range g.marks {
+			seen[mk.n]++
+			marks = append(marks, box{"number " + string(rune('0'+mk.n)), paintengine2d.XYWH(mk.x-m/2, mk.y-m/2, m, m), "", m / 2})
+		}
+		for n := 1; n <= 8; n++ {
+			if seen[n] != 1 {
+				t.Errorf("at %d: %d is in the picture %d times", width, n, seen[n])
 			}
 		}
-
-		// The look-alike's line: from the stranger, through its number,
-		// into your server, crossing no words and no tags.
-		// DNS's lines cross no words and no tags either.
-		for _, l := range sc.dnsLines(g) {
-			for k := float32(0); k <= 1; k += 0.01 {
-				p := l[0].Lerp(l[1], k)
-				for _, r := range append(slices.Clone(words), chipBoxes...) {
-					if r.Inset(-1).Contains(p) {
-						t.Errorf("at %d: a line to DNS crosses %v at %v", width, r, p)
-						break
-					}
-				}
-			}
-		}
-		fp := sc.fakePath(g)
-		if mk := marks[3]; fp[0].X != mk.x || fp[1].X != mk.x || mk.y > fp[0].Y || mk.y < fp[1].Y {
-			t.Errorf("at %d: 4 is not on the look-alike's line", width)
-		}
-		if end := fp[len(fp)-1]; end.Sub(paintengine2d.Pt(g.x(1), g.y1)).Len() > g.d/2+style.Dip(sc.Look(), 4) {
-			t.Errorf("at %d: the look-alike's line ends at %v, not at your server", width, end)
-		}
-		for i := 1; i < len(fp); i++ {
-			for k := float32(0); k <= 1; k += 0.01 {
-				p := fp[i-1].Lerp(fp[i], k)
-				for _, r := range append(slices.Clone(words), chipBoxes...) {
-					if r.Inset(-1).Contains(p) {
-						t.Errorf("at %d: the look-alike's line crosses %v at %v", width, r, p)
-						break
-					}
-				}
-			}
-		}
-
-		// Each hop's tags over it, centred on it; DNS's under it, the end
-		// to end ones over everything.
-		groups := map[int][]paintengine2d.Rect{}
-		names := map[int][]string{}
 		for _, c := range g.chips {
-			mid := c.r.Center()
-			k := -1 // over everything
+			chips = append(chips, box{"tag " + c.name, c.r, c.group, 0})
+		}
+		// meet says x and y share a point: circles as circles.
+		meet := func(x, y box) bool {
 			switch {
-			case c.r.Min.Y > g.labelsFoot(fh):
-				k = 3
-			case mid.Y < g.y1 && c.r.Min.Y > g.spanY:
-				k = int(mid.X/g.slot - 0.5) // between disc k and k+1
+			case x.radius > 0 && y.radius > 0:
+				return x.r.Center().Sub(y.r.Center()).Len() < x.radius+y.radius
+			case x.radius > 0:
+				return circleMeets(x.r.Center(), x.radius, y.r)
+			case y.radius > 0:
+				return circleMeets(y.r.Center(), y.radius, x.r)
 			}
-			groups[k] = append(groups[k], c.r)
-			names[k] = append(names[k], c.name)
+			return x.r.Overlaps(y.r)
 		}
-		check := func(k int, want []string, cx float32) {
-			if !slices.Equal(names[k], want) {
-				t.Errorf("at %d: tags %v where %v belong", width, names[k], want)
-				return
+		inside := func(x box, p paintengine2d.Point) bool {
+			if x.radius > 0 {
+				return p.Sub(x.r.Center()).Len() < x.radius
 			}
-			box := groups[k][0]
-			for _, r := range groups[k] {
-				box = box.Union(r)
-			}
-			if c := box.Center().X; c < cx-1 || c > cx+1 {
-				t.Errorf("at %d: %v are centred on %v, not %v", width, want, c, cx)
-			}
+			return x.r.Inset(-1).Contains(p)
 		}
-		for i, h := range hops {
-			check(i, h.wire, g.x(float32(i)+0.5))
-		}
-		if g.beside {
-			// DNS's from its right, level with it.
-			if !slices.Equal(names[3], asked()) {
-				t.Errorf("at %d: tags %v by DNS", width, names[3])
-			} else {
-				box := groups[3][0]
-				for _, r := range groups[3] {
-					box = box.Union(r)
-				}
-				if x := g.x(2) + g.dnd/2 + style.Dip(sc.Look(), 8); box.Min.X < x-1 || box.Min.X > x+1 {
-					t.Errorf("at %d: DNS's tags start at %v, not %v", width, box.Min.X, x)
-				}
-				if c := box.Center().Y; c < g.rowY-1 || c > g.rowY+1 {
-					t.Errorf("at %d: DNS's tags are centred on %v, not level with it at %v", width, c, g.rowY)
+		all := slices.Concat(discs, texts, marks, chips)
+		for i, x := range all {
+			if x.r.Min.X < local.Min.X || x.r.Max.X > local.Max.X || x.r.Min.Y < local.Min.Y || x.r.Max.Y > local.Max.Y {
+				t.Errorf("at %d: %s is outside the picture: %v", width, x.what, x.r)
+			}
+			for _, y := range all[i+1:] {
+				if meet(x, y) {
+					t.Errorf("at %d: %s and %s overlap", width, x.what, y.what)
 				}
 			}
-		} else {
-			check(3, asked(), g.x(2))
 		}
-		check(-1, endToEnd, g.x(1.5))
+		// The lines: through nothing but the tags they run behind, and the
+		// numbers on them.
+		for _, l := range g.lines {
+			for k := float32(0.01); k < 1; k += 0.01 {
+				p := l.a.Lerp(l.b, k)
+				for _, x := range slices.Concat(discs, texts, chips) {
+					if x.group != "" && x.group == l.under {
+						continue
+					}
+					if inside(x, p) {
+						t.Errorf("at %d: a line from %v to %v runs through %s", width, l.a, l.b, x.what)
+						break
+					}
+				}
+			}
+		}
+		// The steps on arrows have their numbers on them; the others are
+		// by their names.
+		on := map[int]int{2: inkGood, 4: inkGood, 6: inkGood, 8: inkBad}
+		for _, mk := range g.marks {
+			c := paintengine2d.Pt(mk.x, mk.y)
+			onLine := false
+			for _, l := range g.lines {
+				if l.head && l.ink == on[mk.n] && distToSegment(c, l.a, l.b) < 0.5 {
+					onLine = true
+				}
+			}
+			if _, arrow := on[mk.n]; arrow != onLine {
+				t.Errorf("at %d: %d on an arrow: %v", width, mk.n, onLine)
+			}
+		}
+		for i, rn := range routeNames {
+			found := false
+			for _, mk := range g.marks {
+				if mk.n != rn.step {
+					continue
+				}
+				for _, tx := range g.texts {
+					if strings.HasPrefix(rn.name, tx.text) && tx.at.X > mk.x && tx.at.X-mk.x < m && tx.at.Y < mk.y && tx.at.Y+font.Height() > mk.y {
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Errorf("at %d: %d is not by %q (%d)", width, rn.step, rn.name, i)
+			}
+		}
 
-		// The words and the picture name the same standards, and the
-		// lines under it none without a word.
-		said := map[string]bool{}
-		for _, s := range standards {
-			for _, n := range s.names {
-				said[n] = true
-				if !drawn[n] {
-					t.Errorf("at %d: a word on %s, which the picture does not show", width, n)
+		// The tags, by where they are drawn, and the steps they belong to.
+		byGroup := map[string][]string{}
+		for _, c := range g.chips {
+			byGroup[c.group] = append(byGroup[c.group], c.name)
+		}
+		belongs := map[string][]int{"e2e": {1, 7}, "2": {2}, "4": {4}, "6": {6}, "dns": {3, 5}}
+		want := map[string][]string{"e2e": e2eTags, "2": hopTags[0], "4": hopTags[1], "6": hopTags[2], "dns": dnsTags}
+		for grp, names := range want {
+			if !slices.Equal(byGroup[grp], names) {
+				t.Errorf("at %d: %s has tags %v, not %v", width, grp, byGroup[grp], names)
+			}
+			for _, n := range names {
+				ok := false
+				for _, i := range belongs[grp] {
+					ok = ok || slices.Contains(steps[i-1].tags, n)
+				}
+				if !ok {
+					t.Errorf("at %d: %s, drawn by %s, is no tag of steps %v", width, n, grp, belongs[grp])
 				}
 			}
 		}
-		for n := range drawn {
-			if !said[n] {
-				t.Errorf("at %d: the picture shows %s, and no word on it", width, n)
-			}
-		}
-		for _, h := range append(slices.Clone(hops), lookAlike) {
-			for _, n := range h.tags() {
-				if !said[n] {
-					t.Errorf("at %d: %q names %s, and no word on it", width, h.title, n)
-				}
-			}
-		}
-		if !strings.Contains(strings.Join(lookAlike.says, " "), fakeDomain) {
-			t.Errorf("at %d: the look-alike's words do not name %s", width, fakeDomain)
-		}
-
-		if len(titles) != len(hops)+1 {
-			t.Errorf("at %d: %d titles for %d hops and the look-alike", width, len(titles), len(hops))
-		}
-		for _, s := range titles {
-			if strings.Join(s.lines, " ") != s.text {
-				t.Errorf("at %d: a title is cut: %q", width, s.lines)
-			}
-		}
-		var last *widgets.Label
-		widget.Walk(page, func(c widget.Component) {
-			if l, ok := c.(*widgets.Label); ok && l.Text == lastWord {
-				last = l
-			}
-		})
-		if last == nil {
-			t.Errorf("at %d: no last word", width)
+		if !slices.ContainsFunc(g.texts, func(tx placedText) bool { return tx.text == fakeDomain && tx.bad }) {
+			t.Errorf("at %d: the attacker's %s is not drawn", width, fakeDomain)
 		}
 		w.Close()
 	}
+	for i, st := range steps {
+		for _, n := range st.tags {
+			if !strings.Contains(st.says, n) {
+				t.Errorf("step %d (%s) has the tag %s and does not say it", i+1, st.title, n)
+			}
+		}
+	}
+	if !strings.Contains(steps[7].says, fakeDomain) {
+		t.Errorf("step 8 does not name %s", fakeDomain)
+	}
+}
+
+// circleMeets says the circle at c of radius rad and r share a point.
+func circleMeets(c paintengine2d.Point, rad float32, r paintengine2d.Rect) bool {
+	nx := max(r.Min.X, min(c.X, r.Max.X))
+	ny := max(r.Min.Y, min(c.Y, r.Max.Y))
+	return c.Sub(paintengine2d.Pt(nx, ny)).Len() < rad
+}
+
+// distToSegment is how far p is from the segment a–b.
+func distToSegment(p, a, b paintengine2d.Point) float32 {
+	ab := b.Sub(a)
+	t := p.Sub(a).Dot(ab) / ab.Dot(ab)
+	t = max(0, min(1, t))
+	return p.Sub(a.Add(ab.Mul(t))).Len()
 }
 
 // The picture stays in view while the words under it scroll — when the
@@ -315,7 +244,7 @@ func TestEducatePinsThePicture(t *testing.T) {
 	a.PumpOnce()
 	var title *widgets.Label
 	widget.Walk(page, func(c widget.Component) {
-		if l, ok := c.(*widgets.Label); ok && l.Text == "What happens" {
+		if l, ok := c.(*widgets.Label); ok && l.Text == "Step by step" {
 			title = l
 		}
 	})

@@ -10,102 +10,59 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// Settings › Security › Educate: how an email gets from you to the recipient,
-// and the standards that keep it safe on the way — one picture of the
-// three hops, each with the standards it uses drawn on it, and of a
-// look-alike coming in; then what happens on each, and what each standard
-// does and how, told plainly. A standard is the same tag everywhere, so
-// the picture and the words read together.
+// Settings › Security › Educate: email security, step by step, as a
+// message goes from you to the recipient — the picture of its route
+// (educate_route.go), each step numbered and its standards drawn by it as
+// tags, and under it each step again: what is done, by whom, with which
+// standard, and what it does not protect. A standard is the same tag
+// everywhere, so the picture and the words read together.
 
-// hop is one of the picture's numbered steps: a hop on the way, or the
-// look-alike.
-type hop struct {
-	title string
-	says  []string // paragraphs
-	// wire are the standards the message goes over on the hop, and asks
-	// what the servers look up in DNS for it: both drawn in the picture.
-	// also are named in the words only.
-	wire, asks, also []string
+// step is one of the picture's numbered steps.
+type step struct {
+	title, says string
+	tags        []string // the standards the step uses, each named in says
 }
 
-// tags are the hop's standards, as its words name them.
-func (h hop) tags() []string {
-	return append(append(append([]string(nil), h.wire...), h.asks...), h.also...)
+var steps = []step{
+	{"You sign and encrypt",
+		"comms-mail signs the message with your private key, then encrypts it with a fresh session key, locked to each recipient's public key and to yours. OpenPGP keys are your own, trusted by fingerprint; S/MIME certificates are issued by a certificate authority. The subject goes inside; outside it reads \"...\". Sender, recipients, date and size stay visible, and there is no forward secrecy: a stolen private key opens every past message sent to it.",
+		[]string{"OpenPGP", "S/MIME"}},
+	{"comms-mail hands it to your server",
+		"It connects on port 465 (TLS from the first byte) or 587 (STARTTLS), checks the server's certificate, and never carries on unencrypted. It signs in with your password, or an OAuth token that is scoped, revocable and never your password, and hands the message over with SMTP.",
+		[]string{"SMTP", "TLS", "OAuth"}},
+	{"Your server signs it and finds theirs",
+		"Your server signs the message for your domain with DKIM: a signature over the body and main headers, checked against a public key in your domain's DNS. It looks up the recipient domain's MX record to find the server that accepts its mail.",
+		[]string{"DKIM", "MX"}},
+	{"Server to server",
+		"Servers talk SMTP on port 25, encrypted by STARTTLS only when both offer it: an attacker in between can strip the offer. MTA-STS (a policy served over HTTPS) or DANE (the certificate pinned in DNSSEC) make encryption mandatory and the certificate checked. Each server still reads the message: TLS protects the hop, not the stops.",
+		[]string{"SMTP", "STARTTLS", "MTA-STS", "DANE"}},
+	{"Their server checks the sender",
+		"SPF: is the sending server on the list in the sender domain's DNS? DKIM: does the signature verify, so nothing changed? DMARC: does either pass for the domain in the visible From, and if not, does that domain ask for none, quarantine or reject? ARC carries earlier results through forwarders and mailing lists. The verdict goes into the Authentication-Results header, filters look for spam and malware, and the message is stored.",
+		[]string{"SPF", "DKIM", "DMARC", "ARC"}},
+	{"The recipient's app fetches it",
+		"The recipient's mail app signs in and downloads over TLS: IMAP (port 993) keeps mail on the server, the same on every device; POP3 (port 995) takes it down to one.",
+		[]string{"IMAP", "POP3", "TLS"}},
+	{"The recipient's app verifies and opens it",
+		"It trusts only the topmost Authentication-Results, written by its own provider, and warns when a check failed. It verifies the OpenPGP or S/MIME signature and that the signer is the From address, then decrypts with the recipient's private key. comms-mail also flags look-alike domains and misleading names, and blocks remote images, which would tell the sender when and where the mail was opened.",
+		[]string{"OpenPGP", "S/MIME"}},
+	{"What gets through anyway",
+		"An attacker registers acrne.com to pass as your supplier acme.com, publishes SPF, DKIM and DMARC for it, and passes step 5; so does mail from a real account that was broken into. The checks prove which domain sent a message, not who wrote it or whether the request is genuine: confirm payment changes another way, and distrust attachments and links you did not expect.",
+		[]string{"SPF", "DKIM", "DMARC"}},
 }
 
-var hops = []hop{
-	{title: "From you to your mail server",
-		says: []string{"If you asked, comms-mail signs and encrypts the message first. It then hands it to your server over TLS, signed in with your password or OAuth."},
-		wire: []string{"SMTP", "TLS", "OAuth"}},
-	{title: "From your mail server to theirs",
-		says: []string{"Your server signs it with DKIM, finds the recipient's server in DNS (MX) and delivers over STARTTLS. Their server checks SPF, DKIM and DMARC and records the result in the message."},
-		wire: []string{"SMTP", "STARTTLS"}, asks: []string{"MX", "SPF", "DKIM", "DMARC"}},
-	{title: "From their mail server to the recipient",
-		says: []string{"The recipient's mail app fetches it over TLS with IMAP or POP3, shows the server's verdict, verifies your signature and decrypts."},
-		wire: []string{"IMAP", "POP3", "TLS"}},
-}
-
-// lookAlike is the picture's last step: mail from a look-alike domain,
-// which every check passes.
-var lookAlike = hop{title: "A look-alike domain",
-	says: []string{"Your supplier is acme.com. An attacker registers acrne.com and asks you to pay the next invoice into a new account. SPF, DKIM and DMARC all pass: the domain really is theirs. The checks prove which domain sent the mail, not that it is the one you meant. comms-mail flags domains that resemble ones you write to."},
-	also: []string{"SPF", "DKIM", "DMARC"}}
-
-// fakeDomain is the look-alike's domain, as the picture shows it.
+// fakeDomain is the attacker's look-alike domain, as the picture shows it.
 const fakeDomain = "acrne.com"
 
-// standard is one standard, or two that do one job: what it does and how.
-type standard struct {
-	names []string
-	about []string
-}
-
-var standards = []standard{
-	{[]string{"SMTP"}, []string{"Carries mail from your app to your server, then server to server. On its own it verifies nothing: any From address is accepted."}},
-	{[]string{"TLS", "STARTTLS"}, []string{"Encrypts the connection and proves the server's identity with a certificate. STARTTLS upgrades a plain connection; MTA-STS and DANE make the upgrade mandatory. Every server still sees the message itself."}},
-	{[]string{"OAuth"}, []string{"Signs comms-mail in with a revocable token from your provider, so your password never reaches it."}},
-	{[]string{"DNS", "MX"}, []string{"DNS publishes a domain's records. MX names the server that accepts its mail; the SPF, DKIM and DMARC records live there too."}},
-	{[]string{"SPF"}, []string{"Lists the servers allowed to send for a domain. It checks the bounce address, not the visible From, and fails on forwarding."}},
-	{[]string{"DKIM"}, []string{"A signature by the sending domain, verified with the public key in its DNS. It proves the domain, and that the message was not altered."}},
-	{[]string{"DMARC"}, []string{"Requires SPF or DKIM to pass for the visible From domain, and tells receivers to accept, quarantine or reject what fails. The result is written to Authentication-Results, which comms-mail reads and warns on."}},
-	{[]string{"IMAP", "POP3"}, []string{"Fetch mail from your server. IMAP keeps it there, in sync across devices; POP3 downloads it to one."}},
-	{[]string{"OpenPGP", "S/MIME"}, []string{"Sign and encrypt end to end: only the recipient can read the message, and no server can alter it unnoticed. S/MIME trusts certificates issued by an authority, OpenPGP keys you verify yourself; they do not interoperate. Sender, recipients and time stay visible; comms-mail also hides the subject."}},
-}
-
-// endToEnd are the standards over the whole way, from you to the
-// recipient.
-var endToEnd = []string{"OpenPGP", "S/MIME"}
-
-// lastWord is said under the standards.
-const lastWord = "Remote images tell the sender when you opened a message; comms-mail blocks them until you allow them."
-
-// paragraphs are paras, each its own wrapping label.
-func paragraphs(paras []string) *widgets.FlexBox {
-	col := widgets.NewColumn().WithGap(6)
-	for _, p := range paras {
-		col.Add(wrapLabel(p))
-	}
-	return col
-}
-
-// educateSection is the Educate page: the picture, what happens on each
-// step, and the standards.
+// educateSection is the Educate page: the picture, and each step.
 func educateSection() widget.Component {
-	col := widgets.NewColumn(widgets.NewTitle("What happens")).WithGap(14)
-	for i, h := range append(append([]hop(nil), hops...), lookAlike) {
-		about := widgets.NewColumn(newStrong(h.title), chipRow(h.tags()), paragraphs(h.says)).WithGap(6)
+	col := widgets.NewColumn(widgets.NewTitle("Step by step")).WithGap(14)
+	for i, st := range steps {
+		about := widgets.NewColumn(newStrong(st.title), chipRow(st.tags), wrapLabel(st.says)).WithGap(6)
 		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
 		row.AddFlex(about, 1)
 		col.Add(row)
 	}
-	col.Add(widgets.NewTitle("The standards"))
-	for _, s := range standards {
-		col.Add(widgets.NewColumn(chipRow(s.names), paragraphs(s.about)).WithGap(6))
-	}
-	last := wrapLabel(lastWord)
-	last.Tone = widgets.ToneMuted
-	col.Add(last)
-	return newEducatePage(newHopsScene(), col)
+	return newEducatePage(newRouteScene(), col)
 }
 
 // educatePage keeps the picture in view while the words under it scroll,
@@ -114,7 +71,7 @@ func educateSection() widget.Component {
 // scrolls with them.
 type educatePage struct {
 	widget.Base
-	scene  *hopsScene
+	scene  *routeScene
 	words  widget.Component
 	rule   *widgets.Separator
 	body   *widgets.FlexBox // what scrolls: the words, and the picture when not pinned
@@ -126,7 +83,7 @@ type educatePage struct {
 // of them.
 const pinMin = 160
 
-func newEducatePage(scene *hopsScene, words widget.Component) *educatePage {
+func newEducatePage(scene *routeScene, words widget.Component) *educatePage {
 	p := &educatePage{scene: scene, words: words, rule: widgets.NewSeparator()}
 	p.Init(p)
 	p.body = widgets.NewColumn(scene, words).WithGap(14)
@@ -265,10 +222,12 @@ func chipLines(lk style.LookAndFeel, names []string, w float32) (lines [][]strin
 	return lines, widths
 }
 
-// placedChip is a tag where it is drawn.
+// placedChip is a tag where it is drawn; group is what it is drawn by in
+// the picture.
 type placedChip struct {
-	name string
-	r    paintengine2d.Rect
+	name  string
+	r     paintengine2d.Rect
+	group string
 }
 
 // placeChips lays names out in lines no wider than w from top, each line
@@ -286,7 +245,7 @@ func placeChips(lk style.LookAndFeel, names []string, cx, top, w float32, left b
 		}
 		for _, n := range line {
 			cw, _ := chipSize(lk, n)
-			out = append(out, placedChip{n, paintengine2d.XYWH(x, y, cw, ch)})
+			out = append(out, placedChip{name: n, r: paintengine2d.XYWH(x, y, cw, ch)})
 			x += cw + gap
 		}
 		y += ch + gap
@@ -331,7 +290,7 @@ func chipRow(names []string) *widgets.Wrap {
 	return w
 }
 
-// strong is a line of bold text that wraps: a hop's name over its words.
+// strong is a line of bold text that wraps: a step's name over its words.
 // (A Label is plain or a Title, which is the page title's size;
 // uitoolkit-gaps.md #50.)
 type strong struct {
@@ -365,307 +324,5 @@ func (s *strong) Paint(ctx *paintengine2d.Context) {
 	f := s.Look().BoldFont()
 	for i, l := range s.lines {
 		f.Draw(ctx, l, paintengine2d.Pt(b.Min.X, b.Min.Y+float32(i)*f.Height()), s.Look().Palette().Text)
-	}
-}
-
-// ---- the picture ----
-
-// hopsScene is the picture: you, your mail server, theirs and the recipient,
-// the three hops between them numbered, each with what it goes over drawn
-// on it; OpenPGP and S/MIME over all of it, end to end; and under it, a
-// attacker's look-alike coming into your mail server, and DNS, which the
-// servers ask, with what they look up there.
-type hopsScene struct{ widget.Base }
-
-func newHopsScene() *hopsScene {
-	s := &hopsScene{}
-	s.Init(s)
-	return s
-}
-
-const (
-	sceneNode = 52 // a person's or a server's disc, at most
-	sceneMin  = 300
-	rowGap    = 28 // between the names and the row under them: room for 4
-)
-
-var sceneNames = [4]string{"You", "Your mail server", "Their mail server", "Recipient"}
-
-// sceneLayout is where everything goes at width w, from the picture's top
-// left. The row under the names has the attacker at x(0.5), between you
-// and your server, and DNS at x(2), under theirs: their words and DNS's
-// tags beside them where they fit (beside), under them where not.
-type sceneLayout struct {
-	slot, d, dnd             float32
-	spanY, y1, labelsY, rowY float32
-	labels                   [4][]string
-	stranger, fake, dnsLabel []string
-	words                    []placedText // the stranger's, and DNS's
-	beside                   bool
-	chips                    []placedChip // on the span, over the hops, by DNS
-	h                        float32
-}
-
-// placedText is a line of the picture where it is drawn, from its top
-// left; bad is the look-alike's.
-type placedText struct {
-	text string
-	at   paintengine2d.Point
-	bad  bool
-}
-
-// x is the centre of column i: 0 you, 1 your server, 2 theirs, 3 the
-// recipient.
-func (g sceneLayout) x(i float32) float32 { return g.slot * (i + 0.5) }
-
-// labelsFoot is under the names.
-func (g sceneLayout) labelsFoot(fh float32) float32 {
-	lines := 0
-	for _, l := range g.labels {
-		lines = max(lines, len(l))
-	}
-	return g.labelsY + float32(lines)*fh
-}
-
-func (s *hopsScene) dip(v float32) float32 { return style.Dip(s.Look(), v) }
-
-func (s *hopsScene) MinWidth() float32 { return s.dip(sceneMin) }
-
-func (s *hopsScene) Measure(c layout.Constraints) paintengine2d.Point {
-	w := s.dip(560)
-	if c.HasMaxW() {
-		w = c.MaxW
-	}
-	return c.Constrain(paintengine2d.Pt(w, s.layoutAt(w).h))
-}
-
-func (s *hopsScene) Arrange(r paintengine2d.Rect) { s.SetBounds(r) }
-
-// asked is what the servers look up in DNS, over all the hops.
-func asked() []string {
-	var out []string
-	for _, h := range hops {
-		out = append(out, h.asks...)
-	}
-	return out
-}
-
-func (s *hopsScene) layoutAt(w float32) sceneLayout {
-	lk := s.Look()
-	font := lk.Font()
-	fh := font.Height()
-	gap := s.dip(chipGap)
-	var g sceneLayout
-	g.slot = w / 4
-	g.d = min(s.dip(sceneNode), g.slot*0.48)
-	g.dnd = g.d * 0.7
-
-	// Over everything: end to end, from you to the recipient.
-	span, spanH := placeChips(lk, endToEnd, g.x(1.5), s.dip(6), w*0.6, false)
-	g.spanY = s.dip(6) + spanH/2
-	g.chips = span
-
-	// Over each hop, clear of the discs, what it goes over.
-	var band float32
-	for i, h := range hops {
-		_, hh := placeChips(lk, h.wire, g.x(float32(i)+0.5), 0, g.slot-s.dip(6), false)
-		band = max(band, hh)
-	}
-	top := s.dip(6) + spanH + s.dip(12)
-	g.y1 = top + band + s.dip(4) + g.d/2
-	for i, h := range hops {
-		_, hh := placeChips(lk, h.wire, g.x(float32(i)+0.5), 0, g.slot-s.dip(6), false)
-		c, _ := placeChips(lk, h.wire, g.x(float32(i)+0.5), g.y1-g.d/2-s.dip(4)-hh, g.slot-s.dip(6), false)
-		g.chips = append(g.chips, c...)
-	}
-
-	// The names, clear of the columns' edges, where the look-alike's
-	// line goes up between them.
-	for i, name := range sceneNames {
-		g.labels[i] = wrapWords(font, name, g.slot-s.dip(10), 3)
-	}
-	g.labelsY = g.y1 + g.d/2 + s.dip(6)
-
-	// The row under them: the stranger, and DNS with what the servers
-	// look up there.
-	g.rowY = g.labelsFoot(fh) + s.dip(rowGap) + g.dnd/2
-	g.stranger = wrapWords(font, "Attacker", 1.5*g.slot-s.dip(6), 2)
-	g.fake = wrapWords(font, fakeDomain, 1.5*g.slot-s.dip(6), 1)
-	g.dnsLabel = wrapWords(font, "DNS", g.slot, 1)
-	strangerLines := append(append([]string(nil), g.stranger...), g.fake...)
-	var wordsW float32
-	for _, l := range strangerLines {
-		wordsW = max(wordsW, font.Advance(l))
-	}
-	_, ch := chipSize(lk, "X")
-	// Beside: the stranger's words to its right, clear of DNS's disc and
-	// name; DNS's tags to its right, in two lines at most.
-	wordsX := g.x(0.5) + g.dnd/2 + s.dip(6)
-	tagsX := g.x(2) + g.dnd/2 + s.dip(8)
-	dnsLeft := g.x(2) - max(g.dnd/2, font.Advance("DNS")/2)
-	lines, _ := chipLines(lk, asked(), w-tagsX-s.dip(3))
-	g.beside = wordsX+wordsW+s.dip(8) <= dnsLeft && len(lines) <= 2 && len(g.stranger) == 1
-	if g.beside {
-		y := g.rowY - float32(len(strangerLines))*fh/2
-		for i, l := range strangerLines {
-			g.words = append(g.words, placedText{l, paintengine2d.Pt(wordsX, y), i >= len(g.stranger)})
-			y += fh
-		}
-		dnsY := g.rowY + g.dnd/2 + s.dip(3)
-		for _, l := range g.dnsLabel {
-			g.words = append(g.words, placedText{l, paintengine2d.Pt(g.x(2)-font.Advance(l)/2, dnsY), false})
-		}
-		tagsH := float32(len(lines))*(ch+gap) - gap
-		c, _ := placeChips(lk, asked(), tagsX, g.rowY-tagsH/2, w-tagsX-s.dip(3), true)
-		g.chips = append(g.chips, c...)
-		g.h = max(dnsY+fh, g.rowY+tagsH/2, y) + s.dip(8)
-		return g
-	}
-	// Under: the stranger's words as wide as they need, up to x(1.25),
-	// and DNS's tags in what is left.
-	under := g.rowY + g.dnd/2 + s.dip(4)
-	y := under
-	for i, l := range strangerLines {
-		g.words = append(g.words, placedText{l, paintengine2d.Pt(g.x(0.5)-font.Advance(l)/2, y), i >= len(g.stranger)})
-		y += fh
-	}
-	for _, l := range g.dnsLabel {
-		g.words = append(g.words, placedText{l, paintengine2d.Pt(g.x(2)-font.Advance(l)/2, under), false})
-	}
-	room := min(g.x(2)-(g.x(0.5)+wordsW/2)-s.dip(8), w-g.x(2)-s.dip(3))
-	c, tagsH := placeChips(lk, asked(), g.x(2), under+fh+gap, 2*room, false)
-	g.chips = append(g.chips, c...)
-	g.h = max(y, under+fh+gap+tagsH) + s.dip(8)
-	return g
-}
-
-// sceneMark is a number in the picture, where it is drawn.
-type sceneMark struct {
-	n    int
-	x, y float32
-}
-
-// marks are where the numbers go: each hop's on it, between its discs;
-// the look-alike's on its line, between the names and the stranger.
-func (s *hopsScene) marks(g sceneLayout, b paintengine2d.Rect) []sceneMark {
-	var out []sceneMark
-	for i := range hops {
-		out = append(out, sceneMark{i + 1, b.Min.X + g.x(float32(i)+0.5), b.Min.Y + g.y1})
-	}
-	fh := s.Look().Font().Height()
-	return append(out, sceneMark{len(hops) + 1, b.Min.X + g.x(0.5), b.Min.Y + g.labelsFoot(fh) + s.dip(rowGap)/2})
-}
-
-// fakePath is the look-alike's line, from the stranger up between your
-// name and your server's, and into your server's disc from below left.
-func (s *hopsScene) fakePath(g sceneLayout) []paintengine2d.Point {
-	r := g.d/2 + s.dip(3)
-	return []paintengine2d.Point{
-		paintengine2d.Pt(g.x(0.5), g.rowY-g.dnd/2-s.dip(3)),
-		paintengine2d.Pt(g.x(0.5), g.labelsY-s.dip(2)),
-		paintengine2d.Pt(g.x(1)-r*0.707, g.y1+r*0.707),
-	}
-}
-
-// dnsLines are DNS's dashed lines, up to under each server's name.
-func (s *hopsScene) dnsLines(g sceneLayout) [][2]paintengine2d.Point {
-	feet := g.labelsFoot(s.Look().Font().Height()) + s.dip(4)
-	return [][2]paintengine2d.Point{
-		{paintengine2d.Pt(g.x(2), g.rowY-g.dnd/2-s.dip(3)), paintengine2d.Pt(g.x(2), feet)},
-		{paintengine2d.Pt(g.x(2)-g.dnd*0.45, g.rowY-g.dnd*0.25), paintengine2d.Pt(g.x(1), feet)},
-	}
-}
-
-func (s *hopsScene) Paint(ctx *paintengine2d.Context) {
-	lk := s.Look()
-	b := s.LocalBounds()
-	g := s.layoutAt(b.Dx())
-	in := inksOf(lk)
-	font := lk.Font()
-	fh := font.Height()
-	at := func(x, y float32) paintengine2d.Point { return paintengine2d.Pt(b.Min.X+x, b.Min.Y+y) }
-	x := g.x
-	y1 := g.y1
-	r := g.d / 2
-	accent := lk.Palette().Ink(lk.Palette().Accent)
-	pen := func(c paintengine2d.Color, dashed bool) paintengine2d.Paint {
-		p := paintengine2d.StrokePaint(c, s.dip(1.75))
-		if dashed {
-			p.Stroke.Dash = []float32{s.dip(5), s.dip(4)}
-		}
-		return p
-	}
-	head := func(tip paintengine2d.Point, dx, dy float32, c paintengine2d.Color) {
-		h := s.dip(7)
-		p := paintengine2d.NewPath()
-		p.MoveTo(tip.X, tip.Y)
-		p.LineTo(tip.X-dx*h-dy*h*0.6, tip.Y-dy*h+dx*h*0.6)
-		p.LineTo(tip.X-dx*h+dy*h*0.6, tip.Y-dy*h-dx*h*0.6)
-		p.Close()
-		ctx.DrawPath(p, paintengine2d.Fill(c))
-	}
-	node := func(p pict, c paintengine2d.Point, size float32, ink, edge paintengine2d.Color) {
-		ctx.DrawCircle(c, size/2, paintengine2d.Fill(in.disc))
-		ctx.DrawCircle(c, size/2, paintengine2d.StrokePaint(edge, s.dip(1.5)))
-		sz := size * 0.56
-		drawPict(ctx, lk, p, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), ink)
-	}
-	centred := func(lines []string, cx, y float32, ink paintengine2d.Color) float32 {
-		for _, l := range lines {
-			font.Draw(ctx, l, at(cx-font.Advance(l)/2, y), ink)
-			y += fh
-		}
-		return y
-	}
-
-	// End to end, from you to the recipient, over it all.
-	foot := y1 - r - s.dip(3)
-	ctx.DrawLine(at(x(0), foot), at(x(0), g.spanY), pen(accent, true))
-	ctx.DrawLine(at(x(0), g.spanY), at(x(3), g.spanY), pen(accent, true))
-	ctx.DrawLine(at(x(3), g.spanY), at(x(3), foot), pen(accent, true))
-	head(at(x(3), foot), 0, 1, accent)
-
-	// The three hops.
-	for i := 0; i < 3; i++ {
-		x0, x1 := x(float32(i))+r+s.dip(4), x(float32(i+1))-r-s.dip(4)
-		ctx.DrawLine(at(x0, y1), at(x1, y1), pen(in.good, false))
-		head(at(x1, y1), 1, 0, in.good)
-	}
-
-	// DNS, under their server, which both servers ask.
-	for _, l := range s.dnsLines(g) {
-		ctx.DrawLine(at(l[0].X, l[0].Y), at(l[1].X, l[1].Y), pen(in.muted, true))
-	}
-	node(pictServer, at(x(2), g.rowY), g.dnd, in.text, in.discEdge)
-
-	// The stranger, and the look-alike coming into your server.
-	fp := s.fakePath(g)
-	for i := 1; i < len(fp); i++ {
-		ctx.DrawLine(at(fp[i-1].X, fp[i-1].Y), at(fp[i].X, fp[i].Y), pen(in.bad, false))
-	}
-	end, from := fp[len(fp)-1], fp[len(fp)-2]
-	d := end.Sub(from).Normalize()
-	head(at(end.X, end.Y), d.X, d.Y, in.bad)
-	node(pictPerson, at(x(0.5), g.rowY), g.dnd, in.bad, in.bad)
-	for _, t := range g.words {
-		ink := in.text
-		if t.bad {
-			ink = in.bad
-		}
-		font.Draw(ctx, t.text, at(t.at.X, t.at.Y), ink)
-	}
-
-	// The people and the servers.
-	for i, p := range []pict{pictPerson, pictServer, pictServer, pictPerson} {
-		node(p, at(x(float32(i)), y1), g.d, in.text, in.discEdge)
-		centred(g.labels[i], x(float32(i)), g.labelsY, in.text)
-	}
-
-	// The standards, and the numbers, over everything.
-	for _, c := range g.chips {
-		drawChip(ctx, lk, c.name, c.r.Translate(b.Min))
-	}
-	for _, m := range s.marks(g, b) {
-		drawNumber(ctx, lk, m.n, paintengine2d.Pt(m.x, m.y), s.dip(markSize))
 	}
 }
