@@ -17,47 +17,67 @@ import (
 // standard, and what it does not protect. A standard is the same tag
 // everywhere, so the picture and the words read together.
 
-// step is one of the picture's numbered steps.
+// step is one of the picture's numbered steps. tags are the standards it
+// uses, each named in says, in groups: a group of more than one is
+// alternatives, either one doing the job — drawn across the step's line in
+// the picture, and joined by "or" under it.
 type step struct {
 	title, says string
-	tags        []string // the standards the step uses, each named in says
+	tags        [][]string
+}
+
+// alt is a group of alternatives; one is a group of one.
+func alt(names ...string) []string { return names }
+
+func one(names ...string) [][]string {
+	out := make([][]string, len(names))
+	for i, n := range names {
+		out[i] = []string{n}
+	}
+	return out
 }
 
 var steps = []step{
 	{"You sign and encrypt",
 		"comms-mail signs the message with your private key, then encrypts it with a fresh session key, locked to each recipient's public key and to yours. OpenPGP keys are your own, trusted by fingerprint; S/MIME certificates are issued by a certificate authority. The subject goes inside; outside it reads \"...\". Sender, recipients, date and size stay visible, and there is no forward secrecy: a stolen private key opens every past message sent to it.",
-		[]string{"OpenPGP", "S/MIME"}},
+		[][]string{alt("OpenPGP", "S/MIME")}},
 	{"comms-mail hands it to your server",
 		"It connects on port 465 (TLS from the first byte) or 587 (STARTTLS), checks the server's certificate, and never carries on unencrypted. It signs in with your password, or an OAuth token that is scoped, revocable and never your password, and hands the message over with SMTP.",
-		[]string{"SMTP", "TLS", "OAuth"}},
+		[][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}},
 	{"Your server signs it and finds theirs",
 		"Your server signs the message for your domain with DKIM: a signature over the body and main headers, checked against a public key in your domain's DNS. It looks up the recipient domain's MX record to find the server that accepts its mail.",
-		[]string{"DKIM", "MX"}},
+		one("DKIM", "MX")},
 	{"Server to server",
 		"Servers talk SMTP on port 25, encrypted by STARTTLS only when both offer it: an attacker in between can strip the offer. MTA-STS (a policy served over HTTPS) or DANE (the certificate pinned in DNSSEC) make encryption mandatory and the certificate checked. Each server still reads the message: TLS protects the hop, not the stops.",
-		[]string{"SMTP", "STARTTLS", "MTA-STS", "DANE"}},
+		[][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}},
 	{"Their server checks the sender",
 		"SPF: is the sending server on the list in the sender domain's DNS? DKIM: does the signature verify, so nothing changed? DMARC: does either pass for the domain in the visible From, and if not, does that domain ask for none, quarantine or reject? ARC carries earlier results through forwarders and mailing lists. The verdict goes into the Authentication-Results header, filters look for spam and malware, and the message is stored.",
-		[]string{"SPF", "DKIM", "DMARC", "ARC"}},
+		one("SPF", "DKIM", "DMARC", "ARC")},
 	{"The recipient's app fetches it",
 		"The recipient's mail app signs in and downloads over TLS: IMAP (port 993) keeps mail on the server, the same on every device; POP3 (port 995) takes it down to one.",
-		[]string{"IMAP", "POP3", "TLS"}},
+		[][]string{alt("TLS"), alt("IMAP", "POP3")}},
 	{"The recipient's app verifies and opens it",
 		"It trusts only the topmost Authentication-Results, written by its own provider, and warns when a check failed. It verifies the OpenPGP or S/MIME signature and that the signer is the From address, then decrypts with the recipient's private key. comms-mail also flags look-alike domains and misleading names, and blocks remote images, which would tell the sender when and where the mail was opened.",
-		[]string{"OpenPGP", "S/MIME"}},
+		[][]string{alt("OpenPGP", "S/MIME")}},
 	{"What gets through anyway",
 		"An attacker registers acrne.com to pass as your supplier acme.com, publishes SPF, DKIM and DMARC for it, and passes step 5; so does mail from a real account that was broken into. The checks prove which domain sent a message, not who wrote it or whether the request is genuine: confirm payment changes another way, and distrust attachments and links you did not expect.",
-		[]string{"SPF", "DKIM", "DMARC"}},
+		one("SPF", "DKIM", "DMARC")},
 }
 
 // fakeDomain is the attacker's look-alike domain, as the picture shows it.
 const fakeDomain = "acrne.com"
 
-// educateSection is the Educate page: the picture, and each step.
+// educateSection is the Educate page: the picture, what its symbols mean,
+// and each step.
 func educateSection() widget.Component {
-	col := widgets.NewColumn(widgets.NewTitle("Step by step")).WithGap(14)
+	key := widgets.NewWrap()
+	key.Gap, key.LineGap = 16, 8
+	for _, sy := range symbols {
+		key.Add(newSymbolItem(sy))
+	}
+	col := widgets.NewColumn(key, widgets.NewTitle("Step by step")).WithGap(14)
 	for i, st := range steps {
-		about := widgets.NewColumn(newStrong(st.title), chipRow(st.tags), wrapLabel(st.says)).WithGap(6)
+		about := widgets.NewColumn(newStrong(st.title), altRow(st.tags), wrapLabel(st.says)).WithGap(6)
 		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
 		row.AddFlex(about, 1)
 		col.Add(row)
@@ -223,11 +243,13 @@ func chipLines(lk style.LookAndFeel, names []string, w float32) (lines [][]strin
 }
 
 // placedChip is a tag where it is drawn; group is what it is drawn by in
-// the picture.
+// the picture, and alt which of that step's groups of alternatives it is
+// in.
 type placedChip struct {
 	name  string
 	r     paintengine2d.Rect
 	group string
+	alt   int
 }
 
 // placeChips lays names out in lines no wider than w from top, each line
@@ -280,14 +302,98 @@ func (c *protoChip) Paint(ctx *paintengine2d.Context) {
 	drawChip(ctx, c.Look(), c.name, paintengine2d.XYWH(b.Min.X, b.Min.Y, w, h))
 }
 
-// chipRow is names' tags in a row that wraps.
-func chipRow(names []string) *widgets.Wrap {
+// altRow is groups' tags in a row that wraps, a group of alternatives
+// kept together and joined by "or".
+func altRow(groups [][]string) *widgets.Wrap {
 	w := widgets.NewWrap()
-	w.Gap = chipGap
-	for _, n := range names {
-		w.Add(newProtoChip(n))
+	w.Gap = chipGap + 3
+	for _, grp := range groups {
+		if len(grp) == 1 {
+			w.Add(newProtoChip(grp[0]))
+			continue
+		}
+		row := widgets.NewRow().WithGap(chipGap).WithAlign(layout.AlignCenter)
+		for i, n := range grp {
+			if i > 0 {
+				or := widgets.NewLabel("or")
+				or.Tone = widgets.ToneMuted
+				row.Add(or)
+			}
+			row.Add(newProtoChip(n))
+		}
+		w.Add(row)
 	}
 	return w
+}
+
+// ---- what the symbols mean ----
+
+// symbol is one of the picture's symbols, and what it means.
+type symbol struct {
+	draw func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect)
+	says string
+}
+
+var symbols = []symbol{
+	{envelopeSymbol(envelope{}), "A message"},
+	{envelopeSymbol(envelope{seal: true}), "Signed by you"},
+	{envelopeSymbol(envelope{lock: true}), "Encrypted to the recipient"},
+	{envelopeSymbol(envelope{stamp: true}), "Signed by your domain"},
+	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
+		y := box.Center().Y
+		drawTube(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y), box.Dy()*0.8)
+	}, "Encrypted connection"},
+	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
+		h := box.Dy()/2 - style.Dip(lk, 1)
+		for i := range 2 {
+			r := paintengine2d.XYWH(box.Min.X, box.Min.Y+float32(i)*(h+style.Dip(lk, 2)), box.Dx(), h)
+			ink := lk.Palette().Ink(lk.Palette().Accent)
+			ctx.DrawRoundRect(r, h/2, h/2, paintengine2d.Fill(lk.Palette().Field))
+			ctx.DrawRoundRect(r, h/2, h/2, paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
+		}
+	}, "Stacked across a line: either one"},
+}
+
+// envelopeSymbol draws e in the middle of a symbol's box.
+func envelopeSymbol(e envelope) func(*paintengine2d.Context, style.LookAndFeel, paintengine2d.Rect) {
+	return func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
+		w, _ := envSize(lk)
+		drawEnvelope(ctx, lk, paintengine2d.Pt(box.Min.X+w/2+style.Dip(lk, 2), box.Center().Y), e)
+	}
+}
+
+// symbolItem is a symbol and what it means, in a line.
+type symbolItem struct {
+	widget.Base
+	sy symbol
+}
+
+func newSymbolItem(sy symbol) *symbolItem {
+	it := &symbolItem{sy: sy}
+	it.Init(it)
+	return it
+}
+
+// iconBox is the room a symbol is drawn in.
+func (it *symbolItem) iconBox() (w, h float32) {
+	ew, eh := envSize(it.Look())
+	return ew + style.Dip(it.Look(), 10), eh * 1.5
+}
+
+func (it *symbolItem) Measure(c layout.Constraints) paintengine2d.Point {
+	iw, ih := it.iconBox()
+	f := it.Look().Font()
+	return c.Constrain(paintengine2d.Pt(iw+style.Dip(it.Look(), 6)+f.Advance(it.sy.says), max(ih, f.Height())))
+}
+
+func (it *symbolItem) Arrange(r paintengine2d.Rect) { it.SetBounds(r) }
+
+func (it *symbolItem) Paint(ctx *paintengine2d.Context) {
+	b := it.LocalBounds()
+	iw, ih := it.iconBox()
+	f := it.Look().Font()
+	it.sy.draw(ctx, it.Look(), paintengine2d.XYWH(b.Min.X, b.Min.Y+(b.Dy()-ih)/2, iw, ih))
+	f.Draw(ctx, it.sy.says, paintengine2d.Pt(b.Min.X+iw+style.Dip(it.Look(), 6), b.Min.Y+(b.Dy()-f.Height())/2), it.Look().Palette().Text)
 }
 
 // strong is a line of bold text that wraps: a step's name over its words.

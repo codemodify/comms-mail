@@ -15,16 +15,34 @@ import (
 )
 
 // Educate is one picture of a message's route, its steps numbered 1 to 8
-// once each — on their arrows, or by their names — and a numbered line
-// for each step under it. In the picture nothing is outside it, cut
-// short, or over anything else, and no line runs through words, tags,
-// discs or numbers but its own (OpenPGP and S/MIME sit on the line from
-// you to the recipient). Every tag drawn is one of its step's, and every
-// step names each of its standards in its words. All of it at a wide
-// window, a middling one and one as narrow as Settings goes, the
-// picture's box as tall as what it draws.
+// once each — on their lines, or by their names — what its symbols mean,
+// and a numbered line for each step. In the picture nothing is outside
+// it, cut short, or over anything else; tunnels and lines run through
+// nothing but their own number and envelope. The message is an envelope
+// carrying what it should at each step: your seal and padlock from the
+// start, your domain's postmark from your server on, the attacker's only
+// its own domain's postmark. Every step's standards are drawn by it, and
+// its alternatives stand across its line: one over the other by a line
+// across, side by side by a line down — OpenPGP and S/MIME either side
+// of the line from you to the recipient. Every step names its standards
+// in its words, its alternatives joined by "or". All of it at a wide
+// window, a middling one and the narrowest the picture takes, its box as
+// tall as what it draws.
 func TestEducateIsOnePicture(t *testing.T) {
-	for _, width := range []int{330, 450, 560} {
+	probe := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	pw, err := probe.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 600, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := newRouteScene()
+	pw.SetContent(ps)
+	probe.PumpOnce()
+	narrowest := int(ps.MinWidth()) + 9 // the page pads it, 4 a side
+	pw.Close()
+	if narrowest > 400 {
+		t.Fatalf("the picture takes %d at least", narrowest)
+	}
+	for _, width := range []int{narrowest, 460, 560} {
 		a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 		w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
 		if err != nil {
@@ -36,6 +54,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 		var scenes []*routeScene
 		var numbers []int
 		var titles []*strong
+		var keys []*symbolItem
+		ors := 0
 		widget.Walk(page, func(c widget.Component) {
 			switch v := c.(type) {
 			case *routeScene:
@@ -44,10 +64,28 @@ func TestEducateIsOnePicture(t *testing.T) {
 				numbers = append(numbers, v.n)
 			case *strong:
 				titles = append(titles, v)
+			case *symbolItem:
+				keys = append(keys, v)
+			case *widgets.Label:
+				if v.Text == "or" {
+					ors++
+				}
 			}
 		})
 		if len(scenes) != 1 || len(steps) != 8 || !slices.Equal(numbers, []int{1, 2, 3, 4, 5, 6, 7, 8}) {
 			t.Fatalf("at %d: %d pictures, steps numbered %v", width, len(scenes), numbers)
+		}
+		if len(keys) != len(symbols) || len(symbols) != 6 {
+			t.Errorf("at %d: %d symbols explained of %d", width, len(keys), len(symbols))
+		}
+		wantOrs := 0
+		for _, st := range steps {
+			for _, grp := range st.tags {
+				wantOrs += len(grp) - 1
+			}
+		}
+		if ors != wantOrs || wantOrs == 0 {
+			t.Errorf("at %d: %d alternatives joined by \"or\", want %d", width, ors, wantOrs)
 		}
 		for _, s := range titles {
 			if strings.Join(s.lines, " ") != s.text {
@@ -66,16 +104,16 @@ func TestEducateIsOnePicture(t *testing.T) {
 		m := style.Dip(lk, markSize)
 
 		// Everything, as boxes — discs and numbers as the circles they
-		// are — with what it is.
+		// are — with what it is, and the line it is on.
 		type box struct {
 			what   string
 			r      paintengine2d.Rect
-			group  string  // a tag's
 			radius float32 // a circle's, in r
+			on     int     // the step whose line it is on, 0 for none
 		}
-		var discs, texts, marks, chips []box
+		var discs, texts, marks, chips, envs []box
 		for i, d := range g.discs {
-			discs = append(discs, box{"disc " + string(rune('0'+i)) + " " + d.text, paintengine2d.XYWH(d.c.X-d.d/2, d.c.Y-d.d/2, d.d, d.d), "", d.d / 2})
+			discs = append(discs, box{"disc " + string(rune('0'+i)) + " " + d.text, paintengine2d.XYWH(d.c.X-d.d/2, d.c.Y-d.d/2, d.d, d.d), d.d / 2, 0})
 			if d.text != "" && font.Advance(d.text) > d.d-style.Dip(lk, 4) {
 				t.Errorf("at %d: %q does not fit its disc", width, d.text)
 			}
@@ -84,12 +122,17 @@ func TestEducateIsOnePicture(t *testing.T) {
 			if strings.HasSuffix(tx.text, "…") {
 				t.Errorf("at %d: %q is cut", width, tx.text)
 			}
-			texts = append(texts, box{"words " + tx.text, paintengine2d.XYWH(tx.at.X, tx.at.Y, font.Advance(tx.text), font.Height()), "", 0})
+			texts = append(texts, box{"words " + tx.text, paintengine2d.XYWH(tx.at.X, tx.at.Y, font.Advance(tx.text), font.Height()), 0, 0})
 		}
 		seen := map[int]int{}
+		onLine := map[int]bool{2: true, 4: true, 6: true, 8: true}
 		for _, mk := range g.marks {
 			seen[mk.n]++
-			marks = append(marks, box{"number " + string(rune('0'+mk.n)), paintengine2d.XYWH(mk.x-m/2, mk.y-m/2, m, m), "", m / 2})
+			on := 0
+			if onLine[mk.n] {
+				on = mk.n
+			}
+			marks = append(marks, box{"number " + string(rune('0'+mk.n)), paintengine2d.XYWH(mk.x-m/2, mk.y-m/2, m, m), m / 2, on})
 		}
 		for n := 1; n <= 8; n++ {
 			if seen[n] != 1 {
@@ -97,9 +140,11 @@ func TestEducateIsOnePicture(t *testing.T) {
 			}
 		}
 		for _, c := range g.chips {
-			chips = append(chips, box{"tag " + c.name, c.r, c.group, 0})
+			chips = append(chips, box{"tag " + c.name, c.r, 0, 0})
 		}
-		// meet says x and y share a point: circles as circles.
+		for _, e := range g.envs {
+			envs = append(envs, box{"envelope " + string(rune('0'+e.step)), envBox(lk, e.c), 0, e.step})
+		}
 		meet := func(x, y box) bool {
 			switch {
 			case x.radius > 0 && y.radius > 0:
@@ -111,13 +156,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 			}
 			return x.r.Overlaps(y.r)
 		}
-		inside := func(x box, p paintengine2d.Point) bool {
-			if x.radius > 0 {
-				return p.Sub(x.r.Center()).Len() < x.radius
-			}
-			return x.r.Inset(-1).Contains(p)
-		}
-		all := slices.Concat(discs, texts, marks, chips)
+		all := slices.Concat(discs, texts, marks, chips, envs)
 		for i, x := range all {
 			if x.r.Min.X < local.Min.X || x.r.Max.X > local.Max.X || x.r.Min.Y < local.Min.Y || x.r.Max.Y > local.Max.Y {
 				t.Errorf("at %d: %s is outside the picture: %v", width, x.what, x.r)
@@ -128,73 +167,138 @@ func TestEducateIsOnePicture(t *testing.T) {
 				}
 			}
 		}
-		// The lines: through nothing but the tags they run behind, and the
-		// numbers on them.
+
+		// The lines and tunnels: through nothing but their own number and
+		// envelope; a line through no tunnel either.
+		stepOf := map[routeLine]int{}
+		for _, e := range g.envs {
+			for _, l := range g.lines {
+				if l.head && l.ink != inkAccent && (l.tube > 0 && l.body().Contains(e.c) || l.tube == 0 && distToSegment(e.c, l.a, l.b) < 3) {
+					stepOf[l] = e.step
+				}
+			}
+		}
+		var tubes []box
 		for _, l := range g.lines {
-			for k := float32(0.01); k < 1; k += 0.01 {
-				p := l.a.Lerp(l.b, k)
-				for _, x := range slices.Concat(discs, texts, chips) {
-					if x.group != "" && x.group == l.under {
+			if l.tube > 0 {
+				tubes = append(tubes, box{"tunnel " + string(rune('0'+stepOf[l])), l.body(), 0, stepOf[l]})
+			}
+		}
+		for _, l := range g.lines {
+			own := stepOf[l]
+			if l.tube > 0 {
+				body := box{r: l.body()}
+				for _, x := range slices.Concat(discs, texts, marks, chips, envs, tubes) {
+					if (x.on != 0 && x.on == own) || x.r == body.r {
 						continue
 					}
-					if inside(x, p) {
+					if meet(body, x) {
+						t.Errorf("at %d: tunnel %d runs through %s", width, own, x.what)
+					}
+				}
+				continue
+			}
+			for k := float32(0.01); k < 1; k += 0.01 {
+				p := l.a.Lerp(l.b, k)
+				for _, x := range slices.Concat(discs, texts, marks, chips, envs, tubes) {
+					if x.on != 0 && x.on == own {
+						continue
+					}
+					in := x.r.Inset(-1).Contains(p)
+					if x.radius > 0 {
+						in = p.Sub(x.r.Center()).Len() < x.radius
+					}
+					if in {
 						t.Errorf("at %d: a line from %v to %v runs through %s", width, l.a, l.b, x.what)
 						break
 					}
 				}
 			}
 		}
-		// The steps on arrows have their numbers on them; the others are
-		// by their names.
-		on := map[int]int{2: inkGood, 4: inkGood, 6: inkGood, 8: inkBad}
-		for _, mk := range g.marks {
-			c := paintengine2d.Pt(mk.x, mk.y)
-			onLine := false
-			for _, l := range g.lines {
-				if l.head && l.ink == on[mk.n] && distToSegment(c, l.a, l.b) < 0.5 {
-					onLine = true
-				}
-			}
-			if _, arrow := on[mk.n]; arrow != onLine {
-				t.Errorf("at %d: %d on an arrow: %v", width, mk.n, onLine)
+		// Each carried message: inside its tunnel, or on its line; with
+		// what it carries by then; its number on the line too.
+		want := map[int]envelope{2: {lock: true, seal: true}, 4: {lock: true, seal: true, stamp: true}, 6: {lock: true, seal: true, stamp: true}, 8: {stamp: true, bad: true}}
+		got := map[int]envelope{}
+		for _, e := range g.envs {
+			got[e.step] = e.e
+		}
+		for n, e := range want {
+			if got[n] != e {
+				t.Errorf("at %d: step %d carries %+v, want %+v", width, n, got[n], e)
 			}
 		}
-		for i, rn := range routeNames {
+		for l, n := range stepOf {
+			for _, e := range envs {
+				if e.on == n && l.tube > 0 && (e.r.Min.X < l.body().Min.X || e.r.Max.X > l.body().Max.X || e.r.Min.Y < l.body().Min.Y-1 || e.r.Max.Y > l.body().Max.Y+1) {
+					t.Errorf("at %d: envelope %d sticks out of its tunnel: %v in %v", width, n, e.r, l.body())
+				}
+			}
+			for _, mk := range g.marks {
+				if mk.n == n && distToSegment(paintengine2d.Pt(mk.x, mk.y), l.a, l.b) > 0.5 {
+					t.Errorf("at %d: %d is not on its line", width, n)
+				}
+			}
+		}
+		if len(stepOf) != 4 {
+			t.Errorf("at %d: %d lines carry the message, want 4", width, len(stepOf))
+		}
+		for _, rn := range routeNames {
 			found := false
 			for _, mk := range g.marks {
-				if mk.n != rn.step {
-					continue
-				}
 				for _, tx := range g.texts {
-					if strings.HasPrefix(rn.name, tx.text) && tx.at.X > mk.x && tx.at.X-mk.x < m && tx.at.Y < mk.y && tx.at.Y+font.Height() > mk.y {
+					if mk.n == rn.step && strings.HasPrefix(rn.name, tx.text) && tx.at.X > mk.x && tx.at.X-mk.x < m && tx.at.Y < mk.y && tx.at.Y+font.Height() > mk.y {
 						found = true
 					}
 				}
 			}
 			if !found {
-				t.Errorf("at %d: %d is not by %q (%d)", width, rn.step, rn.name, i)
+				t.Errorf("at %d: %d is not by %q", width, rn.step, rn.name)
 			}
 		}
 
-		// The tags, by where they are drawn, and the steps they belong to.
-		byGroup := map[string][]string{}
+		// The tags: each step's groups, drawn by it; alternatives across
+		// its line.
+		byGroup := map[string][][]string{}
+		chipsOf := map[string]map[int][]placedChip{}
 		for _, c := range g.chips {
-			byGroup[c.group] = append(byGroup[c.group], c.name)
-		}
-		belongs := map[string][]int{"e2e": {1, 7}, "2": {2}, "4": {4}, "6": {6}, "dns": {3, 5}}
-		want := map[string][]string{"e2e": e2eTags, "2": hopTags[0], "4": hopTags[1], "6": hopTags[2], "dns": dnsTags}
-		for grp, names := range want {
-			if !slices.Equal(byGroup[grp], names) {
-				t.Errorf("at %d: %s has tags %v, not %v", width, grp, byGroup[grp], names)
+			if chipsOf[c.group] == nil {
+				chipsOf[c.group] = map[int][]placedChip{}
 			}
-			for _, n := range names {
-				ok := false
-				for _, i := range belongs[grp] {
-					ok = ok || slices.Contains(steps[i-1].tags, n)
+			chipsOf[c.group][c.alt] = append(chipsOf[c.group][c.alt], c)
+		}
+		for grp, alts := range chipsOf {
+			for i := 0; i < len(alts); i++ {
+				var names []string
+				for _, c := range alts[i] {
+					names = append(names, c.name)
 				}
-				if !ok {
-					t.Errorf("at %d: %s, drawn by %s, is no tag of steps %v", width, n, grp, belongs[grp])
+				byGroup[grp] = append(byGroup[grp], names)
+			}
+		}
+		wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags, "dns": dnsTags}
+		for grp, tags := range wantTags {
+			if !slices.EqualFunc(byGroup[grp], tags, slices.Equal) {
+				t.Errorf("at %d: %s has tags %v, not %v", width, grp, byGroup[grp], tags)
+			}
+		}
+		across := map[string]bool{"2": true, "6": true, "4": false, "e2e": false}
+		for grp, horizontal := range across {
+			for _, alts := range chipsOf[grp] {
+				for i := 1; i < len(alts); i++ {
+					p, q := alts[i-1].r, alts[i].r
+					if horizontal && (abs32(p.Center().X-q.Center().X) > 0.5 || q.Min.Y <= p.Max.Y-0.5) {
+						t.Errorf("at %d: %s and %s are not one over the other", width, alts[i-1].name, alts[i].name)
+					}
+					if !horizontal && (abs32(p.Center().Y-q.Center().Y) > 0.5 || q.Min.X <= p.Max.X-0.5) {
+						t.Errorf("at %d: %s and %s are not side by side", width, alts[i-1].name, alts[i].name)
+					}
 				}
+			}
+		}
+		e2eLine := g.lines[0]
+		for _, alts := range chipsOf["e2e"] {
+			if len(alts) != 2 || !(alts[0].r.Max.X < e2eLine.a.X && alts[1].r.Min.X > e2eLine.a.X) {
+				t.Errorf("at %d: the line from you to the recipient does not go between %v", width, alts)
 			}
 		}
 		if !slices.ContainsFunc(g.texts, func(tx placedText) bool { return tx.text == fakeDomain && tx.bad }) {
@@ -203,8 +307,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 		w.Close()
 	}
 	for i, st := range steps {
-		for _, n := range st.tags {
-			if !strings.Contains(st.says, n) {
+		for _, n := range flat(st.tags) {
+			if !strings.Contains(strings.ToLower(st.says), strings.ToLower(n)) {
 				t.Errorf("step %d (%s) has the tag %s and does not say it", i+1, st.title, n)
 			}
 		}
@@ -213,6 +317,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 		t.Errorf("step 8 does not name %s", fakeDomain)
 	}
 }
+
+func abs32(v float32) float32 { return max(v, -v) }
 
 // circleMeets says the circle at c of radius rad and r share a point.
 func circleMeets(c paintengine2d.Point, rad float32, r paintengine2d.Rect) bool {
