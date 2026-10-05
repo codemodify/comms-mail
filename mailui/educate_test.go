@@ -40,7 +40,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 	probe.PumpOnce()
 	narrowest := int(ps.MinWidth()) + 9 // the page pads it, 4 a side
 	pw.Close()
-	if narrowest > 400 {
+	if narrowest > 460 {
 		t.Fatalf("the picture takes %d at least", narrowest)
 	}
 	for _, width := range []int{narrowest, 460, 560} {
@@ -125,6 +125,30 @@ func TestEducateIsOnePicture(t *testing.T) {
 				t.Errorf("at %d: the picture needs %v and has %v", width, need.Y, b.Dy())
 			}
 			g := sc.layoutAt(b.Dx())
+			// What the symbols mean: each one the picture draws, and none
+			// it does not.
+			drawn := map[string]bool{}
+			for _, e := range g.envs {
+				drawn["A message"] = drawn["A message"] || e.e == envelope{}
+				drawn["Signed by you"] = drawn["Signed by you"] || e.e.seal
+				drawn["Encrypted to TARGET"] = drawn["Encrypted to TARGET"] || e.e.lock
+				drawn["Signed by its domain"] = drawn["Signed by its domain"] || e.e.stamp
+			}
+			for _, l := range g.lines {
+				drawn["TLS"] = drawn["TLS"] || l.tube > 0
+			}
+			var explained []string
+			for _, k := range keys {
+				explained = append(explained, k.sy.says)
+				if !drawn[k.sy.says] {
+					t.Errorf("at %d, %+v: %q is explained and not drawn", width, les, k.sy.says)
+				}
+			}
+			for what, is := range drawn {
+				if is && !slices.Contains(explained, what) {
+					t.Errorf("at %d, %+v: %q is drawn and not explained", width, les, what)
+				}
+			}
 			local := sc.LocalBounds()
 			lk := sc.Look()
 			font := lk.Font()

@@ -111,8 +111,9 @@ type lesson struct {
 var firstLesson = lesson{mx: true, spf: true, dkim: true, dmarc: true, mtaSTS: true, dane: true}
 
 // scenarioSteps are the eight steps of l's message: what is done, and
-// what follows from what is not. A protocol's tag has its default port:
-// SMTP:25, SMTP:TLS:465, SMTP:STARTTLS:587.
+// what follows from what is not. A protocol's tag has what it runs over,
+// and its default port: SMTP:TCP:25, SMTP:TLS:TCP:465,
+// SMTP:STARTTLS:TCP:587, DNS:UDP:53.
 func scenarioSteps(l lesson) []step {
 	return []step{youStep(l.signed, l.encrypted), submitStep(l.tls), domainStep(l), relayStep(l),
 		checkStep(l), fetchStep(l.tls), targetStep(l.signed, l.encrypted), throughStep(l)}
@@ -122,8 +123,9 @@ func scenarioSteps(l lesson) []step {
 // SERVER, by its MX record.
 func domainStep(l lesson) step {
 	title := "YOUR SERVER finds TARGET SERVER"
-	var points []point
-	var tags [][]string
+	points := []point{pt("It asks DNS over UDP, port 53",
+		"Big answers, such as DNSSEC's, over TCP")}
+	tags := [][]string{alt(dnsName)}
 	if l.dkim {
 		title = "YOUR SERVER signs it and finds TARGET SERVER"
 		points = append(points,
@@ -172,18 +174,18 @@ func throughStep(l lesson) step {
 func submitStep(tls bool) step {
 	if !tls {
 		return step{"comms-mail hands it to YOUR SERVER", []point{
-			pt("SMTP in the clear: port 587, or 25"),
+			pt("SMTP in the clear: TCP port 587, or 25"),
 			pt("Anyone on the network can read and change it"),
 			pt("Signs in: password, or OAuth token",
 				"In the clear: anyone on the network sees it"),
 			pt("comms-mail does this only when set up to"),
 			pt("SMTP hands the message over",
 				"First who from and who to, then the message"),
-		}, [][]string{alt("SMTP:587", "SMTP:25"), alt("Password", "OAuth")}}
+		}, [][]string{alt("SMTP:TCP:587", "SMTP:TCP:25"), alt("Password", "OAuth")}}
 	}
 	return step{"comms-mail hands it to YOUR SERVER", []point{
-		pt("SMTP with TLS from the first byte: port 465"),
-		pt("Or SMTP with STARTTLS: port 587",
+		pt("SMTP inside TLS from the start: TCP port 465"),
+		pt("Or SMTP with STARTTLS: TCP port 587",
 			"Starts plain, then upgrades to TLS",
 			"No upgrade offered: comms-mail does not send"),
 		pt("The server's certificate is checked",
@@ -194,26 +196,26 @@ func submitStep(tls bool) step {
 			"comms-mail gets a token for mail only"),
 		pt("SMTP hands the message over",
 			"First who from and who to, then the message"),
-	}, [][]string{alt("SMTP:TLS:465", "SMTP:STARTTLS:587"), alt("Password", "OAuth")}}
+	}, [][]string{alt("SMTP:TLS:TCP:465", "SMTP:STARTTLS:TCP:587"), alt("Password", "OAuth")}}
 }
 
 // fetchStep is 6: TARGET fetches it.
 func fetchStep(tls bool) step {
 	if !tls {
 		return step{"TARGET fetches it", []point{
-			pt("IMAP (143): stays on the server, synced"),
-			pt("POP3 (110): downloaded to one device"),
+			pt("IMAP (TCP 143): stays on the server, synced"),
+			pt("POP3 (TCP 110): downloaded to one device"),
 			pt("In the clear: the sign-in and the message",
 				"Anyone on the network can read them"),
-		}, [][]string{alt("IMAP:143", "POP3:110")}}
+		}, [][]string{alt("IMAP:TCP:143", "POP3:TCP:110")}}
 	}
 	return step{"TARGET fetches it", []point{
 		pt("Signs in, over TLS"),
-		pt("IMAP (993): stays on the server, synced"),
-		pt("POP3 (995): downloaded to one device"),
-		pt("Or with STARTTLS: IMAP on 143, POP3 on 110",
+		pt("IMAP (TCP 993): stays on the server, synced"),
+		pt("POP3 (TCP 995): downloaded to one device"),
+		pt("Or STARTTLS: IMAP on TCP 143, POP3 on 110",
 			"Starts plain, then upgrades to TLS"),
-	}, [][]string{alt("IMAP:TLS:993", "IMAP:STARTTLS:143", "POP3:TLS:995", "POP3:STARTTLS:110")}}
+	}, [][]string{alt("IMAP:TLS:TCP:993", "IMAP:STARTTLS:TCP:143", "POP3:TLS:TCP:995", "POP3:STARTTLS:TCP:110")}}
 }
 
 // youStep is 1: what YOU do to it.
@@ -264,13 +266,13 @@ func relayStep(l lesson) step {
 	}
 	if !l.tls {
 		return step{"Server to server", []point{
-			pt("SMTP, on port 25"),
+			pt("SMTP, on TCP port 25"),
 			pt("In the clear: anyone on the way reads it"),
 			last,
-		}, [][]string{alt("SMTP:25")}}
+		}, [][]string{alt("SMTP:TCP:25")}}
 	}
 	points := []point{
-		pt("SMTP, on port 25"),
+		pt("SMTP, on TCP port 25"),
 		pt("STARTTLS encrypts, if both offer it",
 			"Often without checking the certificate"),
 	}
@@ -297,7 +299,7 @@ func relayStep(l lesson) step {
 		points = append(points, dane)
 		must = append(must, "DANE")
 	}
-	tags := [][]string{alt("SMTP:STARTTLS:25")}
+	tags := [][]string{alt("SMTP:STARTTLS:TCP:25")}
 	if len(must) > 0 {
 		tags = append(tags, must)
 	}
@@ -787,7 +789,7 @@ type symbol struct {
 }
 
 var symbols = []symbol{
-	{envelopeSymbol(envelope{}), "A message", nil},
+	{envelopeSymbol(envelope{}), "A message", func(l lesson) bool { return !l.signed && !l.encrypted }}, // a plain one is drawn
 	{envelopeSymbol(envelope{seal: true}), "Signed by you", func(l lesson) bool { return l.signed }},
 	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET", func(l lesson) bool { return l.encrypted }},
 	{envelopeSymbol(envelope{stamp: true}), "Signed by its domain", nil}, // the attacker's, if not yours

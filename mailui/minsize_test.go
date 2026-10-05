@@ -184,7 +184,7 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 			{"Write", 520, 400, func() { _, _ = OpenCompose(a, cli, ComposeOptions{}) }},
 			{"Write (reply)", 520, 400, func() { _, _ = OpenCompose(a, cli, ComposeOptions{ReplyTo: &reply}) }},
 			{"Add account", 460, 520, func() { _, _ = OpenAddAccount(a, cli, nil) }},
-			{"Settings", 650, 440, func() { _, _ = OpenPrefs(a, cli, nil) }},
+			{"Settings", 710, 440, func() { _, _ = OpenPrefs(a, cli, nil) }},
 			{"Tag editor", 360, 200, func() { _, _ = OpenTagEditor(a, mailcore.Tag{}, false, nil) }},
 			{"Import", 500, 440, func() {
 				openImportWindow(a, cli, []mailcore.ImportSource{sampleImportSource()}, map[string]bool{}, nil)

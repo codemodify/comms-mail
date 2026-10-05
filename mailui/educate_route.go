@@ -56,7 +56,7 @@ func dnsTagsFor(l lesson) [][]string {
 	return out
 }
 
-const dnsName = "DNS:53"
+const dnsName = "DNS:UDP:53"
 
 // routeNames are the four, with the number of the step each takes.
 var routeNames = [4]struct {
@@ -190,7 +190,9 @@ func (s *routeScene) columns(w float32) routeColumns {
 		aw = max(aw, font.Advance(l))
 	}
 	carries := s.dip(3) + mk + s.dip(4) + eb.Dx() + s.dip(6) + s.dip(9)
-	between := max(named(0)/2+named(1)/2, named(3)/2+named(2)/2) + s.dip(12)
+	// Room for the names either side, and for DNS's pill between the line
+	// from YOU to TARGET and tunnel 4.
+	between := max(named(0)/2+named(1)/2, named(3)/2+named(2)/2, font.Advance(dnsName)+s.dip(16)+s.dip(18)+thV/2) + s.dip(12)
 	return routeColumns{
 		between: between,
 		L:       m + max(e2eW/2, r, named(0)/2, named(3)/2) + s.dip(2),
@@ -496,17 +498,10 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	pt := paintengine2d.Pt
 	// The lines leave the pill from its corners on the servers' side.
 	dnsTop := pt(xd+dnsW/2-dnsT/2, yd-dnsT/2-s.dip(2))
-	dnsLow := pt(xd+dnsW/2-dnsT/2, yd+dnsT/2+s.dip(2))
-	// To theirs: from DNS's right, past its tags, down to theirs — right
-	// of whatever is under it.
-	tagsRight := xd + dnsW/2
-	for _, c := range cD {
-		tagsRight = max(tagsRight, c.r.Max.X)
-	}
-	toTheirs := pt(tagsRight+s.dip(2), yd)
-	if beside {
-		toTheirs = dnsLow
-	}
+	// To theirs: across from DNS's right to beside tunnel 4, then down
+	// along it — clear of whatever is under DNS.
+	along := R - thV/2 - s.dip(5)
+	corner := pt(along, yd)
 	// The connections: tunnels with TLS, plain lines without.
 	ink, tH, tV := inkGood, thH, thV
 	if !l.tls {
@@ -522,7 +517,8 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	g.lines = append(g.lines,
 		tunnel2, tunnel4, tunnel6, fake,
 		routeLine{a: dnsTop, b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: inkMuted, dashed: true},
-		routeLine{a: toTheirs, b: pt(R-thV/2-s.dip(3), y2-thH/2-s.dip(3)), ink: inkMuted, dashed: true},
+		routeLine{a: pt(xd+dnsW/2+s.dip(2), yd), b: corner, ink: inkMuted, dashed: true},
+		routeLine{a: corner, b: pt(along, y2-thH/2-s.dip(3)), ink: inkMuted, dashed: true},
 	)
 	// On each line that carries the message: its number at the start, the
 	// envelope between it and the arrow's head.
