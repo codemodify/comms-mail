@@ -256,7 +256,9 @@ func (c *storeChoices) vaultChoice(i int, available bool) widget.Component {
 	for _, rb := range c.vaultPick.Buttons() {
 		rb.SetEnabled(available)
 	}
-	return widgets.NewColumn(c.vaultPick, c.vaultName).WithGap(6)
+	hint := wrapLabel("A vault secretvault does not have yet, it offers to make: it asks you, and you choose its passphrase there.")
+	hint.Tone = widgets.ToneMuted
+	return widgets.NewColumn(c.vaultPick, c.vaultName, hint).WithGap(6)
 }
 
 // vault is the secretvault vault chosen: "" for its default.

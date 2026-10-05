@@ -530,7 +530,7 @@ secretvault, which does that work itself (see the security primer).
 | Store | Where | Unlocking |
 | --- | --- | --- |
 | **System Keyring** | The system's own: the freedesktop Secret Service on Linux (GNOME Keyring, KWallet, KeePassXC), the Keychain on macOS, the Credential Manager on Windows. Items are labelled `comms-mail: <name>` (attributes `application=comms-mail`, `name=…`). | The desktop unlocks it at login; a locked one shows its own prompt. |
-| **Secret Vault** | [codemodify/secretvault](https://github.com/codemodify/secretvault), the owner's own store, reached through its daemon's socket (`$SECRETVAULT_SOCK`, else `$XDG_RUNTIME_DIR/secretvault/secretvaultd.sock`) with its JSON-RPC protocol; comms-mail links none of its code. Items `comms-mail/pass/<account>/<imap\|pop\|smtp>` (kind `password`) and `comms-mail/oauth/<account>` (kind `api-key`) in its default vault, or the one named in Settings (mail.json `secretVault`), labelled for its own windows. Every item call names that vault, and the vault is looked up in `vault.list` first: secretvault answers an unknown vault with the same `-32003` as a missing item, which must not read as "no password saved". | secretvault's: it asks before letting `comms-maild` read, and remembers. While it is locked, comms-maild holds no secret — what it read is dropped and its sessions closed — and waits; it asks secretvault to unlock only when you do (Fetch, or Settings › Security › Passwords › **Unlock secretvault…**). |
+| **Secret Vault** | [codemodify/secretvault](https://github.com/codemodify/secretvault), the owner's own store, reached through its daemon's socket (`$SECRETVAULT_SOCK`, else `$XDG_RUNTIME_DIR/secretvault/secretvaultd.sock`) with its JSON-RPC protocol; comms-mail links none of its code. Items `comms-mail/pass/<account>/<imap\|pop\|smtp>` (kind `password`) and `comms-mail/oauth/<account>` (kind `api-key`) in its default vault, or the one named in Settings (mail.json `secretVault`), labelled for its own windows. Every item call names that vault; a vault that is not there answers `-32008` (a missing item `-32003`), and is said, never read as "no password saved". | secretvault's: it asks before letting `comms-maild` read, and remembers. While it is locked, comms-maild holds no secret — what it read is dropped and its sessions closed — and waits; it asks secretvault to unlock only when you do (Fetch, or Settings › Security › Passwords › **Unlock secretvault…**). |
 | **Encrypted file** | `~/.data/comms-mail/secrets/vault.json` (mode `0600`): AES-256-GCM under a key from your passphrase (Argon2id; the salt and cost are bound into the encryption, so they cannot be swapped for weaker ones). | Your passphrase, once each time comms-maild starts. |
 | **Plain file** | Passwords in `mail.json`, as comms-mail always kept them; OAuth tokens in `oauth-tokens.json` beside it (both `0600`). Readable by any program running as you. | — |
 
@@ -567,12 +567,14 @@ secretvault, which does that work itself (see the security primer).
   failure part-way leaves them where they were. From one of secretvault's
   vaults to another is the same: written to the new vault, then deleted
   from the old one; the default vault chosen by its own name moves and
-  deletes nothing. A vault secretvault does not have is said, with how to
-  make it, and nothing moves: secretvault lets only its own programs make
-  vaults (`vault.create`), and takes the new vault's passphrase from the
-  caller, which comms-mail must never hold — so it is made in secretvault
-  (File › New vault…, or `secretvault vault create --name …`) and then
-  chosen here. Moving from an install before the choice also deletes the
+  deletes nothing. A vault secretvault does not have yet is asked for
+  (`vault.request`, by name alone): secretvault asks you whether to make
+  it, and for its passphrase and recovery key, in its own prompt —
+  comms-mail never sees them — and the secrets move in once it is made; a
+  no, or a closed question, moves nothing and is said. The same holds for
+  comms-mail's own keys kept in a Secret Vault vault. A vault taken away
+  while in use is said (secretvault's `-32008`), never read as no password
+  saved. Moving from an install before the choice also deletes the
   old token files, `master.key`, and the copy of that key older builds
   put in the keyring through `secret-tool`.
 - **Locked.** While the store in use cannot be read — the encrypted file

@@ -339,12 +339,14 @@ func (k svKeyStore) Ready() error {
 }
 
 // fail is a refusal in words; locked is ErrLocked.
-func (svKeyStore) fail(err error) error {
+func (k svKeyStore) fail(err error) error {
 	switch svCode(err) {
 	case svCodeLocked:
 		return ErrLocked
 	case svCodeDenied, svCodeCanceled:
 		return errors.New("secretvault did not let comms-mail at its keys")
+	case svCodeNoVault:
+		return missingVault(k.vault)
 	}
 	return err
 }
@@ -529,6 +531,9 @@ func (s *LocalStore) moveKeys(format string, cur, next KeyChoice, passphrase str
 			return err
 		}
 	case StoreSecretVault:
+		if err := theSecretVault.ensureVault(next.Vault); err != nil {
+			return err
+		}
 		ks := svKeyStore{vault: next.Vault}
 		if err := ks.Ready(); errors.Is(err, ErrLocked) {
 			if err := ks.unlock(); err != nil {

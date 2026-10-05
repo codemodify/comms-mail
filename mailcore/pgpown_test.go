@@ -375,3 +375,26 @@ func TestAutocryptOnlyForTheSender(t *testing.T) {
 		t.Fatalf("taken: %+v", l)
 	}
 }
+
+// comms-mail's own keys in a vault of secretvault's that is not there
+// yet: secretvault is asked for it, and the keys go into it.
+func TestOwnKeysInARequestedVault(t *testing.T) {
+	smtp := startFakeSMTP(t)
+	st, sv := sendingStore(t, smtp)
+	if err := st.UseKeys(FormatOpenPGP, EngineOwn, StoreSecretVault, "", "keys"); err != nil {
+		t.Fatal(err)
+	}
+	if r := sv.Requests(); len(r) != 1 || r[0] != "keys" {
+		t.Fatalf("asked for %v", r)
+	}
+	if _, err := st.MakePGPKey("ada@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	fp := st.keys().own(FormatOpenPGP, "ada@example.com")[0].ID
+	if it, ok := sv.ItemIn("keys", "comms-mail/"+keyName(FormatOpenPGP, fp)); !ok || it.Kind != svKindKey {
+		t.Fatalf("not in the keys vault: %+v", it)
+	}
+	if _, ok := sv.Item("comms-mail/" + keyName(FormatOpenPGP, fp)); ok {
+		t.Fatal("the key is in the default vault too")
+	}
+}

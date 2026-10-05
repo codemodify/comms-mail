@@ -485,7 +485,7 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	// secretvault's vault; no text over them.
 	want := []string{
 		"radio System Keyring", "text (Secret Service)", "text Not available: ",
-		"radio Secret Vault", "text Not available: ", "radio Default", "radio Custom",
+		"radio Secret Vault", "text Not available: ", "radio Default", "radio Custom", "text A vault secretvault does not have yet, it offers to make",
 		"radio Encrypted file", "text (Argon2id hashing + AES-256-GCM encryption)", "path " + vaultPath,
 		"radio Plain file", "text (open to anyone)", "path " + configPath,
 	}
@@ -541,7 +541,7 @@ func TestPasswordsPageIsTheChoice(t *testing.T) {
 	// The window that asks says the same, under its own words.
 	st, _ := cli.SecretsStatus()
 	ask := newWindowFrom(t, a, func() { openStoreChooser(a, cli, switchIntro, st, nil) })
-	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[7:], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
+	if got := strings.Join(placesSay(ask.Content()), "\n"); !strings.Contains(got, strings.Join(want[8:], "\n")) || !strings.Contains(labelTexts(ask), switchIntro) {
 		t.Fatalf("the window says:\n%s", got)
 	}
 	ask.Close()
@@ -650,8 +650,8 @@ func placeTitle(text string) string {
 
 // Secret Vault's vault: its default (named) or one typed under Custom.
 // Custom with no name offers no Apply; a vault secretvault does not have
-// is said, with how to make it, and nothing moves; once it is there, Apply
-// moves the passwords into it and the page shows it in use.
+// is asked for — refused, it is said and nothing moves; made, Apply moves
+// the passwords into it and the page shows it in use.
 func TestPasswordsInANamedVault(t *testing.T) {
 	sv := svtest.Start(t, false)
 	cli, _ := vaultDaemon(t)
@@ -704,6 +704,7 @@ func TestPasswordsInANamedVault(t *testing.T) {
 	if !p.apply.Enabled() {
 		t.Fatal("Apply is off with a vault named")
 	}
+	sv.DenyRequests(true)
 	p.apply.OnClick()
 	a.PumpOnce()
 	said := ""
@@ -714,15 +715,16 @@ func TestPasswordsInANamedVault(t *testing.T) {
 			}
 		})
 	}
-	if !strings.Contains(said, `no vault named "work"`) || !strings.Contains(said, "secretvault vault create --name work") {
-		t.Fatalf("a vault secretvault does not have:\n%s", said)
+	if !strings.Contains(said, `did not make a vault named "work"`) {
+		t.Fatalf("a vault the person would not have made:\n%s", said)
 	}
 	if st, _ := cli.SecretsStatus(); st.Store != "" {
 		t.Fatalf("something moved: %+v", st)
 	}
 	widget.DismissOverlay(w.Overlay())
 
-	sv.AddVault("work")
+	// The person says yes: secretvault makes it, and the passwords move in.
+	sv.DenyRequests(false)
 	p.apply.OnClick()
 	a.PumpOnce()
 	if st, _ := cli.SecretsStatus(); st.Store != mailcore.StoreSecretVault || st.SecretVault != "work" {

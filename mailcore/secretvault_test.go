@@ -223,11 +223,13 @@ func TestSecretVaultStartsLater(t *testing.T) {
 }
 
 // The secrets can be kept in a vault of secretvault's other than its
-// default, named in Settings. A vault secretvault does not have is said —
-// it lets only its own programs make one — and nothing moves; one it has
-// takes them, and the choice holds when the daemon starts again. Back to
-// the default moves them back and out of the named vault; the default by
-// its own name moves nothing, and deletes nothing.
+// default, named in Settings. One secretvault does not have is asked for
+// (vault.request: secretvault asks the person and takes the passphrase):
+// refused, nothing moves; made, it takes them, and the choice holds when
+// the daemon starts again. Back to the default moves them back and out of
+// the named vault; the default by its own name moves nothing, and deletes
+// nothing. A vault taken away while in use is said, never read as no
+// password saved.
 func TestSecretVaultNamedVault(t *testing.T) {
 	sv := startFakeSecretVault(t, false)
 	dir := t.TempDir()
@@ -246,9 +248,10 @@ func TestSecretVaultNamedVault(t *testing.T) {
 		return s.withSecrets("w", got).IMAP.Pass
 	}
 
+	sv.DenyRequests(true)
 	err = st.UseStoreIn(StoreSecretVault, "", "work")
-	if err == nil || !strings.Contains(err.Error(), `no vault named "work"`) || !strings.Contains(err.Error(), "secretvault vault create --name work") {
-		t.Fatalf("a vault secretvault does not have: %v", err)
+	if err == nil || !strings.Contains(err.Error(), `did not make a vault named "work"`) {
+		t.Fatalf("a vault the person would not have made: %v", err)
 	}
 	if s := st.SecretsStatus(); s.Store != "" || !s.PlainSecrets {
 		t.Fatalf("something moved: %+v", s)
@@ -257,9 +260,12 @@ func TestSecretVaultNamedVault(t *testing.T) {
 		t.Fatal("the password went to the default vault")
 	}
 
-	sv.AddVault("work")
+	sv.DenyRequests(false)
 	if err := st.UseStoreIn(StoreSecretVault, "", "work"); err != nil {
 		t.Fatal(err)
+	}
+	if r := sv.Requests(); len(r) != 2 || r[1] != "work" {
+		t.Fatalf("asked for %v", r)
 	}
 	if _, ok := sv.ItemIn("work", item); !ok {
 		t.Fatal("the password is not in work")
@@ -303,5 +309,17 @@ func TestSecretVaultNamedVault(t *testing.T) {
 	}
 	if _, ok := sv.Item(item); !ok || password(again) != "open sesame" {
 		t.Fatal("the default vault, named, lost the password")
+	}
+
+	// The named vault taken away while in use.
+	if err := again.UseStoreIn(StoreSecretVault, "", "work"); err != nil {
+		t.Fatal(err)
+	}
+	theSecretVault.mu.Lock()
+	theSecretVault.forgetLocked()
+	theSecretVault.mu.Unlock()
+	sv.RemoveVault("work")
+	if _, _, err := (secretVaultStore{theSecretVault}).Get("pass/w/imap"); err == nil || !strings.Contains(err.Error(), `no vault named "work"`) || !strings.Contains(err.Error(), "choose it again in Settings") {
+		t.Fatalf("a vault gone: %v", err)
 	}
 }

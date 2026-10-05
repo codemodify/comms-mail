@@ -817,6 +817,9 @@ func (s *LocalStore) UseStoreIn(kind, passphrase, vault string) error {
 		}
 	case StoreSecretVault:
 		sv := secretVaultStore{theSecretVault}
+		if err := theSecretVault.ensureVault(vault); err != nil {
+			return err
+		}
 		if err := theSecretVault.useVault(vault); err != nil {
 			return err
 		}
@@ -900,6 +903,9 @@ func (s *LocalStore) moveSecretVault(name string) error {
 		}
 	}
 	from, fromWant, _ := theSecretVault.current()
+	if err := theSecretVault.ensureVault(name); err != nil {
+		return err
+	}
 	if err := theSecretVault.useVault(name); err != nil {
 		return err
 	}

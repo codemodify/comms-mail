@@ -3,10 +3,11 @@
 // vault.unlock, item.get, item.list, item.put, item.delete, mail.inspect,
 // trust.seen, pgp.public, smime.list, mail.compose) and the notifications
 // it sends (vault.locked, vault.unlocked), with one vault named
-// "personal", the default, and any a test adds (AddVault), locked and
-// unlocked together; an item call names its vault or means the default,
-// and one naming a vault there is not is "not found", as secretvault
-// answers it. It checks, signs, encrypts and decrypts nothing: a test says
+// "personal", the default, and any a test adds (AddVault) or comms-maild
+// asks for (vault.request: the person says yes, unless DenyRequests),
+// locked and unlocked together; an item call names its vault or means the
+// default, and one naming a vault there is not answers -32008, as
+// secretvault does. It checks, signs, encrypts and decrypts nothing: a test says
 // what mail.inspect answers and whose keys it holds, and mail.compose
 // wraps the message in a structure that reads as signed or encrypted. Only tests import it, so it is never in a binary, and
 // tests never reach the person's own secretvault.
@@ -59,6 +60,7 @@ const (
 	codeLocked   = -32001
 	codeDenied   = -32002
 	codeNotFound = -32003
+	codeNoVault  = -32008
 )
 
 // Vault is the stand-in daemon.
@@ -67,15 +69,17 @@ type Vault struct {
 	path string
 	ln   net.Listener
 
-	wmu     sync.Mutex // one line at a time on every connection
-	mu      sync.Mutex
-	locked  bool
-	deny    bool
-	items   map[string]Item // the default vault's
-	vaults  map[string]map[string]Item
-	conns   []net.Conn
-	unlocks int
-	gets    int
+	wmu      sync.Mutex // one line at a time on every connection
+	mu       sync.Mutex
+	locked   bool
+	deny     bool
+	items    map[string]Item // the default vault's
+	vaults   map[string]map[string]Item
+	denyNew  bool     // vault.request: the person says no
+	requests []string // the vaults asked for
+	conns    []net.Conn
+	unlocks  int
+	gets     int
 
 	inspect  func(raw []byte, decrypt bool) any
 	inspects []Inspected
@@ -301,6 +305,27 @@ func (v *Vault) ItemIn(vault, name string) (Item, bool) {
 	return it, ok
 }
 
+// DenyRequests makes the person say no to vault.request.
+func (v *Vault) DenyRequests(on bool) {
+	v.mu.Lock()
+	v.denyNew = on
+	v.mu.Unlock()
+}
+
+// Requests are the vaults comms-maild asked for.
+func (v *Vault) Requests() []string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]string(nil), v.requests...)
+}
+
+// RemoveVault is a vault taken away in secretvault.
+func (v *Vault) RemoveVault(name string) {
+	v.mu.Lock()
+	delete(v.vaults, name)
+	v.mu.Unlock()
+}
+
 // AddVault is a vault made in secretvault, empty.
 func (v *Vault) AddVault(name string) {
 	v.mu.Lock()
@@ -389,6 +414,23 @@ func (v *Vault) serve(c net.Conn) {
 			}
 			v.mu.Unlock()
 			reply(m.ID, list, 0, "")
+		case "vault.request":
+			v.mu.Lock()
+			v.requests = append(v.requests, p.Name)
+			_, exists := v.vaults[p.Name]
+			deny := v.denyNew
+			if !exists && !deny {
+				v.vaults[p.Name] = map[string]Item{}
+			}
+			v.mu.Unlock()
+			switch {
+			case exists:
+				reply(m.ID, nil, -32006, "already exists")
+			case deny:
+				reply(m.ID, nil, codeDenied, "the person said no")
+			default:
+				reply(m.ID, map[string]string{"vault": p.Name}, 0, "")
+			}
 		case "vault.unlock":
 			v.mu.Lock()
 			_, ok := v.vaults[vaultOr(p.Vault)]
@@ -397,7 +439,7 @@ func (v *Vault) serve(c net.Conn) {
 			}
 			v.mu.Unlock()
 			if !ok {
-				reply(m.ID, nil, codeNotFound, fmt.Sprintf("there is no vault named %q", p.Vault))
+				reply(m.ID, nil, codeNoVault, fmt.Sprintf("there is no vault named %q", p.Vault))
 				continue
 			}
 			v.Unlock()
@@ -503,7 +545,7 @@ func (v *Vault) serve(c net.Conn) {
 			items, there := v.vaults[vaultOr(p.Vault)]
 			if !there {
 				v.mu.Unlock()
-				reply(m.ID, nil, codeNotFound, fmt.Sprintf("there is no vault named %q", p.Vault))
+				reply(m.ID, nil, codeNoVault, fmt.Sprintf("there is no vault named %q", p.Vault))
 				continue
 			}
 			switch m.Method {

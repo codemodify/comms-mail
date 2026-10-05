@@ -56,10 +56,16 @@ var svRetryEvery = 5 * time.Second
 const (
 	svCodeLocked     = -32001
 	svCodeDenied     = -32002
-	svCodeNotFound   = -32003
+	svCodeNotFound   = -32003 // an item (since secretvault 2026-10-04, only an item)
 	svCodeCanceled   = -32005
+	svCodeExists     = -32006
 	svCodeNoPrompter = -32007
+	svCodeNoVault    = -32008 // the vault named, or the default, is not there
 )
+
+// svRequestTimeout is how long a vault.request may wait: the person reads
+// the question and chooses a passphrase, twice.
+const svRequestTimeout = 5 * time.Minute
 
 // svError is an error secretvaultd answered with.
 type svError struct {
@@ -449,13 +455,63 @@ func (v *secretVault) current() (vault, want, defaultName string) {
 	return v.vault, v.want, v.defaultName
 }
 
-// missingVault says secretvault has no vault of that name; secretvault
-// lets only its own programs make one.
+// missingVault says secretvault has no vault of that name (any more).
 func missingVault(name string) error {
 	if name == "" {
 		return errors.New("secretvault has no vault yet: make one in secretvault first")
 	}
-	return fmt.Errorf("secretvault has no vault named %q, and it lets only its own programs make one: make it in secretvault (File › New vault…, or: secretvault vault create --name %s), then Apply again", name, name)
+	return fmt.Errorf("secretvault has no vault named %q: choose it again in Settings, and secretvault offers to make it", name)
+}
+
+// ensureVault makes sure secretvault has the vault named ("" its
+// default): one that is not there is asked for (vault.request) —
+// secretvault asks the person whether to make it, and for its passphrase,
+// in its own prompt; comms-mail never sees it. The default cannot be
+// asked for.
+func (v *secretVault) ensureVault(name string) error {
+	if _, err := v.connect(); err != nil {
+		return err
+	}
+	var vaults []svVaultInfo
+	if err := v.call("vault.list", nil, &vaults); err != nil {
+		return err
+	}
+	if _, ok := pickVault(vaults, name); ok {
+		return nil
+	}
+	if name == "" {
+		return missingVault("")
+	}
+	v.mu.Lock()
+	c := v.conn
+	v.mu.Unlock()
+	if c == nil {
+		return errors.New("secretvault is not running")
+	}
+	var made struct {
+		Vault string `json:"vault"`
+	}
+	err := c.call("vault.request", map[string]string{"name": name}, &made, svRequestTimeout)
+	switch svCode(err) {
+	case 0:
+		if err != nil {
+			return err
+		}
+	case svCodeExists:
+		return nil // made meanwhile
+	case svCodeDenied:
+		return fmt.Errorf("secretvault did not make a vault named %q: you said no, now or for good (secretvault's own settings can ask again)", name)
+	case svCodeCanceled:
+		return fmt.Errorf("secretvault did not make a vault named %q: the question was closed", name)
+	case svCodeNoPrompter:
+		return fmt.Errorf("secretvault could not ask you about a vault named %q: it has no way to show its question here", name)
+	case -32601: // a secretvault from before vault.request
+		return fmt.Errorf("this secretvault cannot make a vault for comms-mail: update it, or make %q in secretvault yourself", name)
+	default:
+		return fmt.Errorf("secretvault could not make a vault named %q: %w", name, err)
+	}
+	Logf("secretvault: made the vault %q, as asked", firstNonEmpty(made.Vault, name))
+	return nil
 }
 
 // watchConn notices the daemon going away: everything read is dropped,
@@ -666,6 +722,13 @@ func (s secretVaultStore) fail(err error) error {
 		return refused
 	case svCodeNoPrompter:
 		return errors.New("secretvault had to ask you, and could not show its question here")
+	case svCodeNoVault:
+		// Gone since it was looked up: looked for again next time.
+		v.mu.Lock()
+		v.vault = ""
+		want := v.want
+		v.mu.Unlock()
+		return missingVault(want)
 	}
 	return err
 }
