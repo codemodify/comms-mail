@@ -193,3 +193,18 @@ func drawTube(ctx *paintengine2d.Context, lk style.LookAndFeel, a, b paintengine
 		ctx.DrawOval(paintengine2d.XYWH(a.X-th/2, y-mouth/2, th, mouth), pen)
 	}
 }
+
+// drawPlainLine draws a connection in the clear from a to b: a plain line
+// and its head, where an encrypted one is a tunnel.
+func drawPlainLine(ctx *paintengine2d.Context, lk style.LookAndFeel, a, b paintengine2d.Point) {
+	ink := inksOf(lk).muted
+	h := style.Dip(lk, 7)
+	dir := b.Sub(a).Normalize()
+	ctx.DrawLine(a, b.Sub(dir.Mul(h/2)), paintengine2d.StrokePaint(ink, style.Dip(lk, 1.75)))
+	head := paintengine2d.NewPath()
+	head.MoveTo(b.X, b.Y)
+	head.LineTo(b.X-dir.X*h-dir.Y*h*0.6, b.Y-dir.Y*h+dir.X*h*0.6)
+	head.LineTo(b.X-dir.X*h+dir.Y*h*0.6, b.Y-dir.Y*h-dir.X*h*0.6)
+	head.Close()
+	ctx.DrawPath(head, paintengine2d.Fill(ink))
+}

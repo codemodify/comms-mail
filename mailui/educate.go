@@ -52,22 +52,8 @@ func one(names ...string) [][]string {
 // signing, and for encrypting.
 var e2eTags = [][]string{alt("OpenPGP", "S/MIME")}
 
-// The steps every message takes the same way: 2, 3, 6 and 8.
+// The steps every message takes the same way: 3 and 8.
 var (
-	submitStep = step{"comms-mail hands it to YOUR SERVER", []point{
-		pt("TLS from the first byte: port 465"),
-		pt("Or STARTTLS: port 587",
-			"Starts plain, then upgrades to TLS",
-			"No upgrade offered: comms-mail does not send"),
-		pt("The server's certificate is checked",
-			"Issued by an authority, for that server's name"),
-		pt("Signs in: password, or OAuth token"),
-		pt("OAuth: scoped, revocable, no password",
-			"You sign in on the provider's own page",
-			"comms-mail gets a token for mail only"),
-		pt("SMTP hands the message over",
-			"First who from and who to, then the message"),
-	}, [][]string{alt("SMTP"), alt("TLS", "STARTTLS"), alt("Password", "OAuth")}}
 	domainStep = step{"YOUR SERVER signs it and finds TARGET SERVER", []point{
 		pt("DKIM signs body and headers, for your domain",
 			"With the domain's key, kept on the server",
@@ -76,11 +62,6 @@ var (
 			"At selector._domainkey.yourdomain"),
 		pt("The MX record in DNS names TARGET SERVER"),
 	}, one("DKIM", "MX")}
-	fetchStep = step{"TARGET fetches it", []point{
-		pt("Signs in, over TLS"),
-		pt("IMAP (993): stays on the server, synced"),
-		pt("POP3 (995): downloaded to one device"),
-	}, [][]string{alt("TLS"), alt("IMAP", "POP3")}}
 	throughStep = step{"What gets through anyway", []point{
 		pt("acrne.com, posing as your supplier acme.com",
 			"\"rn\" reads as \"m\""),
@@ -138,10 +119,60 @@ var (
 )
 
 // scenarioSteps are the eight steps of a message signed or not, encrypted
-// or not: each saying what is done, and nothing of what is not.
-func scenarioSteps(signed, encrypted bool) []step {
-	return []step{youStep(signed, encrypted), submitStep, domainStep, relayStep(encrypted),
-		checkStep(encrypted), fetchStep, targetStep(signed, encrypted), throughStep}
+// or not, over connections with TLS or without: each saying what is done,
+// and nothing of what is not. A protocol's tag has its default port:
+// SMTP:25, SMTP:TLS:465, SMTP:STARTTLS:587.
+func scenarioSteps(signed, encrypted, tls bool) []step {
+	return []step{youStep(signed, encrypted), submitStep(tls), domainStep, relayStep(encrypted, tls),
+		checkStep(encrypted), fetchStep(tls), targetStep(signed, encrypted), throughStep}
+}
+
+// submitStep is 2: comms-mail hands it to YOUR SERVER.
+func submitStep(tls bool) step {
+	if !tls {
+		return step{"comms-mail hands it to YOUR SERVER", []point{
+			pt("SMTP in the clear: port 587, or 25"),
+			pt("Anyone on the network can read and change it"),
+			pt("Signs in: password, or OAuth token",
+				"In the clear: anyone on the network sees it"),
+			pt("comms-mail does this only when set up to"),
+			pt("SMTP hands the message over",
+				"First who from and who to, then the message"),
+		}, [][]string{alt("SMTP:587", "SMTP:25"), alt("Password", "OAuth")}}
+	}
+	return step{"comms-mail hands it to YOUR SERVER", []point{
+		pt("SMTP with TLS from the first byte: port 465"),
+		pt("Or SMTP with STARTTLS: port 587",
+			"Starts plain, then upgrades to TLS",
+			"No upgrade offered: comms-mail does not send"),
+		pt("The server's certificate is checked",
+			"Issued by an authority, for that server's name"),
+		pt("Signs in: password, or OAuth token"),
+		pt("OAuth: scoped, revocable, no password",
+			"You sign in on the provider's own page",
+			"comms-mail gets a token for mail only"),
+		pt("SMTP hands the message over",
+			"First who from and who to, then the message"),
+	}, [][]string{alt("SMTP:TLS:465", "SMTP:STARTTLS:587"), alt("Password", "OAuth")}}
+}
+
+// fetchStep is 6: TARGET fetches it.
+func fetchStep(tls bool) step {
+	if !tls {
+		return step{"TARGET fetches it", []point{
+			pt("IMAP (143): stays on the server, synced"),
+			pt("POP3 (110): downloaded to one device"),
+			pt("In the clear: the sign-in and the message",
+				"Anyone on the network can read them"),
+		}, [][]string{alt("IMAP:143", "POP3:110")}}
+	}
+	return step{"TARGET fetches it", []point{
+		pt("Signs in, over TLS"),
+		pt("IMAP (993): stays on the server, synced"),
+		pt("POP3 (995): downloaded to one device"),
+		pt("Or with STARTTLS: IMAP on 143, POP3 on 110",
+			"Starts plain, then upgrades to TLS"),
+	}, [][]string{alt("IMAP:TLS:993", "IMAP:STARTTLS:143", "POP3:TLS:995", "POP3:STARTTLS:110")}}
 }
 
 // youStep is 1: what YOU do to it.
@@ -177,13 +208,24 @@ func youStep(signed, encrypted bool) step {
 }
 
 // relayStep is 4: server to server.
-func relayStep(encrypted bool) step {
-	last := pt("Each server reads the message",
-		"TLS encrypts the connection, not the stored mail")
+func relayStep(encrypted, tls bool) step {
+	last := pt("Each server reads the message")
+	if tls {
+		last.sub = []string{"TLS encrypts the connection, not the stored mail"}
+	}
 	if encrypted {
 		last = pt("Each server has the message, still encrypted",
-			"TLS encrypts the connection, not the stored mail",
 			"Step 1's encryption keeps what it says hidden")
+		if tls {
+			last.sub = append([]string{"TLS encrypts the connection, not the stored mail"}, last.sub...)
+		}
+	}
+	if !tls {
+		return step{"Server to server", []point{
+			pt("SMTP, on port 25"),
+			pt("In the clear: anyone on the way reads it"),
+			last,
+		}, [][]string{alt("SMTP:25")}}
 	}
 	return step{"Server to server", []point{
 		pt("SMTP, on port 25"),
@@ -196,7 +238,7 @@ func relayStep(encrypted bool) step {
 		pt("DANE: the certificate pinned in DNSSEC",
 			"TLSA records, in signed DNS"),
 		last,
-	}, [][]string{alt("SMTP"), alt("STARTTLS"), alt("MTA-STS", "DANE")}}
+	}, [][]string{alt("SMTP:STARTTLS:25"), alt("MTA-STS", "DANE")}}
 }
 
 // checkStep is 5: TARGET SERVER checks the sender, and keeps the message.
@@ -281,13 +323,13 @@ func educateSection() widget.Component {
 		key.Add(newSymbolItem(sy))
 	}
 	list := widgets.NewColumn().WithGap(14)
-	signed, encrypted := false, false
+	signed, encrypted, tls := false, false, true
 	show := func() {
-		scene.signed, scene.encrypted = signed, encrypted
+		scene.signed, scene.encrypted, scene.tls = signed, encrypted, tls
 		scene.RequestLayout()
 		scene.Invalidate()
 		list.ClearChildren()
-		for i, st := range scenarioSteps(signed, encrypted) {
+		for i, st := range scenarioSteps(signed, encrypted, tls) {
 			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
 			if len(st.tags) > 0 {
 				about.Add(altRow(st.tags))
@@ -300,14 +342,16 @@ func educateSection() widget.Component {
 		list.RequestLayout()
 		list.Invalidate()
 	}
-	// Which message: signed or not, encrypted or not — four, each its
-	// steps, the picture showing it.
+	// Which message: signed or not, encrypted or not, over connections
+	// with TLS or without — eight, each its steps, the picture showing it.
 	sign := widgets.NewSegmented([]string{"Not signed", "Signed"}, 0, nil)
 	sign.OnChange = func(i int) { signed = i == 1; show() }
 	encrypt := widgets.NewSegmented([]string{"Not encrypted", "Encrypted"}, 0, nil)
 	encrypt.OnChange = func(i int) { encrypted = i == 1; show() }
+	conn := widgets.NewSegmented([]string{"With TLS", "Without TLS"}, 0, nil)
+	conn.OnChange = func(i int) { tls = i == 0; show() }
 	show()
-	which := widgets.NewWrap(sign, encrypt)
+	which := widgets.NewWrap(sign, encrypt, conn)
 	which.Gap, which.LineGap = 12, 8
 	words := widgets.NewColumn(which, widgets.NewTitle("Step by step"), list).WithGap(14)
 	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), scene, words)
@@ -330,7 +374,7 @@ type educatePage struct {
 
 // pinMin is the room the words keep under a pinned picture: some lines
 // of them.
-const pinMin = 160
+const pinMin = 120
 
 func newEducatePage(top widget.Component, scene *routeScene, words widget.Component) *educatePage {
 	p := &educatePage{top: top, scene: scene, words: words, rule: widgets.NewSeparator()}
@@ -630,16 +674,11 @@ var symbols = []symbol{
 	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
 		y := box.Center().Y
 		drawTube(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y), box.Dy()*0.8)
-	}, "Encrypted connection"},
+	}, "TLS"},
 	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
-		h := box.Dy()/2 - style.Dip(lk, 1)
-		for i := range 2 {
-			r := paintengine2d.XYWH(box.Min.X, box.Min.Y+float32(i)*(h+style.Dip(lk, 2)), box.Dx(), h)
-			ink := lk.Palette().Ink(lk.Palette().Accent)
-			ctx.DrawRoundRect(r, h/2, h/2, paintengine2d.Fill(lk.Palette().Field))
-			ctx.DrawRoundRect(r, h/2, h/2, paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
-		}
-	}, "Stacked across a line: either one"},
+		y := box.Center().Y
+		drawPlainLine(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y))
+	}, "No TLS"},
 }
 
 // envelopeSymbol draws e in the middle of a symbol's box.

@@ -43,7 +43,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 		t.Fatalf("the picture takes %d at least", narrowest)
 	}
 	for _, width := range []int{narrowest, 460, 560} {
-		for _, sc := range []struct{ signed, encrypted bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		for _, sc := range scenarios() {
 			a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 			w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
 			if err != nil {
@@ -60,18 +60,19 @@ func TestEducateIsOnePicture(t *testing.T) {
 					which = append(which, v)
 				}
 			})
-			if len(which) != 2 || which[0].Selected != 0 || which[1].Selected != 0 ||
-				!slices.Equal(which[0].Segments, []string{"Not signed", "Signed"}) || !slices.Equal(which[1].Segments, []string{"Not encrypted", "Encrypted"}) {
-				t.Fatalf("at %d: the choice of message is not signed or not, encrypted or not, neither first", width)
+			if len(which) != 3 || which[0].Selected != 0 || which[1].Selected != 0 || which[2].Selected != 0 ||
+				!slices.Equal(which[0].Segments, []string{"Not signed", "Signed"}) || !slices.Equal(which[1].Segments, []string{"Not encrypted", "Encrypted"}) ||
+				!slices.Equal(which[2].Segments, []string{"With TLS", "Without TLS"}) {
+				t.Fatalf("at %d: the choice of message is not signed or not, encrypted or not, TLS or not; neither, with TLS first", width)
 			}
-			for i, on := range []bool{sc.signed, sc.encrypted} {
-				if on {
+			for i, chosen := range []bool{sc.signed, sc.encrypted, !sc.tls} {
+				if chosen {
 					which[i].Selected = 1
 					which[i].OnChange(1)
 				}
 			}
 			a.PumpOnce()
-			steps := scenarioSteps(sc.signed, sc.encrypted)
+			steps := scenarioSteps(sc.signed, sc.encrypted, sc.tls)
 			var scenes []*routeScene
 			var numbers []int
 			var titles []*strong
@@ -149,8 +150,12 @@ func TestEducateIsOnePicture(t *testing.T) {
 			}
 			var discs, texts, marks, chips, envs []box
 			for i, d := range g.discs {
-				discs = append(discs, box{"disc " + string(rune('0'+i)) + " " + d.text, paintengine2d.XYWH(d.c.X-d.d/2, d.c.Y-d.d/2, d.d, d.d), d.d / 2, 0})
-				if d.text != "" && font.Advance(d.text) > d.d-style.Dip(lk, 4) {
+				radius := d.d / 2 // a pill is a box
+				if d.w > 0 {
+					radius = 0
+				}
+				discs = append(discs, box{"disc " + string(rune('0'+i)) + " " + d.text, d.box(), radius, 0})
+				if d.text != "" && font.Advance(d.text) > d.box().Dx()-style.Dip(lk, 4) {
 					t.Errorf("at %d: %q does not fit its disc", width, d.text)
 				}
 			}
@@ -357,10 +362,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 		}
 	}
 	var all []step
-	for _, sig := range []bool{false, true} {
-		for _, enc := range []bool{false, true} {
-			all = append(all, scenarioSteps(sig, enc)...)
-		}
+	for _, sc := range scenarios() {
+		all = append(all, scenarioSteps(sc.signed, sc.encrypted, sc.tls)...)
 	}
 	for i, st := range all {
 		var all []string
@@ -370,8 +373,11 @@ func TestEducateIsOnePicture(t *testing.T) {
 		}
 		says := strings.ToLower(strings.Join(all, "\n"))
 		for _, n := range flat(st.tags) {
-			if !strings.Contains(says, strings.ToLower(n)) {
-				t.Errorf("step %d (%s) has the tag %s and does not say it", i+1, st.title, n)
+			// A protocol's tag, with its port: each part said.
+			for _, part := range strings.Split(n, ":") {
+				if !strings.Contains(says, strings.ToLower(part)) {
+					t.Errorf("step %d (%s) has the tag %s and does not say %s", i%8+1, st.title, n, part)
+				}
 			}
 		}
 		// A few words each, and each one whole: none ends where the next
@@ -391,6 +397,23 @@ func TestEducateIsOnePicture(t *testing.T) {
 }
 
 func abs32(v float32) float32 { return max(v, -v) }
+
+// scenario is one of the messages Educate explains.
+type scenario struct{ signed, encrypted, tls bool }
+
+// scenarios are all eight: signed or not, encrypted or not, over
+// connections with TLS or without.
+func scenarios() []scenario {
+	var out []scenario
+	for _, tls := range []bool{true, false} {
+		for _, signed := range []bool{false, true} {
+			for _, encrypted := range []bool{false, true} {
+				out = append(out, scenario{signed, encrypted, tls})
+			}
+		}
+	}
+	return out
+}
 
 // circleMeets says the circle at c of radius rad and r share a point.
 func circleMeets(c paintengine2d.Point, rad float32, r paintengine2d.Rect) bool {
@@ -471,9 +494,28 @@ func TestEducatePinsThePicture(t *testing.T) {
 // nothing of a session key or decrypting; and no point is only that
 // something is not done.
 func TestEducateSaysOnlyWhatIsDone(t *testing.T) {
-	for _, signed := range []bool{false, true} {
-		for _, encrypted := range []bool{false, true} {
-			st := scenarioSteps(signed, encrypted)
+	for _, sc := range scenarios() {
+		{
+			signed, encrypted := sc.signed, sc.encrypted
+			st := scenarioSteps(signed, encrypted, sc.tls)
+			// Without TLS, steps 2, 4 and 6 say nothing of it; with it,
+			// they say so.
+			for _, n := range []int{1, 3, 5} {
+				var words []string
+				for _, p := range st[n].points {
+					words = append(words, p.text)
+					words = append(words, p.sub...)
+				}
+				said := strings.Join(words, "\n")
+				for _, w := range []string{"TLS", "certificate", "MTA-STS", "DANE"} {
+					if !sc.tls && strings.Contains(said, w) {
+						t.Errorf("%+v: step %d speaks of %s:\n%s", sc, n+1, w, said)
+					}
+				}
+				if sc.tls && !strings.Contains(said, "TLS") {
+					t.Errorf("%+v: step %d leaves out TLS:\n%s", sc, n+1, said)
+				}
+			}
 			for _, n := range []int{0, 6} {
 				var words []string
 				words = append(words, st[n].title)

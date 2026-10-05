@@ -14,7 +14,7 @@ import (
 // window at its smallest allowed size, so no one has to resize the window to
 // find Import (they did).
 func TestSettingsButtonsFitAtMinSize(t *testing.T) {
-	const minW, minH = 620, 440
+	const minW, minH = 650, 440
 	cli := demoClient(t)
 	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: minW, Height: minH, Headless: true})

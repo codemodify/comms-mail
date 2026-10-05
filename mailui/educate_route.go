@@ -26,20 +26,23 @@ import (
 
 // signed and encrypted are the message drawn: its envelope with a seal,
 // a padlock, both or neither; and OpenPGP and S/MIME from YOU to TARGET
-// when either.
+// when either. tls is its connections: tunnels, or plain lines.
 type routeScene struct {
 	widget.Base
-	signed, encrypted bool
+	signed, encrypted, tls bool
 }
 
 func newRouteScene() *routeScene {
-	s := &routeScene{}
+	s := &routeScene{tls: true}
 	s.Init(s)
 	return s
 }
 
-// dnsTags are what the servers look up in DNS, drawn by it.
+// dnsTags are what the servers look up in DNS, drawn by it; dnsName is
+// its name, and port, in its disc.
 var dnsTags = one("MX", "SPF", "DKIM", "DMARC")
+
+const dnsName = "DNS:53"
 
 // routeNames are the four, with the number of the step each takes.
 var routeNames = [4]struct {
@@ -47,14 +50,22 @@ var routeNames = [4]struct {
 	step int
 }{{"YOU", 1}, {"YOUR SERVER", 3}, {"TARGET SERVER", 5}, {"TARGET", 7}}
 
-// routeDisc is a person or a server; text, when set, is written in it in
-// place of a picture.
+// routeDisc is a person or a server, a disc d across; text, when set, is
+// written in it in place of a picture — in a pill w wide and d tall, when
+// w is set.
 type routeDisc struct {
 	c    paintengine2d.Point
 	d    float32
 	pict pict
 	bad  bool
 	text string
+	w    float32
+}
+
+// box is where it draws.
+func (d routeDisc) box() paintengine2d.Rect {
+	w := max(d.w, d.d)
+	return paintengine2d.XYWH(d.c.X-w/2, d.c.Y-d.d/2, w, d.d)
 }
 
 // The inks of a line.
@@ -129,8 +140,14 @@ func (s *routeScene) dip(v float32) float32 { return style.Dip(s.Look(), v) }
 // side across the lines down, and the tunnels across long enough for
 // their number and envelope, at the smallest discs.
 func (s *routeScene) MinWidth() float32 {
-	cols := s.columns(0)
-	return cols.L + 2*cols.r + s.dip(8) + cols.carries + cols.right + s.dip(4)
+	// The discs, and the room right of the servers, grow with the width:
+	// find the width they fit at.
+	w := float32(0)
+	for range 8 {
+		cols := s.columns(w)
+		w = cols.L + max(2*cols.r+s.dip(8)+cols.carries, cols.between) + cols.right + s.dip(4)
+	}
+	return w
 }
 
 // routeColumns are the picture's columns at width w: where you and the
@@ -139,6 +156,7 @@ func (s *routeScene) MinWidth() float32 {
 // envelope must be. w 0 is the narrowest.
 type routeColumns struct {
 	L, right, r, carries float32
+	between              float32 // the least from L to the servers: room for the names either side
 }
 
 func (s *routeScene) columns(w float32) routeColumns {
@@ -152,13 +170,15 @@ func (s *routeScene) columns(w float32) routeColumns {
 	thV := eb.Dx() + s.dip(8)
 	named := func(i int) float32 { return mk + s.dip(4) + font.Advance(routeNames[i].name) }
 	_, e2eW, _ := placeDown(lk, e2eTags, 0, 0, true)
-	_, hop4W, _ := placeDown(lk, relayStep(false).tags, 0, 0, false)
+	_, hop4W, _ := placeDown(lk, relayStep(false, true).tags, 0, 0, false)
 	var aw float32
 	for _, l := range []string{"Attacker", fakeDomain} {
 		aw = max(aw, font.Advance(l))
 	}
 	carries := s.dip(3) + mk + s.dip(4) + eb.Dx() + s.dip(6) + s.dip(9)
+	between := max(named(0)/2+named(1)/2, named(3)/2+named(2)/2) + s.dip(12)
 	return routeColumns{
+		between: between,
 		L:       m + max(e2eW/2, r, named(0)/2, named(3)/2) + s.dip(2),
 		right:   max(hop4W+thV/2+s.dip(6), max(dnd/2, aw/2)+dnd/2+s.dip(7)+carries+r, w*0.3),
 		r:       r,
@@ -279,7 +299,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	eb := envBox(lk, paintengine2d.Pt(0, 0))
 	thH, thV := eb.Dy()+s.dip(8), eb.Dx()+s.dip(8) // the tunnels across, and down
 	head := s.dip(9)
-	e2e, hop2, hop4, hop6 := e2eTags, submitStep.tags, relayStep(false).tags, fetchStep.tags
+	e2e, hop2, hop4, hop6 := e2eTags, submitStep(s.tls).tags, relayStep(false, s.tls).tags, fetchStep(s.tls).tags
 	endToEnd := s.signed || s.encrypted
 	group := func(cs []placedChip, name string) {
 		for i := range cs {
@@ -334,15 +354,17 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	// recipient; DNS between the servers; step 4's tags right of its
 	// tunnel.
 	mid := topFoot + s.dip(8)
-	dnsD := max(dnd, font.Advance("DNS")+s.dip(10))
+	// DNS is a pill with its name and port: as wide as they are, a line
+	// tall.
+	dnsW, dnsT := font.Advance(dnsName)+s.dip(16), fh+s.dip(10)
 	// DNS beside OpenPGP and S/MIME where there is room, else under them,
 	// right of the line from you to the recipient.
 	dnsLeft, dnsRight := L+e2eW/2+s.dip(10), R-thV/2-s.dip(8)
-	stacked := dnsRight-dnsLeft < max(dnsD, widestChip(lk, flat(dnsTags)))
+	stacked := dnsRight-dnsLeft < max(dnsW, widestChip(lk, flat(dnsTags)))
 	if stacked {
 		dnsLeft = L + s.dip(10)
 	}
-	besideW := dnsRight - dnsLeft - dnsD - s.dip(8)
+	besideW := dnsRight - dnsLeft - dnsW - s.dip(8)
 	lines, widths := chipLines(lk, flat(dnsTags), besideW)
 	beside := len(lines) <= 2 && widestChip(lk, flat(dnsTags)) <= besideW
 	xd, tagsX, tagsW := (dnsLeft+dnsRight)/2, (dnsLeft+dnsRight)/2, dnsRight-dnsLeft
@@ -351,17 +373,17 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		for _, lw := range widths {
 			tw = max(tw, lw)
 		}
-		x0 := (dnsLeft + dnsRight - (tw + s.dip(8) + dnsD)) / 2
-		xd, tagsX, tagsW = x0+tw+s.dip(8)+dnsD/2, x0+tw/2, tw
+		x0 := (dnsLeft + dnsRight - (tw + s.dip(8) + dnsW)) / 2
+		xd, tagsX, tagsW = x0+tw+s.dip(8)+dnsW/2, x0+tw/2, tw
 	} else if stacked {
 		// Under OpenPGP and S/MIME: the disc by the servers, its line to
 		// yours clear of them.
-		xd = dnsRight - dnsD/2
+		xd = dnsRight - dnsW/2
 	}
 	_, dnsH := placeChips(lk, flat(dnsTags), tagsX, 0, tagsW, false)
-	dnsGroup := dnsD + gap + dnsH
+	dnsGroup := dnsT + gap + dnsH
 	if beside {
-		dnsGroup = max(dnsD, dnsH)
+		dnsGroup = max(dnsT, dnsH)
 	}
 	c4, _, h4 := placeDown(lk, hop4, R+thV/2+s.dip(6), mid, false)
 	group(c4, "4")
@@ -374,25 +396,41 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	if !under {
 		need = mid + h4 + s.dip(10) + 2*fh + s.dip(4) + dnd/2
 	}
+	// Step 6's tags: over its tunnel, under DNS, where they fit between
+	// the line from YOU to TARGET and tunnel 4.
+	left6m, right6m := L+s.dip(10), R-thV/2-s.dip(8)
+	_, h6m := placeAlong(lk, hop6, 0, 0, right6m-left6m, -1e6, 1e6)
+	inMiddle := !stacked && widestChip(lk, flat(hop6)) <= right6m-left6m
 	middle := max(e2eH+s.dip(8), dnsGroup, carries)
 	if stacked {
 		middle = max(e2eH+s.dip(10)+dnsGroup, carries)
+	}
+	if inMiddle {
+		middle = max(max(e2eH+s.dip(8), dnsGroup)+s.dip(10)+h6m, carries)
 	}
 	g.y2 = max(mid+middle+s.dip(8)+max(r, thH/2), need)
 	y2 := g.y2
 	top4, foot4 := topFoot+s.dip(4), y2-max(r, thH/2)-s.dip(4) // the lines down
 
-	e2eTop := (top4 + foot4 - e2eH) / 2
-	groupTop := mid + (foot4-s.dip(4)-mid-dnsGroup)/2
+	upper := foot4 - s.dip(4) // the foot of OpenPGP, S/MIME and DNS
+	if inMiddle {
+		c6, _ := placeAlong(lk, hop6, (left6m+right6m)/2, foot4-s.dip(4)-h6m, right6m-left6m, left6m, right6m)
+		group(c6, "6")
+		upper = foot4 - s.dip(4) - h6m - s.dip(10)
+	}
+	e2eTop := (mid + upper - e2eH) / 2
+	groupTop := mid + (upper-mid-dnsGroup)/2
 	if stacked {
-		e2eTop = mid
-		groupTop = mid + e2eH + s.dip(10)
+		// DNS on top, its lines up to your server and down to theirs
+		// clear of OpenPGP and S/MIME, which go under it.
+		groupTop = mid
+		e2eTop = foot4 - s.dip(4) - e2eH
 	}
 	if endToEnd {
 		cE, _, _ := placeDown(lk, e2e, L, e2eTop, true)
 		group(cE, "e2e")
 	}
-	yd, tagsTop := groupTop+dnsD/2, groupTop+dnsD+gap
+	yd, tagsTop := groupTop+dnsT/2, groupTop+dnsT+gap
 	if beside {
 		yd, tagsTop = groupTop+dnsGroup/2, groupTop+(dnsGroup-dnsH)/2
 	}
@@ -414,17 +452,18 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	recipFoot, recipHalf := name(3, L, bottom)
 	theirFoot, theirHalf := name(2, R, bottom)
 	foot := max(recipFoot, theirFoot)
-	// Step 6's tags under its tunnel, between the names; under the names
-	// where they do not fit there.
-	left6, right6 := L+recipHalf+s.dip(8), R-theirHalf-s.dip(8)
-	c6, h6 := placeAlong(lk, hop6, (left6+right6)/2, y2+thH/2+s.dip(4), right6-left6, left6, right6)
-	if fitsIn(c6, left6, right6) {
-		foot = max(foot, y2+thH/2+s.dip(4)+h6)
-	} else {
-		c6, h6 = placeAlong(lk, hop6, (L+R)/2, foot+s.dip(6), w-2*m, m, w-m)
-		foot += s.dip(6) + h6
+	// Else under its tunnel, between the names; else under the names.
+	if !inMiddle {
+		left6, right6 := L+recipHalf+s.dip(8), R-theirHalf-s.dip(8)
+		c6, h6 := placeAlong(lk, hop6, (left6+right6)/2, y2+thH/2+s.dip(4), right6-left6, left6, right6)
+		if fitsIn(c6, left6, right6) {
+			foot = max(foot, y2+thH/2+s.dip(4)+h6)
+		} else {
+			c6, h6 = placeAlong(lk, hop6, (L+R)/2, foot+s.dip(6), w-2*m, m, w-m)
+			foot += s.dip(6) + h6
+		}
+		group(c6, "6")
 	}
-	group(c6, "6")
 	if under {
 		foot = max(foot, ay+2*fh)
 	}
@@ -435,25 +474,38 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		{c: paintengine2d.Pt(R, g.y1), d: d, pict: pictServer},
 		{c: paintengine2d.Pt(R, y2), d: d, pict: pictServer},
 		{c: paintengine2d.Pt(L, y2), d: d, pict: pictPerson},
-		{c: paintengine2d.Pt(xd, yd), d: dnsD, text: "DNS"},
+		{c: paintengine2d.Pt(xd, yd), d: dnsT, w: dnsW, text: dnsName},
 		{c: paintengine2d.Pt(xa, y2), d: dnd, pict: pictPerson, bad: true},
 	}
 	pt := paintengine2d.Pt
-	doff := (dnsD/2 + s.dip(2)) * 0.707
-	toTheirs := pt(xd, tagsTop+dnsH+s.dip(3))
-	if beside {
-		toTheirs = pt(xd+doff, yd+doff)
+	// The lines leave the pill from its corners on the servers' side.
+	dnsTop := pt(xd+dnsW/2-dnsT/2, yd-dnsT/2-s.dip(2))
+	dnsLow := pt(xd+dnsW/2-dnsT/2, yd+dnsT/2+s.dip(2))
+	// To theirs: from DNS's right, past its tags, down to theirs — right
+	// of whatever is under it.
+	tagsRight := xd + dnsW/2
+	for _, c := range cD {
+		tagsRight = max(tagsRight, c.r.Max.X)
 	}
-	tunnel2 := routeLine{a: pt(L+r+s.dip(4), g.y1), b: pt(R-r-s.dip(4), g.y1), ink: inkGood, head: true, tube: thH}
-	tunnel4 := routeLine{a: pt(R, top4), b: pt(R, foot4), ink: inkGood, head: true, tube: thV}
-	tunnel6 := routeLine{a: pt(R-r-s.dip(4), y2), b: pt(L+r+s.dip(4), y2), ink: inkGood, head: true, tube: thH}
+	toTheirs := pt(tagsRight+s.dip(2), yd)
+	if beside {
+		toTheirs = dnsLow
+	}
+	// The connections: tunnels with TLS, plain lines without.
+	ink, tH, tV := inkGood, thH, thV
+	if !s.tls {
+		ink, tH, tV = inkMuted, 0, 0
+	}
+	tunnel2 := routeLine{a: pt(L+r+s.dip(4), g.y1), b: pt(R-r-s.dip(4), g.y1), ink: ink, head: true, tube: tH}
+	tunnel4 := routeLine{a: pt(R, top4), b: pt(R, foot4), ink: ink, head: true, tube: tV}
+	tunnel6 := routeLine{a: pt(R-r-s.dip(4), y2), b: pt(L+r+s.dip(4), y2), ink: ink, head: true, tube: tH}
 	fake := routeLine{a: pt(xa-dnd/2-s.dip(3), y2), b: pt(R+r+s.dip(4), y2), ink: inkBad, head: true}
 	if endToEnd {
 		g.lines = append(g.lines, routeLine{a: pt(L, top4), b: pt(L, foot4), ink: inkAccent, dashed: true, head: true})
 	}
 	g.lines = append(g.lines,
 		tunnel2, tunnel4, tunnel6, fake,
-		routeLine{a: pt(xd+doff, yd-doff), b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: inkMuted, dashed: true},
+		routeLine{a: dnsTop, b: pt(R-thV/2-s.dip(4), topFoot+s.dip(3)), ink: inkMuted, dashed: true},
 		routeLine{a: toTheirs, b: pt(R-thV/2-s.dip(3), y2-thH/2-s.dip(3)), ink: inkMuted, dashed: true},
 	)
 	// On each line that carries the message: its number at the start, the
@@ -549,8 +601,14 @@ func (s *routeScene) Paint(ctx *paintengine2d.Context) {
 			ink, edge = in.bad, in.bad
 		}
 		c := at(d.c)
-		ctx.DrawCircle(c, d.d/2, paintengine2d.Fill(in.disc))
-		ctx.DrawCircle(c, d.d/2, paintengine2d.StrokePaint(edge, s.dip(1.5)))
+		if d.w > 0 {
+			box := d.box().Translate(b.Min)
+			ctx.DrawRoundRect(box, d.d/2, d.d/2, paintengine2d.Fill(in.disc))
+			ctx.DrawRoundRect(box, d.d/2, d.d/2, paintengine2d.StrokePaint(edge, s.dip(1.5)))
+		} else {
+			ctx.DrawCircle(c, d.d/2, paintengine2d.Fill(in.disc))
+			ctx.DrawCircle(c, d.d/2, paintengine2d.StrokePaint(edge, s.dip(1.5)))
+		}
 		if d.text != "" {
 			font.Draw(ctx, d.text, paintengine2d.Pt(c.X-font.Advance(d.text)/2, c.Y-font.Height()/2), ink)
 			continue

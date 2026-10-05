@@ -18,7 +18,7 @@ func TestEducateFitsSettings(t *testing.T) {
 	for _, sz := range []struct {
 		w, h   int
 		pinned bool
-	}{{620, 440, false}, {760, 800, true}} { // Settings' smallest, and its first
+	}{{650, 440, false}, {760, 860, true}} { // Settings' smallest, and its first
 		a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 		w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: sz.w, Height: sz.h, Headless: true})
 		if err != nil {
