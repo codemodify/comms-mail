@@ -11,6 +11,8 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+
+	"github.com/codemodify/comms-mail/internal/svtest"
 )
 
 // ownPGPStore is an account whose OpenPGP is comms-mail's own, its keys
@@ -418,5 +420,75 @@ func TestKeysInARequestedSecretVaultVault(t *testing.T) {
 	}
 	if got := smtp.delivered(); len(got) != 1 || !strings.Contains(got[0], "application/pgp-signature") {
 		t.Fatalf("signed with comms-mail's key: %v", got)
+	}
+}
+
+// Choosing another of secretvault's vaults for a format's keys has
+// secretvault move them there, inside its daemon — that format's keys
+// only, not the passwords nor the other format's — and the place changes
+// once they are there; back again moves them back. No from the person, a
+// secretvault from before item.move, or keys of those names in the other
+// vault already change nothing, and say why. Nothing to move, or the
+// default named by its own name, moves nothing.
+func TestKeysMoveBetweenSecretVaultVaults(t *testing.T) {
+	smtp := startFakeSMTP(t)
+	st, sv := sendingStore(t, smtp)
+	sv.AddVault("work")
+	sv.AddVault("home")
+	sv.PutIn("", svtest.Item{Kind: "key", Name: "pgp/ada@example.com"})
+	sv.PutIn("", svtest.Item{Kind: "login", Name: "pass/w/imap"})
+	sv.PutIn("home", svtest.Item{Kind: "key", Name: "pgp/ada@example.com"})
+	in := func(vault, name string) bool { _, ok := sv.ItemIn(vault, name); return ok }
+	unchanged := func(err error, says string) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), says) || !strings.Contains(err.Error(), "the keys stay in “personal”") {
+			t.Fatalf("error %v, want one saying %q", err, says)
+		}
+		if p := st.keyPlace(FormatOpenPGP); p.Vault != "" || !in("personal", "pgp/ada@example.com") {
+			t.Fatalf("changed: %+v", p)
+		}
+	}
+
+	sv.DenyMove(true)
+	unchanged(st.UseKeys(FormatOpenPGP, StoreSecretVault, "", "work"), "You said no in secretvault")
+	sv.DenyMove(false)
+	sv.NoMove(true)
+	unchanged(st.UseKeys(FormatOpenPGP, StoreSecretVault, "", "work"), "cannot move keys between its vaults: update it")
+	sv.NoMove(false)
+	unchanged(st.UseKeys(FormatOpenPGP, StoreSecretVault, "", "home"), "“home” already has OpenPGP keys for ada@example.com")
+
+	// The default by its own name is the same vault.
+	n := len(sv.Moves())
+	if err := st.UseKeys(FormatOpenPGP, StoreSecretVault, "", "personal"); err != nil || len(sv.Moves()) != n {
+		t.Fatalf("the same vault: %v, %d moves asked", err, len(sv.Moves())-n)
+	}
+
+	if err := st.UseKeys(FormatOpenPGP, StoreSecretVault, "", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if m := sv.Moves(); m[len(m)-1] != (svtest.Moved{Vault: "personal", To: "work", Prefix: "pgp/"}) {
+		t.Fatalf("asked %+v", m[len(m)-1])
+	}
+	if p := st.keyPlace(FormatOpenPGP); p.Vault != "work" || !in("work", "pgp/ada@example.com") || in("personal", "pgp/ada@example.com") {
+		t.Fatalf("after the move: %+v", p)
+	}
+	if !in("personal", "pass/w/imap") || in("work", "pass/w/imap") {
+		t.Fatal("the passwords moved with the keys")
+	}
+	// And back to the default.
+	if err := st.UseKeys(FormatOpenPGP, StoreSecretVault, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if p := st.keyPlace(FormatOpenPGP); p.Vault != "" || !in("personal", "pgp/ada@example.com") || in("work", "pgp/ada@example.com") {
+		t.Fatalf("back: %+v", p)
+	}
+
+	// S/MIME has no keys in the default vault: nothing moves, and it is
+	// in "work" from now on.
+	if err := st.UseKeys(FormatSMIME, StoreSecretVault, "", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if m := sv.Moves(); m[len(m)-1].Prefix != "smime/" || st.keyPlace(FormatSMIME).Vault != "work" || !in("personal", "pgp/ada@example.com") {
+		t.Fatalf("S/MIME: asked %+v, place %+v", m[len(m)-1], st.keyPlace(FormatSMIME))
 	}
 }

@@ -107,23 +107,12 @@ new ones turn up.
 - **Asked of secretvault** — S/MIME roots beyond an organisation's own CA
   (a public CA's certificate does not verify as trusted today); a check
   before Send of which recipients can be encrypted to; an Autocrypt header
-  on outgoing mail; encrypting to yourself only (for drafts); moving items
-  from one vault to another (2026-10-04, below). Publishing it is not
-  needed: comms-mail talks to its daemon, not its code.
-- **Keys from one secretvault vault to another** (asked of secretvault
-  2026-10-04) — Settings › Security › Keys, Secret Vault, Default to Custom
-  or back: the keys stay in the old vault, because secretvault has no way
-  to move an item between vaults (no `item.move`/`item.copy`; `item.rename`
-  stays in one vault), and taking them out with `item.get` to `item.put`
-  them elsewhere would put private keys in comms-mail, which it never
-  holds. Until then Apply asks first and says where they stay. Asked: a
-  method (say `item.move` {vault, to, prefix or names}) that moves the
-  items inside the daemon — written to `to` first, taken out of `vault`
-  last — after one prompt of secretvault's own naming both vaults and what
-  moves, unlocking either as needed; errors -32008 for a missing vault,
-  -32006 for a name already in `to`, -32002 / -32005 for denied /
-  canceled. comms-mail would call it with `pgp/` or `smime/` from
-  UseKeys, and say so for an older daemon (-32601).
+  on outgoing mail; encrypting to yourself only (for drafts). Publishing
+  it is not needed: comms-mail talks to its daemon, not its code.
+- **Keys from one secretvault vault to another** — done 2026-10-05:
+  secretvault answered with `item.move` (its b8a5f52), and Settings ›
+  Security › Keys moves a format's keys with it when another of its vaults
+  is chosen (docs/mail.md). A secretvault from before it says to update.
 - **Drafts of encrypted mail** — kept on this machine only, never uploaded
   to the server's Drafts (decided 2026-10-03).
 - **Signing** — on by default whenever there is a key for the From

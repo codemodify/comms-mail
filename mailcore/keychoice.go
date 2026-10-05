@@ -383,8 +383,10 @@ func (p plainKeyStore) Forget() error {
 // Choosing one of comms-mail's places takes the keys it has there,
 // written first and taken out of the old place last; the encrypted file
 // takes passphrase — a new one, or the file's own when other secrets are
-// kept in it and it is not open. Choosing Secret Vault leaves comms-mail's
-// keys where they are, for when one of its places is chosen again.
+// kept in it and it is not open. Choosing another of secretvault's vaults
+// has secretvault move the keys there (svMoveKeys). Choosing Secret Vault
+// leaves comms-mail's keys where they are, for when one of its places is
+// chosen again; keys in secretvault never leave it.
 func (s *LocalStore) UseKeys(format, kind, passphrase, vault string) error {
 	if !validFormat(format) {
 		return fmt.Errorf("mail: no key format %q", format)
@@ -396,6 +398,7 @@ func (s *LocalStore) UseKeys(format, kind, passphrase, vault string) error {
 	}
 	s.moveMu.Lock()
 	defer s.moveMu.Unlock()
+	var partial error
 	cur := s.keyChoice(format)
 	from := cur.ownPlace()
 	next := KeyChoice{Store: kind}
@@ -410,6 +413,18 @@ func (s *LocalStore) UseKeys(format, kind, passphrase, vault string) error {
 			}
 		} else if err != nil {
 			return err
+		}
+		if cur.engine() == EngineSecretVault {
+			moved, err := svMoveKeys(format, cur.Vault, next.Vault)
+			if err != nil && !moved {
+				return err
+			}
+			if err != nil {
+				// Some went: they are used from where they went, and the
+				// error says where the rest are.
+				Logf("keys: %v", err)
+				partial = err
+			}
 		}
 	} else if kind != from {
 		if err := s.moveKeys(format, from, kind, passphrase); err != nil {
@@ -432,7 +447,96 @@ func (s *LocalStore) UseKeys(format, kind, passphrase, vault string) error {
 	}
 	Logf("keys: %s kept in %s, the work done by %s", format, StoreLabel(kind), next.engine())
 	s.afterUnlock()
-	return nil
+	return partial
+}
+
+// keyItemPrefix is what the names of secretvault's items holding your
+// keys of format start with (its svrpc.PGPItemPrefix, SMIMEItemPrefix).
+func keyItemPrefix(format string) string {
+	if format == FormatSMIME {
+		return "smime/"
+	}
+	return "pgp/"
+}
+
+// svMoveResult is secretvault's account of an item.move (its
+// svrpc.MoveResult).
+type svMoveResult struct {
+	Vault   string   `json:"vault"`
+	To      string   `json:"to"`
+	Done    []string `json:"done"`
+	Both    []string `json:"both,omitempty"`
+	NotDone []string `json:"not_done,omitempty"`
+	Clashes []string `json:"clashes,omitempty"`
+	Missing []string `json:"missing,omitempty"`
+}
+
+// svMoveKeys has secretvault move your keys of format from its vault from
+// to its vault to ("" either's default): inside its daemon (item.move),
+// so comms-mail never holds them, after secretvault asks you. Nothing to
+// move is no error. moved says some keys reached to, even when err says
+// the rest did not: a move that stops midway leaves keys in both vaults
+// or in the first, never lost.
+func svMoveKeys(format, from, to string) (moved bool, err error) {
+	var vaults []svVaultInfo
+	if err := theSecretVault.call("vault.list", nil, &vaults); err != nil {
+		return false, err
+	}
+	src, ok := pickVault(vaults, from)
+	if !ok {
+		return false, nil // the old vault is gone, and its keys with it
+	}
+	dst, ok := pickVault(vaults, to)
+	if !ok {
+		return false, missingVault(to)
+	}
+	if src.Name == dst.Name {
+		return false, nil
+	}
+	var res svMoveResult
+	err = theSecretVault.callWithin("item.move",
+		map[string]any{"vault": src.Name, "to": dst.Name, "prefix": keyItemPrefix(format)}, &res, svRequestTimeout)
+	var se *svError
+	if errors.As(err, &se) && len(se.Data) > 0 {
+		_ = json.Unmarshal(se.Data, &res)
+	}
+	keys := func(names []string) string {
+		var out []string
+		for _, n := range names {
+			out = append(out, strings.TrimPrefix(n, keyItemPrefix(format)))
+		}
+		return strings.Join(out, ", ")
+	}
+	what := formatName(format) + " keys"
+	nothing := "Nothing moved, and the keys stay in “" + src.Name + "”."
+	switch code := svCode(err); {
+	case err == nil:
+		Logf("keys: secretvault moved %d %s from %q to %q", len(res.Done), what, src.Name, dst.Name)
+		return len(res.Done) > 0, nil
+	case code == svCodeNotFound && len(res.Missing) == 0:
+		return false, nil // none there
+	case code == svCodeExists:
+		return false, fmt.Errorf("“%s” already has %s for %s. %s Remove those in “%s” first, or keep using “%s”.",
+			dst.Name, what, keys(res.Clashes), nothing, dst.Name, src.Name)
+	case code == svCodeDenied:
+		return false, fmt.Errorf("You said no in secretvault. %s", nothing)
+	case code == svCodeCanceled:
+		return false, fmt.Errorf("secretvault's question was closed. %s", nothing)
+	case code == svCodeNoPrompter:
+		return false, fmt.Errorf("secretvault could not ask you about moving the %s. %s", what, nothing)
+	case code == -32601: // a secretvault from before item.move
+		return false, fmt.Errorf("This secretvault cannot move keys between its vaults: update it. %s", nothing)
+	case len(res.Done)+len(res.Both) > 0:
+		msg := "The move stopped midway (" + strings.TrimPrefix(err.Error(), "secretvault: ") + "). The " + what + " are used from “" + dst.Name + "” now"
+		if len(res.Both) > 0 {
+			msg += "; " + keys(res.Both) + " are in both vaults"
+		}
+		if len(res.NotDone) > 0 {
+			msg += "; " + keys(res.NotDone) + " stayed in “" + src.Name + "” only"
+		}
+		return true, errors.New(msg + ".")
+	}
+	return false, fmt.Errorf("secretvault could not move the %s (%v). %s", what, err, nothing)
 }
 
 // moveKeys takes format's own keys from the place from ("" none) to to.

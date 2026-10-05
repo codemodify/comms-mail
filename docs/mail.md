@@ -709,13 +709,19 @@ each (switched at the top), asked again each time it shows:
   is not open. **Apply** makes it so, moving comms-mail's own keys to a new
   place of its own (written there first, taken out of the old one last).
   Choosing Secret Vault leaves them where they are, for when a place of
-  comms-mail's is chosen again; keys secretvault keeps stay in it. When
-  a change would leave keys of yours in a vault of secretvault's behind —
-  another of its vaults (it cannot move keys between them yet: asked of
-  it, BACKLOG.md), or a place of comms-mail's (they never leave it) —
-  Apply first says how many stay, and in which vault, and that choosing it
-  again finds them; **No** changes nothing. Naming the default vault by
-  its own name is the same vault, and asks nothing.
+  comms-mail's is chosen again. Another of secretvault's vaults takes the
+  keys along: secretvault moves that format's keys (`item.move`, the items
+  starting `pgp/` or `smime/`) inside its daemon, after asking you in its
+  own prompt, so comms-mail never holds them; the place changes once they
+  are there. When the move does not happen — you say no, the other vault
+  has keys of those names already, a secretvault from before `item.move`
+  — Apply says why and nothing changes; a move that stops midway leaves
+  keys in both vaults or the first, never lost, and says which. Nothing
+  to move asks nothing, and the default named by its own name is the
+  same vault. Leaving Secret Vault for a place of comms-mail's leaves the
+  keys in secretvault, which they never leave: Apply first says how many
+  stay, and in which vault, and that choosing it again finds them; **No**
+  changes nothing.
 - **Your keys,** for each address you send from: the OpenPGP key and the
   S/MIME certificates. With secretvault, comms-mail asks it about those
   addresses only (`pgp.public`, `smime.list`) and never holds a private

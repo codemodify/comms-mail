@@ -53,6 +53,7 @@ type message struct {
 type rpcError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // secretvault's error codes.
@@ -61,6 +62,7 @@ const (
 	codeDenied   = -32002
 	codeNotFound = -32003
 	codeNoVault  = -32008
+	codeExists   = -32006
 )
 
 // Vault is the stand-in daemon.
@@ -87,11 +89,51 @@ type Vault struct {
 	ownPGP   map[string]bool // addresses with an OpenPGP key of the person's
 	composed []Composed
 	refuse   string // mail.compose refuses, with this
+	moves    []Moved
+	noMove   bool // a secretvault from before item.move
+	denyMove bool // item.move: the person says no
 
 	generated []Generated
 	certs     []map[string]any // smime.list's answer
 	p12Pass   string           // the password a .p12 opens with
 	p12Emails []string         // and the addresses its certificate names
+}
+
+// Moved is one item.move asked: the items starting with Prefix, from Vault
+// ("" its default) to To.
+type Moved struct {
+	Vault, To, Prefix string
+}
+
+// Moves are the item.move calls asked, answered or not.
+func (v *Vault) Moves() []Moved {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return append([]Moved(nil), v.moves...)
+}
+
+// NoMove makes it a secretvault from before item.move.
+func (v *Vault) NoMove(on bool) {
+	v.mu.Lock()
+	v.noMove = on
+	v.mu.Unlock()
+}
+
+// PutIn keeps it in vault ("" the default), as if put there.
+func (v *Vault) PutIn(vault string, it Item) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.vaults[vaultOr(vault)] == nil {
+		v.vaults[vaultOr(vault)] = map[string]Item{}
+	}
+	v.vaults[vaultOr(vault)][it.Name] = it
+}
+
+// DenyMove makes the person say no to item.move.
+func (v *Vault) DenyMove(on bool) {
+	v.mu.Lock()
+	v.denyMove = on
+	v.mu.Unlock()
 }
 
 // Generated is one pgp.generate asked.
@@ -364,10 +406,10 @@ func (v *Vault) notify(method string) {
 func (v *Vault) serve(c net.Conn) {
 	sc := bufio.NewScanner(c)
 	sc.Buffer(nil, 16<<20)
-	reply := func(id *json.RawMessage, result any, code int, msg string) {
+	replyData := func(id *json.RawMessage, result any, code int, msg string, data any) {
 		m := message{JSONRPC: "2.0", ID: id}
 		if code != 0 {
-			m.Error = &rpcError{Code: code, Message: msg}
+			m.Error = &rpcError{Code: code, Message: msg, Data: data}
 		} else {
 			m.Result, _ = json.Marshal(result)
 		}
@@ -376,6 +418,7 @@ func (v *Vault) serve(c net.Conn) {
 		_, _ = c.Write(append(b, '\n'))
 		v.wmu.Unlock()
 	}
+	reply := func(id *json.RawMessage, result any, code int, msg string) { replyData(id, result, code, msg, nil) }
 	type vaultInfo struct {
 		Name    string `json:"name"`
 		Default bool   `json:"default"`
@@ -391,6 +434,7 @@ func (v *Vault) serve(c net.Conn) {
 		}
 		var p struct {
 			Vault   string `json:"vault"`
+			To      string `json:"to"`
 			Name    string `json:"name"`
 			Prefix  string `json:"prefix"`
 			Item    Item   `json:"item"`
@@ -533,6 +577,52 @@ func (v *Vault) serve(c net.Conn) {
 			v.seen = append(v.seen, seen)
 			v.mu.Unlock()
 			reply(m.ID, map[string]any{"fingerprint": "SEEN"}, 0, "")
+		case "item.move":
+			// As secretvault moves items: inside the daemon, every refusal
+			// before anything moves, the person asked once.
+			v.mu.Lock()
+			v.moves = append(v.moves, Moved{Vault: p.Vault, To: p.To, Prefix: p.Prefix})
+			old, no := v.noMove, v.denyMove
+			src, dst := v.vaults[vaultOr(p.Vault)], v.vaults[p.To]
+			var names, clashes []string
+			for name := range src {
+				if strings.HasPrefix(name, p.Prefix) {
+					names = append(names, name)
+					if _, ok := dst[name]; ok {
+						clashes = append(clashes, name)
+					}
+				}
+			}
+			res := map[string]any{"vault": vaultOr(p.Vault), "to": p.To, "done": []string{}}
+			switch {
+			case old:
+				v.mu.Unlock()
+				reply(m.ID, nil, -32601, "method not found")
+			case src == nil || dst == nil:
+				v.mu.Unlock()
+				reply(m.ID, nil, codeNoVault, "there is no such vault")
+			case vaultOr(p.Vault) == p.To:
+				v.mu.Unlock()
+				reply(m.ID, nil, -32602, "the items are in that vault already")
+			case len(names) == 0:
+				v.mu.Unlock()
+				replyData(m.ID, nil, codeNotFound, fmt.Sprintf("no item of vault %q has a name that starts with %q", vaultOr(p.Vault), p.Prefix), res)
+			case len(clashes) > 0:
+				v.mu.Unlock()
+				res["clashes"] = clashes
+				replyData(m.ID, nil, codeExists, fmt.Sprintf("vault %q has %v already: nothing was moved", p.To, clashes), res)
+			case no:
+				v.mu.Unlock()
+				reply(m.ID, nil, codeDenied, "the person said no")
+			default:
+				for _, name := range names {
+					dst[name] = src[name]
+					delete(src, name)
+				}
+				v.mu.Unlock()
+				res["done"] = names
+				reply(m.ID, res, 0, "")
+			}
 		case "item.get", "item.list", "item.put", "item.delete":
 			if locked {
 				reply(m.ID, nil, codeLocked, "the vault is locked")

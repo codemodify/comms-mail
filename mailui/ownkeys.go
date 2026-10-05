@@ -141,14 +141,16 @@ func (k *keysPage) placeChooser() widget.Component {
 				return nil, k.cli.UseKeys(k.format, kind, vault, []byte(p))
 			}, func(_ any, err error) {
 				if err != nil {
+					// It may have changed in part (a move that stopped
+					// midway): the page is asked again after.
 					apply.SetEnabled(true)
-					widgets.Warn(k.from, k.name(), err.Error(), nil)
+					widgets.Warn(k.from, k.name(), err.Error(), k.refresh)
 					return
 				}
 				k.refresh()
 			})
 		}
-		if title, text := k.leftBehind(kind, vault); text != "" {
+		if title, text := k.leftBehind(kind); text != "" {
 			widgets.Confirm(k.from, title, text, func(yes bool) {
 				if yes {
 					use()
@@ -161,14 +163,15 @@ func (k *keysPage) placeChooser() widget.Component {
 	return widgets.NewColumn(places.list, places.passBox, foldRow(apply)).WithGap(10)
 }
 
-// leftBehind is what to ask before the keys' place changes to kind (and
-// vault) when that leaves keys in secretvault behind: keys in secretvault
-// never leave it, and it cannot yet move them from one of its vaults to
-// another (asked of it: BACKLOG.md). Nothing is lost — choosing the vault
-// again finds them. "" when nothing is left behind.
-func (k *keysPage) leftBehind(kind, vault string) (title, text string) {
+// leftBehind is what to ask before the keys' place changes from Secret
+// Vault to kind, a place of comms-mail's, when that leaves keys of yours
+// in secretvault: they never leave it. Nothing is lost — choosing the
+// vault again finds them. "" when nothing is left behind. (Another of
+// secretvault's vaults takes them along: secretvault moves them, and asks
+// you itself.)
+func (k *keysPage) leftBehind(kind string) (title, text string) {
 	place := k.view.Place
-	if place.Engine != mailcore.EngineSecretVault {
+	if place.Engine != mailcore.EngineSecretVault || kind == mailcore.StoreSecretVault {
 		return "", ""
 	}
 	n := 0
@@ -181,15 +184,9 @@ func (k *keysPage) leftBehind(kind, vault string) (title, text string) {
 	if n == 0 {
 		return "", ""
 	}
-	named := func(v string) string {
-		if v == "" {
-			v = k.st.SecretVaultDefault
-		}
-		return v
-	}
-	from, to := named(place.Vault), named(vault)
-	if kind == mailcore.StoreSecretVault && (from == to || place.Vault == vault) {
-		return "", "" // the same vault, by its name
+	from := place.Vault
+	if from == "" {
+		from = k.st.SecretVaultDefault
 	}
 	what, stay := "Your "+k.name()+" key stays", "it"
 	if k.format == mailcore.FormatSMIME {
@@ -204,15 +201,6 @@ func (k *keysPage) leftBehind(kind, vault string) (title, text string) {
 	in := "secretvault’s vault “" + from + "”"
 	if from == "" {
 		in = "secretvault’s default vault"
-	}
-	if kind == mailcore.StoreSecretVault {
-		target := "“" + to + "”"
-		if to == "" {
-			target = "the default vault"
-		}
-		return "Leave the keys behind?",
-			what + " in " + in + ": secretvault cannot move keys from one of its vaults to another yet. " +
-				"Choosing " + quoteVault(from) + " again finds " + stay + ". Use " + target + " anyway?"
 	}
 	return "Leave the keys behind?",
 		what + " in " + in + ": keys kept by secretvault never leave it. comms-mail uses keys of its own there instead. " +

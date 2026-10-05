@@ -67,10 +67,12 @@ const (
 // the question and chooses a passphrase, twice.
 const svRequestTimeout = 5 * time.Minute
 
-// svError is an error secretvaultd answered with.
+// svError is an error secretvaultd answered with, and what it says of
+// it (an item.move's MoveResult).
 type svError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 func (e *svError) Error() string { return "secretvault: " + e.Message }
@@ -633,6 +635,12 @@ func (v *secretVault) reset() {
 }
 
 func (v *secretVault) call(method string, params, result any) error {
+	return v.callWithin(method, params, result, svCallTimeout)
+}
+
+// callWithin is call for a request that may wait on the person, as long
+// as timeout.
+func (v *secretVault) callWithin(method string, params, result any, timeout time.Duration) error {
 	if _, err := v.connect(); err != nil {
 		return err
 	}
@@ -642,7 +650,7 @@ func (v *secretVault) call(method string, params, result any) error {
 	if c == nil {
 		return errors.New("secretvault is not running")
 	}
-	return c.call(method, params, result, svCallTimeout)
+	return c.call(method, params, result, timeout)
 }
 
 // available says whether secretvault can be used here: its daemon answers.
