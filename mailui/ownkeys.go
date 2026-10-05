@@ -3,6 +3,7 @@ package mailui
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
@@ -134,19 +135,96 @@ func (k *keysPage) placeChooser() widget.Component {
 		if kind == mailcore.StoreSecretVault {
 			vault = places.vault()
 		}
-		apply.SetEnabled(false)
-		runAsync(k.a, func() (any, error) {
-			return nil, k.cli.UseKeys(k.format, kind, vault, []byte(p))
-		}, func(_ any, err error) {
-			if err != nil {
-				apply.SetEnabled(true)
-				widgets.Warn(k.from, k.name(), err.Error(), nil)
-				return
-			}
-			k.refresh()
-		})
+		use := func() {
+			apply.SetEnabled(false)
+			runAsync(k.a, func() (any, error) {
+				return nil, k.cli.UseKeys(k.format, kind, vault, []byte(p))
+			}, func(_ any, err error) {
+				if err != nil {
+					apply.SetEnabled(true)
+					widgets.Warn(k.from, k.name(), err.Error(), nil)
+					return
+				}
+				k.refresh()
+			})
+		}
+		if title, text := k.leftBehind(kind, vault); text != "" {
+			widgets.Confirm(k.from, title, text, func(yes bool) {
+				if yes {
+					use()
+				}
+			})
+			return
+		}
+		use()
 	}
 	return widgets.NewColumn(places.list, places.passBox, foldRow(apply)).WithGap(10)
+}
+
+// leftBehind is what to ask before the keys' place changes to kind (and
+// vault) when that leaves keys in secretvault behind: keys in secretvault
+// never leave it, and it cannot yet move them from one of its vaults to
+// another (asked of it: BACKLOG.md). Nothing is lost — choosing the vault
+// again finds them. "" when nothing is left behind.
+func (k *keysPage) leftBehind(kind, vault string) (title, text string) {
+	place := k.view.Place
+	if place.Engine != mailcore.EngineSecretVault {
+		return "", ""
+	}
+	n := 0
+	for _, ak := range k.view.Addresses {
+		if ak.PGP != nil {
+			n++
+		}
+		n += len(ak.SMIME)
+	}
+	if n == 0 {
+		return "", ""
+	}
+	named := func(v string) string {
+		if v == "" {
+			v = k.st.SecretVaultDefault
+		}
+		return v
+	}
+	from, to := named(place.Vault), named(vault)
+	if kind == mailcore.StoreSecretVault && (from == to || place.Vault == vault) {
+		return "", "" // the same vault, by its name
+	}
+	what, stay := "Your "+k.name()+" key stays", "it"
+	if k.format == mailcore.FormatSMIME {
+		what = "Your S/MIME certificate stays"
+	}
+	if n > 1 {
+		what, stay = "Your "+strconv.Itoa(n)+" "+k.name()+" keys stay", "them"
+		if k.format == mailcore.FormatSMIME {
+			what = "Your " + strconv.Itoa(n) + " S/MIME certificates stay"
+		}
+	}
+	in := "secretvault’s vault “" + from + "”"
+	if from == "" {
+		in = "secretvault’s default vault"
+	}
+	if kind == mailcore.StoreSecretVault {
+		target := "“" + to + "”"
+		if to == "" {
+			target = "the default vault"
+		}
+		return "Leave the keys behind?",
+			what + " in " + in + ": secretvault cannot move keys from one of its vaults to another yet. " +
+				"Choosing " + quoteVault(from) + " again finds " + stay + ". Use " + target + " anyway?"
+	}
+	return "Leave the keys behind?",
+		what + " in " + in + ": keys kept by secretvault never leave it. comms-mail uses keys of its own there instead. " +
+			"Choosing Secret Vault and " + quoteVault(from) + " again finds " + stay + ". Use " + mailcore.StoreLabel(kind) + " anyway?"
+}
+
+// quoteVault is a vault's name in quotes, or "its default vault".
+func quoteVault(v string) string {
+	if v == "" {
+		return "its default vault"
+	}
+	return "“" + v + "”"
 }
 
 // unlock opens where comms-mail keeps the format's keys: the encrypted file

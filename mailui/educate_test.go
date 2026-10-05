@@ -83,11 +83,30 @@ func TestEducateIsOnePicture(t *testing.T) {
 		for i := range sceneNames {
 			centred(g.labels[i], g.x(float32(i)), g.labelsY)
 		}
-		under := g.rowY + g.dnd/2 + style.Dip(sc.Look(), 4)
-		centred(g.fake, g.x(0.5), centred(g.stranger, g.x(0.5), under))
-		centred(g.dnsLabel, g.x(2), under)
+		var row []string
+		for _, w := range g.words {
+			row = append(row, w.text)
+			r := paintengine2d.XYWH(w.at.X, w.at.Y, font.Advance(w.text), fh)
+			if strings.HasSuffix(w.text, "…") || !inside(r) {
+				t.Errorf("at %d: %q is cut, or outside the picture", width, w.text)
+			}
+			for _, o := range words {
+				if r.Overlaps(o) {
+					t.Errorf("at %d: %q is over other words", width, w.text)
+				}
+			}
+			words = append(words, r)
+		}
+		if want := slices.Concat(g.stranger, g.fake, g.dnsLabel); !slices.Equal(row, want) {
+			t.Errorf("at %d: the row under the names says %q, not %q", width, row, want)
+		}
 		if strings.Join(g.fake, "") != fakeDomain {
 			t.Errorf("at %d: the look-alike shows %q", width, g.fake)
+		}
+		// Both ways of laying out that row are tried: beside at the usual
+		// width, under at the narrowest.
+		if g.beside != (width == 560) {
+			t.Errorf("at %d: the row's words and tags beside their discs: %v", width, g.beside)
 		}
 
 		// What the tags keep clear of: the discs, the numbers, the words.
@@ -97,6 +116,13 @@ func TestEducateIsOnePicture(t *testing.T) {
 			discs = append(discs, disc(g.x(float32(i)), g.y1, g.d))
 		}
 		discs = append(discs, disc(g.x(0.5), g.rowY, g.dnd), disc(g.x(2), g.rowY, g.dnd))
+		for _, w := range words {
+			for _, d := range discs {
+				if w.Overlaps(d) {
+					t.Errorf("at %d: words %v are over a disc", width, w)
+				}
+			}
+		}
 		keepClear := append(slices.Clone(words), discs...)
 		marks := sc.marks(g, local)
 		m := style.Dip(sc.Look(), markSize)
@@ -142,6 +168,18 @@ func TestEducateIsOnePicture(t *testing.T) {
 
 		// The look-alike's line: from the stranger, through its number,
 		// into your server, crossing no words and no tags.
+		// DNS's lines cross no words and no tags either.
+		for _, l := range sc.dnsLines(g) {
+			for k := float32(0); k <= 1; k += 0.01 {
+				p := l[0].Lerp(l[1], k)
+				for _, r := range append(slices.Clone(words), chipBoxes...) {
+					if r.Inset(-1).Contains(p) {
+						t.Errorf("at %d: a line to DNS crosses %v at %v", width, r, p)
+						break
+					}
+				}
+			}
+		}
 		fp := sc.fakePath(g)
 		if mk := marks[3]; fp[0].X != mk.x || fp[1].X != mk.x || mk.y > fp[0].Y || mk.y < fp[1].Y {
 			t.Errorf("at %d: 4 is not on the look-alike's line", width)
@@ -169,7 +207,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 			mid := c.r.Center()
 			k := -1 // over everything
 			switch {
-			case mid.Y > g.rowY:
+			case c.r.Min.Y > g.labelsFoot(fh):
 				k = 3
 			case mid.Y < g.y1 && c.r.Min.Y > g.spanY:
 				k = int(mid.X/g.slot - 0.5) // between disc k and k+1
@@ -193,7 +231,25 @@ func TestEducateIsOnePicture(t *testing.T) {
 		for i, h := range hops {
 			check(i, h.wire, g.x(float32(i)+0.5))
 		}
-		check(3, asked(), g.x(2))
+		if g.beside {
+			// DNS's from its right, level with it.
+			if !slices.Equal(names[3], asked()) {
+				t.Errorf("at %d: tags %v by DNS", width, names[3])
+			} else {
+				box := groups[3][0]
+				for _, r := range groups[3] {
+					box = box.Union(r)
+				}
+				if x := g.x(2) + g.dnd/2 + style.Dip(sc.Look(), 8); box.Min.X < x-1 || box.Min.X > x+1 {
+					t.Errorf("at %d: DNS's tags start at %v, not %v", width, box.Min.X, x)
+				}
+				if c := box.Center().Y; c < g.rowY-1 || c > g.rowY+1 {
+					t.Errorf("at %d: DNS's tags are centred on %v, not level with it at %v", width, c, g.rowY)
+				}
+			}
+		} else {
+			check(3, asked(), g.x(2))
+		}
 		check(-1, endToEnd, g.x(1.5))
 
 		// The words and the picture name the same standards, and the
@@ -242,4 +298,55 @@ func TestEducateIsOnePicture(t *testing.T) {
 		}
 		w.Close()
 	}
+}
+
+// The picture stays in view while the words under it scroll — when the
+// page leaves the words room — and scrolls with them when it does not,
+// changing back and forth as the window is made taller and shorter.
+func TestEducatePinsThePicture(t *testing.T) {
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 900, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	page := educateSection().(*educatePage)
+	w.SetContent(page)
+	a.PumpOnce()
+	var title *widgets.Label
+	widget.Walk(page, func(c widget.Component) {
+		if l, ok := c.(*widgets.Label); ok && l.Text == "What happens" {
+			title = l
+		}
+	})
+	pinned := func(tall bool) {
+		t.Helper()
+		if page.pinned != tall || widget.Contains(page.scroll, page.scene) == tall {
+			t.Fatalf("tall %v: pinned %v, the picture in what scrolls %v", tall, page.pinned, widget.Contains(page.scroll, page.scene))
+		}
+		if tall && page.scroll.Bounds().Min.Y < page.scene.Bounds().Max.Y {
+			t.Fatalf("the words scroll over the picture: %v under %v", page.scroll.Bounds(), page.scene.Bounds())
+		}
+		page.scroll.ScrollTo(0)
+		a.PumpOnce()
+		scene, words := widget.DeviceOrigin(page.scene), widget.DeviceOrigin(title)
+		page.scroll.ScrollTo(150)
+		a.PumpOnce()
+		if page.scroll.OffsetY == 0 {
+			t.Fatalf("tall %v: the words did not scroll", tall)
+		}
+		if moved := widget.DeviceOrigin(page.scene) != scene; moved == tall {
+			t.Errorf("tall %v: the picture moved with the words: %v", tall, moved)
+		}
+		if widget.DeviceOrigin(title) == words {
+			t.Errorf("tall %v: the words stayed where they were", tall)
+		}
+	}
+	pinned(true)
+	w.SetSize(560, 400)
+	a.PumpOnce()
+	pinned(false)
+	w.SetSize(560, 900)
+	a.PumpOnce()
+	pinned(true)
 }

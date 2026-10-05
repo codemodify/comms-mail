@@ -17,7 +17,7 @@ import (
 // OpenPrefs opens Settings: Accounts / Signatures / Tags.
 func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
-		Title: "Settings", Width: 700, Height: 560, MinWidth: 520, MinHeight: 440,
+		Title: "Settings", Width: 700, Height: 680, MinWidth: 520, MinHeight: 440,
 	})
 	if err != nil {
 		return nil, err

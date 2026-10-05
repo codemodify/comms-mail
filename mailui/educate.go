@@ -143,7 +143,7 @@ func paragraphs(paras []string) *widgets.FlexBox {
 // educateSection is the Educate page: the picture, what happens on each
 // step, and the standards.
 func educateSection() widget.Component {
-	col := widgets.NewColumn(newHopsScene(), widgets.NewTitle("What happens")).WithGap(14)
+	col := widgets.NewColumn(widgets.NewTitle("What happens")).WithGap(14)
 	for i, h := range append(append([]hop(nil), hops...), lookAlike) {
 		about := widgets.NewColumn(newStrong(h.title), chipRow(h.tags()), paragraphs(h.says)).WithGap(6)
 		row := widgets.NewRow(newNumberMark(i + 1)).WithGap(8).WithAlign(layout.AlignStart)
@@ -157,7 +157,80 @@ func educateSection() widget.Component {
 	last := wrapLabel(lastWord)
 	last.Tone = widgets.ToneMuted
 	col.Add(last)
-	return widgets.NewScrollView(widgets.NewPad(4, col))
+	return newEducatePage(newHopsScene(), col)
+}
+
+// educatePage keeps the picture in view while the words under it scroll,
+// so each step can be read with the picture beside it — when the page is
+// tall enough to leave the words room (pinMin); when not, the picture
+// scrolls with them.
+type educatePage struct {
+	widget.Base
+	scene  *hopsScene
+	words  widget.Component
+	rule   *widgets.Separator
+	body   *widgets.FlexBox // what scrolls: the words, and the picture when not pinned
+	scroll *widgets.ScrollView
+	pinned bool
+}
+
+// pinMin is the room the words keep under a pinned picture: some lines
+// of them.
+const pinMin = 160
+
+func newEducatePage(scene *hopsScene, words widget.Component) *educatePage {
+	p := &educatePage{scene: scene, words: words, rule: widgets.NewSeparator()}
+	p.Init(p)
+	p.body = widgets.NewColumn(scene, words).WithGap(14)
+	p.scroll = widgets.NewScrollView(widgets.NewPad(4, p.body))
+	p.Add(p.scroll)
+	return p
+}
+
+func (p *educatePage) MinWidth() float32 { return p.scene.MinWidth() + style.Dip(p.Look(), 8) }
+
+func (p *educatePage) Measure(c layout.Constraints) paintengine2d.Point {
+	w, h := style.Dip(p.Look(), 560), style.Dip(p.Look(), 600)
+	if c.HasMaxW() {
+		w = c.MaxW
+	}
+	if c.HasMaxH() {
+		h = c.MaxH
+	}
+	return c.Constrain(paintengine2d.Pt(w, h))
+}
+
+func (p *educatePage) Arrange(r paintengine2d.Rect) {
+	p.SetBounds(r)
+	pad := style.Dip(p.Look(), 4)
+	inner := r.Dx() - 2*pad
+	sceneH := p.scene.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
+	ruleH := p.rule.Measure(layout.Constraints{MaxW: r.Dx(), MaxH: -1}).Y
+	pin := r.Dy()-(pad+sceneH+pad+ruleH) >= style.Dip(p.Look(), pinMin)
+	if pin != p.pinned {
+		p.pinned = pin
+		p.body.ClearChildren()
+		if pin {
+			p.Remove(p.scroll)
+			p.Add(p.scene)
+			p.Add(p.rule)
+			p.Add(p.scroll)
+		} else {
+			p.Remove(p.scene)
+			p.Remove(p.rule)
+			p.body.Add(p.scene)
+		}
+		p.body.Add(p.words)
+		p.scroll.ScrollTo(0)
+	}
+	if !pin {
+		p.scroll.Arrange(r)
+		return
+	}
+	p.scene.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, sceneH))
+	top := r.Min.Y + pad + sceneH + pad
+	p.rule.Arrange(paintengine2d.XYWH(r.Min.X, top, r.Dx(), ruleH))
+	p.scroll.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(r.Min.X, top+ruleH), Max: r.Max})
 }
 
 // ---- marks ----
@@ -365,21 +438,32 @@ func newHopsScene() *hopsScene {
 const (
 	sceneNode = 52 // a person's or a server's disc, at most
 	sceneMin  = 300
-	rowGap    = 32 // between the names and the row under them: room for 4
+	rowGap    = 28 // between the names and the row under them: room for 4
 )
 
 var sceneNames = [4]string{"You", "Your mail server", "Their mail server", "Your friend"}
 
 // sceneLayout is where everything goes at width w, from the picture's top
 // left. The row under the names has the stranger at x(0.5), between you
-// and your server, and DNS at x(2), under theirs.
+// and your server, and DNS at x(2), under theirs: their words and DNS's
+// tags beside them where they fit (beside), under them where not.
 type sceneLayout struct {
 	slot, d, dnd             float32
 	spanY, y1, labelsY, rowY float32
 	labels                   [4][]string
 	stranger, fake, dnsLabel []string
-	chips                    []placedChip // on the span, over the hops, under DNS
+	words                    []placedText // the stranger's, and DNS's
+	beside                   bool
+	chips                    []placedChip // on the span, over the hops, by DNS
 	h                        float32
+}
+
+// placedText is a line of the picture where it is drawn, from its top
+// left; bad is the look-alike's.
+type placedText struct {
+	text string
+	at   paintengine2d.Point
+	bad  bool
 }
 
 // x is the centre of column i: 0 you, 1 your server, 2 theirs, 3 your
@@ -457,20 +541,53 @@ func (s *hopsScene) layoutAt(w float32) sceneLayout {
 	// The row under them: the stranger, and DNS with what the servers
 	// look up there.
 	g.rowY = g.labelsFoot(fh) + s.dip(rowGap) + g.dnd/2
-	under := g.rowY + g.dnd/2 + s.dip(4)
-	// The stranger's words and DNS's tags share the row: the words as
-	// wide as they need, up to x(1.25), and the tags in what is left.
 	g.stranger = wrapWords(font, "A stranger", 1.5*g.slot-s.dip(6), 2)
 	g.fake = wrapWords(font, fakeDomain, 1.5*g.slot-s.dip(6), 1)
-	var words float32
-	for _, l := range append(append([]string(nil), g.stranger...), g.fake...) {
-		words = max(words, font.Advance(l))
-	}
-	room := min(g.x(2)-(g.x(0.5)+words/2)-s.dip(8), w-g.x(2)-s.dip(3))
 	g.dnsLabel = wrapWords(font, "DNS", g.slot, 1)
-	c, ch := placeChips(lk, asked(), g.x(2), under+fh+gap, 2*room, false)
+	strangerLines := append(append([]string(nil), g.stranger...), g.fake...)
+	var wordsW float32
+	for _, l := range strangerLines {
+		wordsW = max(wordsW, font.Advance(l))
+	}
+	_, ch := chipSize(lk, "X")
+	// Beside: the stranger's words to its right, clear of DNS's disc and
+	// name; DNS's tags to its right, in two lines at most.
+	wordsX := g.x(0.5) + g.dnd/2 + s.dip(6)
+	tagsX := g.x(2) + g.dnd/2 + s.dip(8)
+	dnsLeft := g.x(2) - max(g.dnd/2, font.Advance("DNS")/2)
+	lines, _ := chipLines(lk, asked(), w-tagsX-s.dip(3))
+	g.beside = wordsX+wordsW+s.dip(8) <= dnsLeft && len(lines) <= 2 && len(g.stranger) == 1
+	if g.beside {
+		y := g.rowY - float32(len(strangerLines))*fh/2
+		for i, l := range strangerLines {
+			g.words = append(g.words, placedText{l, paintengine2d.Pt(wordsX, y), i >= len(g.stranger)})
+			y += fh
+		}
+		dnsY := g.rowY + g.dnd/2 + s.dip(3)
+		for _, l := range g.dnsLabel {
+			g.words = append(g.words, placedText{l, paintengine2d.Pt(g.x(2)-font.Advance(l)/2, dnsY), false})
+		}
+		tagsH := float32(len(lines))*(ch+gap) - gap
+		c, _ := placeChips(lk, asked(), tagsX, g.rowY-tagsH/2, w-tagsX-s.dip(3), true)
+		g.chips = append(g.chips, c...)
+		g.h = max(dnsY+fh, g.rowY+tagsH/2, y) + s.dip(8)
+		return g
+	}
+	// Under: the stranger's words as wide as they need, up to x(1.25),
+	// and DNS's tags in what is left.
+	under := g.rowY + g.dnd/2 + s.dip(4)
+	y := under
+	for i, l := range strangerLines {
+		g.words = append(g.words, placedText{l, paintengine2d.Pt(g.x(0.5)-font.Advance(l)/2, y), i >= len(g.stranger)})
+		y += fh
+	}
+	for _, l := range g.dnsLabel {
+		g.words = append(g.words, placedText{l, paintengine2d.Pt(g.x(2)-font.Advance(l)/2, under), false})
+	}
+	room := min(g.x(2)-(g.x(0.5)+wordsW/2)-s.dip(8), w-g.x(2)-s.dip(3))
+	c, tagsH := placeChips(lk, asked(), g.x(2), under+fh+gap, 2*room, false)
 	g.chips = append(g.chips, c...)
-	g.h = max(under+float32(len(g.stranger)+len(g.fake))*fh, under+fh+gap+ch) + s.dip(8)
+	g.h = max(y, under+fh+gap+tagsH) + s.dip(8)
 	return g
 }
 
@@ -499,6 +616,15 @@ func (s *hopsScene) fakePath(g sceneLayout) []paintengine2d.Point {
 		paintengine2d.Pt(g.x(0.5), g.rowY-g.dnd/2-s.dip(3)),
 		paintengine2d.Pt(g.x(0.5), g.labelsY-s.dip(2)),
 		paintengine2d.Pt(g.x(1)-r*0.707, g.y1+r*0.707),
+	}
+}
+
+// dnsLines are DNS's dashed lines, up to under each server's name.
+func (s *hopsScene) dnsLines(g sceneLayout) [][2]paintengine2d.Point {
+	feet := g.labelsFoot(s.Look().Font().Height()) + s.dip(4)
+	return [][2]paintengine2d.Point{
+		{paintengine2d.Pt(g.x(2), g.rowY-g.dnd/2-s.dip(3)), paintengine2d.Pt(g.x(2), feet)},
+		{paintengine2d.Pt(g.x(2)-g.dnd*0.45, g.rowY-g.dnd*0.25), paintengine2d.Pt(g.x(1), feet)},
 	}
 }
 
@@ -559,11 +685,10 @@ func (s *hopsScene) Paint(ctx *paintengine2d.Context) {
 	}
 
 	// DNS, under their server, which both servers ask.
-	feet := g.labelsFoot(fh) + s.dip(4)
-	ctx.DrawLine(at(x(2), g.rowY-g.dnd/2-s.dip(3)), at(x(2), feet), pen(in.muted, true))
-	ctx.DrawLine(at(x(2)-g.dnd*0.45, g.rowY-g.dnd*0.25), at(x(1), feet), pen(in.muted, true))
+	for _, l := range s.dnsLines(g) {
+		ctx.DrawLine(at(l[0].X, l[0].Y), at(l[1].X, l[1].Y), pen(in.muted, true))
+	}
 	node(pictServer, at(x(2), g.rowY), g.dnd, in.text, in.discEdge)
-	centred(g.dnsLabel, x(2), g.rowY+g.dnd/2+s.dip(4), in.text)
 
 	// The stranger, and the look-alike coming into your server.
 	fp := s.fakePath(g)
@@ -574,8 +699,13 @@ func (s *hopsScene) Paint(ctx *paintengine2d.Context) {
 	d := end.Sub(from).Normalize()
 	head(at(end.X, end.Y), d.X, d.Y, in.bad)
 	node(pictPerson, at(x(0.5), g.rowY), g.dnd, in.bad, in.bad)
-	y := centred(g.stranger, x(0.5), g.rowY+g.dnd/2+s.dip(4), in.text)
-	centred(g.fake, x(0.5), y, in.bad)
+	for _, t := range g.words {
+		ink := in.text
+		if t.bad {
+			ink = in.bad
+		}
+		font.Draw(ctx, t.text, at(t.at.X, t.at.Y), ink)
+	}
 
 	// The people and the servers.
 	for i, p := range []pict{pictPerson, pictServer, pictServer, pictPerson} {
