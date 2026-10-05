@@ -14,11 +14,12 @@ import (
 )
 
 // keysSection is Settings › Security › Keys: OpenPGP and S/MIME, one at a
-// time. For each, who does the work — comms-mail itself, its keys kept in
-// a place chosen like the passwords', or secretvault, which keeps them and
-// never lets comms-mail hold a private key — then your keys for each
-// address you send from, and, with comms-mail's own, other people's keys
-// it knows. refresh asks again.
+// time. For each, where its keys are — the places the passwords can be,
+// chosen apart from them: in Secret Vault, secretvault keeps them and does
+// the work, never letting comms-mail hold a private key; anywhere else,
+// comms-mail does it — then your keys for each address you send from,
+// and, with comms-mail's own, other people's keys it knows. refresh asks
+// again.
 func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Component, refresh func()) {
 	formats := []string{mailcore.FormatOpenPGP, mailcore.FormatSMIME}
 	cur := 0
@@ -45,7 +46,7 @@ func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Compo
 				d := v.(data)
 				k := &keysPage{a: a, cli: cli, format: format, st: d.st, view: d.view, refresh: refresh, from: body}
 				if d.st.Supported {
-					body.Add(k.engineChooser())
+					body.Add(k.placeChooser())
 					body.Add(widgets.NewSeparator())
 				}
 				body.Add(k.yourKeys())
@@ -86,91 +87,41 @@ func (k *keysPage) name() string {
 
 func (k *keysPage) own() bool { return k.view.Place.Engine == mailcore.EngineOwn }
 
-// engineChooser is who does the work: comms-mail's own, with where its
-// keys are kept, or secretvault. Apply makes it so.
-func (k *keysPage) engineChooser() widget.Component {
+// placeChooser is where the format's keys are: Secret Vault, where
+// secretvault keeps them and does the work, or a place of comms-mail's,
+// where it does. Apply makes it so.
+func (k *keysPage) placeChooser() widget.Component {
 	place := k.view.Place
-	ownRB := widgets.NewRadio("Built into comms-mail", place.Engine == mailcore.EngineOwn, nil)
-	svRB := widgets.NewRadio("Secret Vault", place.Engine == mailcore.EngineSecretVault, nil)
-	head := func(rb *widgets.RadioButton, what string, inUse bool) widget.Component {
-		row := widgets.NewRow(rb).WithGap(2)
-		row.AddFlex(wrapLabel(what), 1)
-		if inUse {
-			row.Add(inUseMark())
-		}
-		return row
-	}
-
-	// Where comms-mail keeps its own keys: the passwords' places, chosen
-	// apart from them.
 	st := k.st
 	st.Store, st.SecretVault = place.Store, place.Vault
 	st.PlainFile = k.st.KeysFile
 	st.Ready, st.Locked, st.Problem = place.Ready, place.Locked, place.Problem
 	under := map[string]widget.Component{}
-	if place.Store != "" {
-		var extra []widget.Component
-		if place.Locked || place.Problem != "" {
-			text, icon := "Locked now.", style.IconLock
-			if !place.Locked {
-				text, icon = "It cannot be read now: "+place.Problem, style.IconWarning
-			}
-			extra = append(extra, iconLine(icon, text), foldRow(newButton("Unlock…", func() { k.unlock() })))
+	var extra []widget.Component
+	if place.Locked || place.Problem != "" {
+		text, icon := "Locked now.", style.IconLock
+		if !place.Locked {
+			text, icon = "It cannot be read now: "+place.Problem, style.IconWarning
 		}
-		if place.Store == mailcore.StoreEncrypted {
-			extra = append(extra, foldRow(newButton("Change passphrase…", func() { openPassphrase(k.a, k.cli, passChange, k.refresh) })))
+		label := "Unlock…"
+		if place.Store == mailcore.StoreSecretVault {
+			label = "Unlock secretvault…"
 		}
-		if len(extra) > 0 {
-			under[place.Store] = widgets.NewColumn(extra...).WithGap(6)
-		}
+		extra = append(extra, iconLine(icon, text), foldRow(newButton(label, func() { k.unlock() })))
+	}
+	if place.Store == mailcore.StoreEncrypted {
+		extra = append(extra, foldRow(newButton("Change passphrase…", func() { openPassphrase(k.a, k.cli, passChange, k.refresh) })))
+	}
+	if len(extra) > 0 {
+		under[place.Store] = widgets.NewColumn(extra...).WithGap(6)
 	}
 	places := newStoreChoices(st, k.format, true, under)
-	where := widgets.NewColumn(widgets.NewLabel("Its keys are kept in:"), places.list, places.passBox).WithGap(8)
-	where.SetVisible(ownRB.Selected)
-
 	apply := newButton("Apply", nil)
-	apply.Tip = "Have this do " + k.name() + ", keeping its keys where picked"
-	update := func() {
-		where.SetVisible(ownRB.Selected)
-		where.RequestLayout()
-		switch {
-		case svRB.Selected:
-			apply.SetEnabled(place.Engine != mailcore.EngineSecretVault)
-		case ownRB.Selected:
-			apply.SetEnabled(places.chosen >= 0 && !places.customUnnamed() && (place.Engine != mailcore.EngineOwn || places.moving()))
-		default:
-			apply.SetEnabled(false)
-		}
-	}
-	ownRB.OnChange = func(on bool) {
-		if on {
-			svRB.SetSelected(false)
-		}
-		update()
-	}
-	svRB.OnChange = func(on bool) {
-		if on {
-			ownRB.SetSelected(false)
-		}
-		update()
-	}
-	places.onPick = update
+	apply.Tip = "Keep the " + k.name() + " keys where picked"
+	apply.SetEnabled(false)
+	places.onPick = func() { apply.SetEnabled(places.moving()) }
 	apply.OnClick = func() {
-		if svRB.Selected {
-			apply.SetEnabled(false)
-			runAsync(k.a, func() (any, error) {
-				return nil, k.cli.UseKeys(k.format, mailcore.EngineSecretVault, "", "", nil)
-			}, func(_ any, err error) {
-				if err != nil {
-					apply.SetEnabled(true)
-					widgets.Warn(k.from, k.name(), err.Error(), nil)
-					return
-				}
-				k.refresh()
-			})
-			return
-		}
-		if places.chosen < 0 {
+		if !places.moving() {
 			return
 		}
 		kind := places.opts[places.chosen].kind
@@ -185,7 +136,7 @@ func (k *keysPage) engineChooser() widget.Component {
 		}
 		apply.SetEnabled(false)
 		runAsync(k.a, func() (any, error) {
-			return nil, k.cli.UseKeys(k.format, mailcore.EngineOwn, kind, vault, []byte(p))
+			return nil, k.cli.UseKeys(k.format, kind, vault, []byte(p))
 		}, func(_ any, err error) {
 			if err != nil {
 				apply.SetEnabled(true)
@@ -195,12 +146,7 @@ func (k *keysPage) engineChooser() widget.Component {
 			k.refresh()
 		})
 	}
-	update()
-	ownCol := widgets.NewColumn(head(ownRB, "(your keys kept where you choose, the work done by comms-mail)", place.Engine == mailcore.EngineOwn),
-		where.WithPadding(28, 0, 0, 0)).WithGap(6)
-	svCol := head(svRB, "(it keeps the keys and does the work; comms-mail never holds a private key)", place.Engine == mailcore.EngineSecretVault)
-	return widgets.NewColumn(widgets.NewLabel("Who signs, encrypts, checks and opens "+k.name()+" mail:"),
-		ownCol, svCol, foldRow(apply)).WithGap(8)
+	return widgets.NewColumn(places.list, places.passBox, foldRow(apply)).WithGap(10)
 }
 
 // unlock opens where comms-mail keeps the format's keys: the encrypted file
@@ -228,7 +174,7 @@ func (k *keysPage) yourKeys() widget.Component {
 		col.Add(wrapLabel("secretvault is locked, so your keys cannot be shown."))
 		unlock := newButton("Unlock secretvault…", nil)
 		unlock.OnClick = func() {
-			runAsync(k.a, func() (any, error) { return nil, k.cli.UnlockSecrets("") }, func(_ any, err error) {
+			runAsync(k.a, func() (any, error) { return nil, k.cli.UnlockKeys(k.format, nil) }, func(_ any, err error) {
 				if err != nil {
 					widgets.Warn(unlock, "secretvault", "secretvault stayed locked: "+err.Error(), nil)
 					return
@@ -240,9 +186,6 @@ func (k *keysPage) yourKeys() widget.Component {
 		return col
 	case !v.Available || v.Why != "":
 		col.Add(wrapLabel(v.Why))
-		return col
-	case k.own() && v.Place.Store == "":
-		col.Add(wrapLabel("Choose where comms-mail keeps its keys above, then make or bring in yours."))
 		return col
 	case len(v.Addresses) == 0:
 		col.Add(wrapLabel("Add an account first: keys are made for the addresses you send from."))

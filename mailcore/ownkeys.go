@@ -78,14 +78,33 @@ func (s *LocalStore) ownAddresses() []string {
 	return out
 }
 
-// OwnKeys asks secretvault which of your addresses it holds keys for. It
-// never asks secretvault to unlock.
+// OwnKeys asks secretvault which of your addresses it holds keys for —
+// OpenPGP keys in the vault chosen for them, S/MIME certificates in
+// theirs. It never asks secretvault to unlock.
 func (s *LocalStore) OwnKeys() OwnKeys {
-	if err := theSecretVault.available(); err != nil {
-		return OwnKeys{Why: "secretvault, which keeps your keys here, is not running: start it, or have comms-mail do it itself (Built into comms-mail, above)."}
+	pgp, sm := s.svOwnKeys(FormatOpenPGP), s.svOwnKeys(FormatSMIME)
+	out := OwnKeys{Available: pgp.Available || sm.Available, Locked: pgp.Locked || sm.Locked, Why: firstNonEmpty(pgp.Why, sm.Why)}
+	for i, ak := range pgp.Addresses {
+		if i < len(sm.Addresses) && sm.Addresses[i].Address == ak.Address {
+			ak.SMIME = sm.Addresses[i].SMIME
+		}
+		out.Addresses = append(out.Addresses, ak)
 	}
+	if len(pgp.Addresses) == 0 {
+		out.Addresses = sm.Addresses
+	}
+	return out
+}
+
+// svOwnKeys asks secretvault which of your addresses it holds keys of
+// format for, in the vault chosen for them.
+func (s *LocalStore) svOwnKeys(format string) OwnKeys {
+	if err := theSecretVault.available(); err != nil {
+		return OwnKeys{Why: "secretvault, which keeps your keys here, is not running: start it, or keep them in another place."}
+	}
+	vault := s.svVaultOf(format)
 	out := OwnKeys{Available: true}
-	switch err := (secretVaultStore{theSecretVault}).Ready(); {
+	switch err := svVaultReady(vault); {
 	case errors.Is(err, ErrLocked):
 		out.Locked = true
 		return out
@@ -101,25 +120,29 @@ func (s *LocalStore) OwnKeys() OwnKeys {
 		NotAfter time.Time `json:"not_after"`
 		Warnings []string  `json:"warnings"`
 	}
-	if err := theSecretVault.call("smime.list", map[string]string{}, &certs); err != nil && svCode(err) != svCodeNotFound {
-		out.Why = keysRefused(err)
-		return out
+	if format == FormatSMIME {
+		if err := theSecretVault.call("smime.list", withVault(map[string]any{}, vault), &certs); err != nil && svCode(err) != svCodeNotFound {
+			out.Why = keysRefused(err)
+			return out
+		}
 	}
 	for _, addr := range s.ownAddresses() {
 		ak := AddressKeys{Address: addr}
-		var key struct {
-			Fingerprint string    `json:"fingerprint"`
-			Created     time.Time `json:"created"`
-			Expires     time.Time `json:"expires"`
-			PublicKey   string    `json:"public_key"`
-		}
-		switch err := theSecretVault.call("pgp.public", map[string]string{"key": addr}, &key); {
-		case err == nil:
-			ak.PGP = &OwnPGPKey{Fingerprint: key.Fingerprint, Created: key.Created, Expires: key.Expires, PublicKey: key.PublicKey}
-		case svCode(err) == svCodeNotFound, svCode(err) == -32602:
-		default:
-			out.Why = keysRefused(err)
-			return out
+		if format == FormatOpenPGP {
+			var key struct {
+				Fingerprint string    `json:"fingerprint"`
+				Created     time.Time `json:"created"`
+				Expires     time.Time `json:"expires"`
+				PublicKey   string    `json:"public_key"`
+			}
+			switch err := theSecretVault.call("pgp.public", withVault(map[string]any{"key": addr}, vault), &key); {
+			case err == nil:
+				ak.PGP = &OwnPGPKey{Fingerprint: key.Fingerprint, Created: key.Created, Expires: key.Expires, PublicKey: key.PublicKey}
+			case svCode(err) == svCodeNotFound, svCode(err) == -32602:
+			default:
+				out.Why = keysRefused(err)
+				return out
+			}
 		}
 		for _, c := range certs {
 			for _, e := range c.Emails {
@@ -133,6 +156,14 @@ func (s *LocalStore) OwnKeys() OwnKeys {
 		out.Addresses = append(out.Addresses, ak)
 	}
 	return out
+}
+
+// withVault is params naming vault, when it is not secretvault's default.
+func withVault(params map[string]any, vault string) map[string]any {
+	if vault != "" {
+		params["vault"] = vault
+	}
+	return params
 }
 
 // keysRefused says why secretvault did not answer about the keys.
@@ -165,10 +196,10 @@ func (s *LocalStore) MakePGPKey(address string) (OwnKeys, error) {
 	if s.engineOf(FormatOpenPGP) == EngineOwn {
 		return OwnKeys{}, s.makePGPKeyOwn(address, name)
 	}
-	if err := s.secretVaultOpen(); err != nil {
+	if err := s.secretVaultOpen(FormatOpenPGP); err != nil {
 		return OwnKeys{}, err
 	}
-	p := map[string]any{"emails": []string{address}}
+	p := withVault(map[string]any{"emails": []string{address}}, s.svVaultOf(FormatOpenPGP))
 	if name != "" {
 		p["name"] = name
 	}
@@ -191,13 +222,13 @@ func (s *LocalStore) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
 		_, err := s.importSMIMEOwnOrCerts(slices.Clone(pkcs12), slices.Clone(password))
 		return OwnKeys{}, err
 	}
-	if err := s.secretVaultOpen(); err != nil {
+	if err := s.secretVaultOpen(FormatSMIME); err != nil {
 		return OwnKeys{}, err
 	}
 	var key struct {
 		Emails []string `json:"emails"`
 	}
-	if err := theSecretVault.call("smime.import", map[string]any{"pkcs12": pkcs12, "password": password}, &key); err != nil {
+	if err := theSecretVault.call("smime.import", withVault(map[string]any{"pkcs12": pkcs12, "password": password}, s.svVaultOf(FormatSMIME)), &key); err != nil {
 		switch svCode(err) {
 		case -32004:
 			return OwnKeys{}, errors.New("that password does not open the file")
@@ -212,13 +243,14 @@ func (s *LocalStore) ImportSMIME(pkcs12, password []byte) (OwnKeys, error) {
 	return s.OwnKeys(), nil
 }
 
-// secretVaultOpen is nil when secretvault is the store and unlocked: the
-// person asked for this, so a locked one is said, not waited for.
-func (s *LocalStore) secretVaultOpen() error {
+// secretVaultOpen is nil when secretvault runs and the vault for format's
+// keys is unlocked: the person asked for this, so a locked one is said,
+// not waited for.
+func (s *LocalStore) secretVaultOpen(format string) error {
 	if err := theSecretVault.available(); err != nil {
 		return errors.New("secretvault, which keeps your keys here, is not running")
 	}
-	if err := (secretVaultStore{theSecretVault}).Ready(); err != nil {
+	if err := svVaultReady(s.svVaultOf(format)); err != nil {
 		if errors.Is(err, ErrLocked) {
 			return errors.New("secretvault is locked: unlock it first")
 		}

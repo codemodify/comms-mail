@@ -210,21 +210,21 @@ func (s *LocalStore) MessageSecurity(id MessageID, decrypt bool) (MessageSecurit
 		}
 		return sec, nil
 	}
-	sv := secretVaultStore{theSecretVault}
-	switch err := sv.Ready(); {
+	vault := s.svVaultOf(format)
+	switch err := svVaultReady(vault); {
 	case errors.Is(err, ErrLocked):
-		sec.Locked, sec.Why = true, "secretvault is locked"
+		sec.Locked, sec.KeysLocked, sec.Why = true, format, "secretvault is locked"
 		return sec, nil
 	case err != nil:
 		sec.Why = err.Error()
 		return sec, nil
 	}
 	var res svInspectResult
-	err = theSecretVault.call("mail.inspect", map[string]any{"message": raw, "decrypt": decrypt && m.Encrypted}, &res)
+	err = theSecretVault.call("mail.inspect", withVault(map[string]any{"message": raw, "decrypt": decrypt && m.Encrypted}, vault), &res)
 	if err != nil {
 		switch svCode(err) {
 		case svCodeLocked:
-			sec.Locked, sec.Why = true, "secretvault is locked"
+			sec.Locked, sec.KeysLocked, sec.Why = true, format, "secretvault is locked"
 		case svCodeDenied, svCodeCanceled:
 			sec.Why = "secretvault did not let comms-mail check this message"
 		default:

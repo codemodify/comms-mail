@@ -84,10 +84,10 @@ func (ca testCA) issue(t *testing.T, name, addr string, rsaKey bool) (*x509.Cert
 func ownSMIMEStore(t *testing.T, f *fakeSMTP, ca testCA) *LocalStore {
 	t.Helper()
 	st, _ := sendingStore(t, f)
-	if err := st.UseKeys(FormatSMIME, EngineOwn, StoreEncrypted, "correct horse battery", ""); err != nil {
+	if err := st.UseKeys(FormatSMIME, StoreEncrypted, "correct horse battery", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.UseKeys(FormatOpenPGP, EngineOwn, StoreEncrypted, "", ""); err != nil {
+	if err := st.UseKeys(FormatOpenPGP, StoreEncrypted, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	cert, key := ca.issue(t, "Ada", "ada@example.com", true)

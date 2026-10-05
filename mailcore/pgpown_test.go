@@ -19,7 +19,7 @@ import (
 func ownPGPStore(t *testing.T, f *fakeSMTP) *LocalStore {
 	t.Helper()
 	st, _ := sendingStore(t, f)
-	if err := st.UseKeys(FormatOpenPGP, EngineOwn, StoreEncrypted, "correct horse battery", ""); err != nil {
+	if err := st.UseKeys(FormatOpenPGP, StoreEncrypted, "correct horse battery", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.MakePGPKey("ada@example.com"); err != nil {
@@ -228,7 +228,7 @@ func TestKeysAndPasswordsShareAPlace(t *testing.T) {
 	}
 	// The keys moving to the plain file leave the encrypted file empty:
 	// it goes.
-	if err := st.UseKeys(FormatOpenPGP, EngineOwn, StorePlain, "", ""); err != nil {
+	if err := st.UseKeys(FormatOpenPGP, StorePlain, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if st.vaultOf().Exists() {
@@ -376,25 +376,47 @@ func TestAutocryptOnlyForTheSender(t *testing.T) {
 	}
 }
 
-// comms-mail's own keys in a vault of secretvault's that is not there
-// yet: secretvault is asked for it, and the keys go into it.
-func TestOwnKeysInARequestedVault(t *testing.T) {
+// Keys kept in a vault of secretvault's that is not there yet: it is
+// asked for, and secretvault does the work with the keys it keeps there —
+// a key made for an address is made in that vault. comms-mail's own keys
+// stay where they were, for when one of its places is chosen again.
+func TestKeysInARequestedSecretVaultVault(t *testing.T) {
 	smtp := startFakeSMTP(t)
 	st, sv := sendingStore(t, smtp)
-	if err := st.UseKeys(FormatOpenPGP, EngineOwn, StoreSecretVault, "", "keys"); err != nil {
+	if err := st.UseKeys(FormatOpenPGP, StoreEncrypted, "correct horse battery", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.MakePGPKey("ada@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	own := st.keys().own(FormatOpenPGP, "ada@example.com")[0].ID
+	if err := st.UseKeys(FormatOpenPGP, StoreSecretVault, "", "keys"); err != nil {
 		t.Fatal(err)
 	}
 	if r := sv.Requests(); len(r) != 1 || r[0] != "keys" {
 		t.Fatalf("asked for %v", r)
 	}
+	if p := st.keyPlace(FormatOpenPGP); p.Engine != EngineSecretVault || p.Vault != "keys" || !p.Ready {
+		t.Fatalf("place %+v", p)
+	}
 	if _, err := st.MakePGPKey("ada@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	fp := st.keys().own(FormatOpenPGP, "ada@example.com")[0].ID
-	if it, ok := sv.ItemIn("keys", "comms-mail/"+keyName(FormatOpenPGP, fp)); !ok || it.Kind != svKindKey {
-		t.Fatalf("not in the keys vault: %+v", it)
+	if g := sv.Generates(); len(g) != 1 || g[0].Vault != "keys" {
+		t.Fatalf("made %+v", g)
 	}
-	if _, ok := sv.Item("comms-mail/" + keyName(FormatOpenPGP, fp)); ok {
-		t.Fatal("the key is in the default vault too")
+	// Back to the encrypted file: comms-mail's own key is there still.
+	if err := st.UseKeys(FormatOpenPGP, StoreEncrypted, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if v := st.KeysView(FormatOpenPGP); v.Place.Engine != EngineOwn || len(v.Addresses) == 0 || v.Addresses[0].PGP == nil || v.Addresses[0].PGP.Fingerprint != own {
+		t.Fatalf("back: %+v", v)
+	}
+	// Its private half too: it signs.
+	if _, err := st.SendViaSMTP("w", "", outgoing(&Protection{Sign: true}), nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := smtp.delivered(); len(got) != 1 || !strings.Contains(got[0], "application/pgp-signature") {
+		t.Fatalf("signed with comms-mail's key: %v", got)
 	}
 }

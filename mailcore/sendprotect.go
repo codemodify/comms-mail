@@ -93,10 +93,11 @@ func (s *LocalStore) canSignIn(format, addr string) (bool, error) {
 	if err := theSecretVault.available(); err != nil {
 		return false, fmt.Errorf("secretvault, which signs %s here, is not running", formatName(format))
 	}
-	if err := (secretVaultStore{theSecretVault}).Ready(); err != nil {
+	vault := s.svVaultOf(format)
+	if err := svVaultReady(vault); err != nil {
 		return false, err
 	}
-	return hasKeyIn(format, addr)
+	return hasKeyIn(format, addr, vault)
 }
 
 // formatName is a format as people write it.
@@ -107,11 +108,12 @@ func formatName(format string) string {
 	return "OpenPGP"
 }
 
-// hasKeyFor asks secretvault whether it holds a key that signs as addr:
-// an OpenPGP key with the address, or an S/MIME certificate for it.
-func hasKeyFor(addr string) (bool, error) {
+// hasKeyFor asks secretvault whether it holds a key that signs as addr,
+// in vault: an OpenPGP key with the address, or an S/MIME certificate for
+// it.
+func hasKeyFor(addr, vault string) (bool, error) {
 	for _, f := range keyFormats {
-		if ok, err := hasKeyIn(f, addr); ok || err != nil {
+		if ok, err := hasKeyIn(f, addr, vault); ok || err != nil {
 			return ok, err
 		}
 	}
@@ -119,8 +121,8 @@ func hasKeyFor(addr string) (bool, error) {
 }
 
 // hasKeyIn asks secretvault whether it holds a key of format that signs
-// as addr.
-func hasKeyIn(format, addr string) (bool, error) {
+// as addr, in vault ("" its default).
+func hasKeyIn(format, addr, vault string) (bool, error) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return false, nil
@@ -129,7 +131,7 @@ func hasKeyIn(format, addr string) (bool, error) {
 		var key struct {
 			Fingerprint string `json:"fingerprint"`
 		}
-		err := theSecretVault.call("pgp.public", map[string]string{"key": addr}, &key)
+		err := theSecretVault.call("pgp.public", withVault(map[string]any{"key": addr}, vault), &key)
 		switch {
 		case err == nil:
 			return true, nil
@@ -145,7 +147,7 @@ func hasKeyIn(format, addr string) (bool, error) {
 	var certs []struct {
 		Emails []string `json:"emails"`
 	}
-	if err := theSecretVault.call("smime.list", map[string]string{}, &certs); err != nil {
+	if err := theSecretVault.call("smime.list", withVault(map[string]any{}, vault), &certs); err != nil {
 		switch svCode(err) {
 		case svCodeNotFound:
 			return false, nil
@@ -181,7 +183,8 @@ func (s *LocalStore) protect(raw []byte, msg Message) ([]byte, error) {
 		// not among them (it would tell everyone who else got it).
 		return nil, errors.New("an encrypted message cannot have Bcc recipients: they could not read it. Move them to To or Cc, or send it without encryption")
 	}
-	if s.engineOf(FormatOpenPGP) == EngineSecretVault && s.engineOf(FormatSMIME) == EngineSecretVault {
+	if s.engineOf(FormatOpenPGP) == EngineSecretVault && s.engineOf(FormatSMIME) == EngineSecretVault &&
+		s.svVaultOf(FormatOpenPGP) == s.svVaultOf(FormatSMIME) {
 		return s.svProtect(raw, msg, "")
 	}
 	rcpts := recipientAddrs(msg)
@@ -271,7 +274,8 @@ func (s *LocalStore) composeIn(format string, raw []byte, msg Message, from stri
 }
 
 // svProtect has secretvault sign and encrypt raw, in format ("" lets it
-// choose).
+// choose, both formats' keys being in one vault), with the keys in the
+// vault chosen for them.
 func (s *LocalStore) svProtect(raw []byte, msg Message, format string) ([]byte, error) {
 	p := msg.Protect
 	if err := theSecretVault.available(); err != nil {
@@ -280,7 +284,8 @@ func (s *LocalStore) svProtect(raw []byte, msg Message, format string) ([]byte, 
 		}
 		return raw, nil // signing only if there is a key, and none can be asked about
 	}
-	if err := (secretVaultStore{theSecretVault}).Ready(); err != nil {
+	vault := s.svVaultOf(firstNonEmpty(format, FormatOpenPGP))
+	if err := svVaultReady(vault); err != nil {
 		return nil, err
 	}
 	sign := p.Sign
@@ -288,9 +293,9 @@ func (s *LocalStore) svProtect(raw []byte, msg Message, format string) ([]byte, 
 		var can bool
 		var err error
 		if format == "" {
-			can, err = hasKeyFor(ExtractAddr(msg.From))
+			can, err = hasKeyFor(ExtractAddr(msg.From), vault)
 		} else {
-			can, err = hasKeyIn(format, ExtractAddr(msg.From))
+			can, err = hasKeyIn(format, ExtractAddr(msg.From), vault)
 		}
 		if err != nil {
 			return nil, err
@@ -304,7 +309,7 @@ func (s *LocalStore) svProtect(raw []byte, msg Message, format string) ([]byte, 
 		Message []byte `json:"message"`
 		Format  string `json:"format"`
 	}
-	params := map[string]any{"message": raw, "sign": sign, "encrypt": p.Encrypt}
+	params := withVault(map[string]any{"message": raw, "sign": sign, "encrypt": p.Encrypt}, vault)
 	if format != "" {
 		params["format"] = format
 	}

@@ -98,6 +98,7 @@ type Vault struct {
 type Generated struct {
 	Name   string   `json:"name"`
 	Emails []string `json:"emails"`
+	Vault  string   `json:"vault,omitempty"`
 }
 
 // P12 is the .p12 file smime.import takes: password opens it, and its

@@ -150,6 +150,14 @@ type storeChoices struct {
 
 func newStoreChoices(st mailcore.SecretsStatus, purpose string, showInUse bool, under map[string]widget.Component) *storeChoices {
 	c := &storeChoices{st: st, purpose: purpose, opts: storeOptions(st), chosen: -1}
+	if purpose != "passwords" {
+		// For keys, Secret Vault is also who does the work.
+		for i := range c.opts {
+			if c.opts[i].kind == mailcore.StoreSecretVault {
+				c.opts[i].what = "keeps the keys and does the work"
+			}
+		}
+	}
 	for _, u := range st.EncryptedUsers {
 		if u != purpose {
 			c.shared = true

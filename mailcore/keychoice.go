@@ -12,12 +12,13 @@ import (
 )
 
 // Who signs, encrypts, checks and decrypts mail, format by format, and
-// where comms-mail keeps its own keys. OpenPGP and S/MIME each have their
-// engine: secretvault, which keeps the keys and does the work in its own
-// daemon (protection.go, sendprotect.go), or comms-mail's own, built in
-// (pgpown.go, smimeown.go), whose private keys are kept in a place chosen
-// the way the passwords' is — the system keyring, a secretvault vault, the
-// encrypted file or a plain file — and independently of it.
+// where the keys are: OpenPGP and S/MIME each have their place, chosen
+// like the passwords' and independently of them. In Secret Vault (its
+// default vault, or one named), secretvault keeps the keys and does the
+// work in its own daemon (protection.go, sendprotect.go): comms-mail never
+// holds a private key. In the system keyring, the encrypted file or a
+// plain file, comms-mail does the work itself (pgpown.go, smimeown.go),
+// with its own keys kept there.
 //
 // The passwords and the keys can share a place. Each keeps to its own
 // names there (pass/…, oauth/… and keys/<format>/…), so moving one never
@@ -34,28 +35,60 @@ const (
 // either would do.
 var keyFormats = []string{FormatOpenPGP, FormatSMIME}
 
-// The engines.
+// The engines: who does the work, which follows from where the keys are.
 const (
 	EngineSecretVault = "secretvault"
 	EngineOwn         = "own"
 )
 
-// KeyChoice is a format's engine and, for comms-mail's own, where its keys
-// are kept: a store kind, and with secretvault the vault ("" its default).
-// The place is kept while secretvault does the work, so choosing comms-mail
-// again finds the keys where they were.
+// KeyChoice is where a format's keys are: a store kind ("" is Secret
+// Vault, the default) and, with Secret Vault, its vault ("" its default).
+// Own is where comms-mail's own keys stay while Secret Vault is chosen, so
+// choosing a place of comms-mail's again finds them.
 type KeyChoice struct {
-	Engine string `json:"engine,omitempty"` // "" is secretvault
-	Store  string `json:"store,omitempty"`
-	Vault  string `json:"vault,omitempty"`
+	Store string `json:"store,omitempty"`
+	Vault string `json:"vault,omitempty"`
+	Own   string `json:"own,omitempty"`
+	// Engine was written for a day (2026-10-04) before the place alone
+	// said who does the work; the place says the same, and it is dropped.
+	Engine string `json:"engine,omitempty"`
 }
 
-// engine is c's engine, secretvault when none was chosen.
+// isOwnPlace says comms-mail keeps keys in kind and does the work itself.
+func isOwnPlace(kind string) bool {
+	return kind == StoreKeyring || kind == StoreEncrypted || kind == StorePlain
+}
+
+// normal is c as the place alone says it.
+func (c KeyChoice) normal() KeyChoice {
+	c.Engine = ""
+	return c
+}
+
+// engine is who does c's work: comms-mail in a place of its own, else
+// secretvault.
 func (c KeyChoice) engine() string {
-	if c.Engine == EngineOwn {
+	if isOwnPlace(c.Store) {
 		return EngineOwn
 	}
 	return EngineSecretVault
+}
+
+// ownPlace is where comms-mail's own keys are: the place, when it is
+// comms-mail's, else where they stayed; "" when there are none.
+func (c KeyChoice) ownPlace() string {
+	if isOwnPlace(c.Store) {
+		return c.Store
+	}
+	return c.Own
+}
+
+// svVault is the secretvault vault for c's keys, "" its default.
+func (c KeyChoice) svVault() string {
+	if c.engine() == EngineSecretVault {
+		return c.Vault
+	}
+	return ""
 }
 
 func validFormat(f string) bool { return f == FormatOpenPGP || f == FormatSMIME }
@@ -78,11 +111,54 @@ func (s *LocalStore) keyChoiceLocked(format string) KeyChoice {
 	if c == nil {
 		return KeyChoice{}
 	}
-	return *c
+	return c.normal()
 }
 
 // engineOf is the engine doing format's work.
 func (s *LocalStore) engineOf(format string) string { return s.keyChoice(format).engine() }
+
+// svVaultOf is the secretvault vault holding format's keys, "" its
+// default.
+func (s *LocalStore) svVaultOf(format string) string { return s.keyChoice(format).svVault() }
+
+// svVaultReady says whether secretvault's vault for keys (name, "" its
+// default) can be used now: ErrLocked, or why not. It asks nothing.
+func svVaultReady(name string) error {
+	if _, err := theSecretVault.connect(); err != nil {
+		return err
+	}
+	var vaults []svVaultInfo
+	if err := theSecretVault.call("vault.list", nil, &vaults); err != nil {
+		return err
+	}
+	vi, ok := pickVault(vaults, name)
+	switch {
+	case !ok:
+		return missingVault(name)
+	case vi.Locked:
+		return ErrLocked
+	}
+	return nil
+}
+
+// svUnlockVault asks secretvault to unlock the vault for keys, with its
+// own prompt.
+func svUnlockVault(name string) error {
+	err := svVaultReady(name)
+	if err == nil || !errors.Is(err, ErrLocked) {
+		return err
+	}
+	var vaults []svVaultInfo
+	_ = theSecretVault.call("vault.list", nil, &vaults)
+	vi, _ := pickVault(vaults, name)
+	if err := theSecretVault.call("vault.unlock", map[string]string{"vault": vi.Name}, nil); err != nil {
+		if c := svCode(err); c == svCodeCanceled || c == svCodeDenied {
+			return errors.New("secretvault stayed locked")
+		}
+		return err
+	}
+	return nil
+}
 
 // ---- the part of a store one purpose keeps ----
 
@@ -144,24 +220,22 @@ func (s *LocalStore) passwordStore(kind string) secretStore {
 	return scopedStore{s.storeFor(kind), isPasswordName}
 }
 
-// keyStore is where comms-mail's own keys of format are kept; nil before a
-// place is chosen.
+// keyStore is where comms-mail's own keys of format are kept; nil when it
+// has no place for them.
 func (s *LocalStore) keyStore(format string) secretStore {
-	return s.keyStoreAt(format, s.keyChoice(format))
+	return s.keyStoreIn(format, s.keyChoice(format).ownPlace())
 }
 
-func (s *LocalStore) keyStoreAt(format string, c KeyChoice) secretStore {
+func (s *LocalStore) keyStoreIn(format, kind string) secretStore {
 	prefix := keyPrefix(format)
 	keep := func(n string) bool { return strings.HasPrefix(n, prefix) }
-	switch c.Store {
+	switch kind {
 	case StoreKeyring:
 		return scopedStore{theKeyring, keep}
 	case StoreEncrypted:
 		return scopedStore{encryptedStore{s.vaultOf()}, keep}
 	case StorePlain:
 		return scopedStore{plainKeyStore{}, keep}
-	case StoreSecretVault:
-		return scopedStore{svKeyStore{vault: c.Vault}, keep}
 	}
 	return nil
 }
@@ -174,7 +248,7 @@ func (s *LocalStore) encryptedUsers() []string {
 		out = append(out, "passwords")
 	}
 	for _, f := range keyFormats {
-		if s.keyChoice(f).Store == StoreEncrypted {
+		if s.keyChoice(f).ownPlace() == StoreEncrypted {
 			out = append(out, f)
 		}
 	}
@@ -301,183 +375,44 @@ func (p plainKeyStore) Forget() error {
 	return p.Update(nil, names...)
 }
 
-// ---- comms-mail's own keys in a secretvault vault ----
-
-// svKeyStore keeps comms-mail's own keys as items in a secretvault vault
-// ("" its default), which may not be the passwords'. Nothing is cached: a
-// key is read each time it is used, so nothing is held past the vault
-// locking.
-type svKeyStore struct{ vault string }
-
-const svKindKey = "key"
-
-func (svKeyStore) Kind() string { return StoreSecretVault }
-
-// resolve is the vault's name as secretvault has it, ErrLocked when it is
-// locked.
-func (k svKeyStore) resolve() (string, error) {
-	if _, err := theSecretVault.connect(); err != nil {
-		return "", err
-	}
-	var vaults []svVaultInfo
-	if err := theSecretVault.call("vault.list", nil, &vaults); err != nil {
-		return "", err
-	}
-	vi, ok := pickVault(vaults, k.vault)
-	if !ok {
-		return "", missingVault(k.vault)
-	}
-	if vi.Locked {
-		return vi.Name, ErrLocked
-	}
-	return vi.Name, nil
-}
-
-func (k svKeyStore) Ready() error {
-	_, err := k.resolve()
-	return err
-}
-
-// fail is a refusal in words; locked is ErrLocked.
-func (k svKeyStore) fail(err error) error {
-	switch svCode(err) {
-	case svCodeLocked:
-		return ErrLocked
-	case svCodeDenied, svCodeCanceled:
-		return errors.New("secretvault did not let comms-mail at its keys")
-	case svCodeNoVault:
-		return missingVault(k.vault)
-	}
-	return err
-}
-
-func (k svKeyStore) Get(name string) (string, bool, error) {
-	vault, err := k.resolve()
-	if err != nil {
-		return "", false, err
-	}
-	var e svEntry
-	err = theSecretVault.call("item.get", svItemRef{Vault: vault, Name: svItemName(name)}, &e)
-	if svCode(err) == svCodeNotFound {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, k.fail(err)
-	}
-	for _, f := range e.Item.Fields {
-		if f.Name == svFieldSecret {
-			v := string(f.Value)
-			clear(f.Value)
-			return v, true, nil
-		}
-	}
-	return "", false, nil
-}
-
-func (k svKeyStore) Update(set map[string]string, del ...string) error {
-	vault, err := k.resolve()
-	if err != nil {
-		return err
-	}
-	for name, v := range set {
-		if v == "" {
-			del = append(del, name)
-			continue
-		}
-		it := svItem{Kind: svKindKey, Name: svItemName(name), Label: "comms-mail: " + strings.ReplaceAll(strings.TrimPrefix(name, "keys/"), "/", " key "),
-			Fields: []svField{{Name: svFieldSecret, Type: "key", Value: []byte(v)}}}
-		if err := theSecretVault.call("item.put", map[string]any{"vault": vault, "item": it}, nil); err != nil {
-			return k.fail(err)
-		}
-	}
-	for _, name := range del {
-		if err := theSecretVault.deleteIn(vault, name); err != nil {
-			return k.fail(err)
-		}
-	}
-	return nil
-}
-
-func (k svKeyStore) Names() ([]string, error) {
-	vault, err := k.resolve()
-	if err != nil {
-		return nil, err
-	}
-	var entries []svEntry
-	if err := theSecretVault.call("item.list", map[string]string{"vault": vault, "prefix": svItemName("keys/")}, &entries); err != nil {
-		return nil, k.fail(err)
-	}
-	var out []string
-	for _, e := range entries {
-		if n, ok := strings.CutPrefix(e.Item.Name, svItemPrefix); ok && !e.Deleted {
-			out = append(out, n)
-		}
-	}
-	return out, nil
-}
-
-func (k svKeyStore) Forget() error {
-	names, err := k.Names()
-	if err != nil {
-		return err
-	}
-	return k.Update(nil, names...)
-}
-
-// unlock asks secretvault to unlock the vault, with its own prompt.
-func (k svKeyStore) unlock() error {
-	vault, err := k.resolve()
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, ErrLocked) {
-		return err
-	}
-	if err := theSecretVault.call("vault.unlock", map[string]string{"vault": vault}, nil); err != nil {
-		if c := svCode(err); c == svCodeCanceled || c == svCodeDenied {
-			return errors.New("secretvault stayed locked")
-		}
-		return err
-	}
-	return nil
-}
-
 // ---- choosing ----
 
-// UseKeys has engine do format's work and, for comms-mail's own, keeps its
-// keys in kind (vault: secretvault's vault for them, "" its default). A
-// new place takes the keys comms-mail has, written there first and taken
-// out of the old place last; the encrypted file takes passphrase — a new
-// one, or the file's own when other secrets are kept in it and it is not
-// open. Keys secretvault keeps stay in secretvault.
-func (s *LocalStore) UseKeys(format, engine, kind, passphrase, vault string) error {
+// UseKeys keeps format's keys in kind: Secret Vault (vault: its vault for
+// them, "" its default — asked for when it is not there), where
+// secretvault does the work; or a place of comms-mail's, where it does.
+// Choosing one of comms-mail's places takes the keys it has there,
+// written first and taken out of the old place last; the encrypted file
+// takes passphrase — a new one, or the file's own when other secrets are
+// kept in it and it is not open. Choosing Secret Vault leaves comms-mail's
+// keys where they are, for when one of its places is chosen again.
+func (s *LocalStore) UseKeys(format, kind, passphrase, vault string) error {
 	if !validFormat(format) {
 		return fmt.Errorf("mail: no key format %q", format)
 	}
-	switch engine {
-	case EngineSecretVault, EngineOwn:
+	switch kind {
+	case StoreKeyring, StoreSecretVault, StoreEncrypted, StorePlain:
 	default:
-		return fmt.Errorf("mail: no engine %q", engine)
+		return errors.New("choose where the keys are kept")
 	}
 	s.moveMu.Lock()
 	defer s.moveMu.Unlock()
 	cur := s.keyChoice(format)
-	next := KeyChoice{Engine: engine, Store: cur.Store, Vault: cur.Vault}
-	if engine == EngineSecretVault {
-		next.Engine = ""
-	} else {
-		switch kind {
-		case StoreKeyring, StoreSecretVault, StoreEncrypted, StorePlain:
-		default:
-			return errors.New("choose where comms-mail keeps its own keys")
+	from := cur.ownPlace()
+	next := KeyChoice{Store: kind}
+	if kind == StoreSecretVault {
+		next.Vault, next.Own = strings.TrimSpace(vault), from
+		if err := theSecretVault.ensureVault(next.Vault); err != nil {
+			return err
 		}
-		next.Store, next.Vault = kind, ""
-		if kind == StoreSecretVault {
-			next.Vault = strings.TrimSpace(vault)
+		if err := svVaultReady(next.Vault); errors.Is(err, ErrLocked) {
+			if err := svUnlockVault(next.Vault); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
 		}
-	}
-	if next.Store != cur.Store || next.Vault != cur.Vault {
-		if err := s.moveKeys(format, cur, next, passphrase); err != nil {
+	} else if kind != from {
+		if err := s.moveKeys(format, from, kind, passphrase); err != nil {
 			return err
 		}
 	}
@@ -495,19 +430,19 @@ func (s *LocalStore) UseKeys(format, engine, kind, passphrase, vault string) err
 	if err != nil {
 		return err
 	}
-	Logf("keys: %s by %s, kept in %s", format, next.engine(), firstNonEmpty(next.Store, "no place yet"))
+	Logf("keys: %s kept in %s, the work done by %s", format, StoreLabel(kind), next.engine())
 	s.afterUnlock()
 	return nil
 }
 
-// moveKeys takes format's own keys from cur's place to next's.
-func (s *LocalStore) moveKeys(format string, cur, next KeyChoice, passphrase string) error {
+// moveKeys takes format's own keys from the place from ("" none) to to.
+func (s *LocalStore) moveKeys(format, from, to, passphrase string) error {
 	values := map[string]string{}
-	src := s.keyStoreAt(format, cur)
+	src := s.keyStoreIn(format, from)
 	if src != nil {
 		names, err := src.Names()
 		if errors.Is(err, ErrLocked) {
-			return fmt.Errorf("the keys in %s cannot be read now: unlock it first", StoreLabel(cur.Store))
+			return fmt.Errorf("the keys in %s cannot be read now: unlock it first", StoreLabel(from))
 		}
 		if err != nil {
 			return err
@@ -522,30 +457,14 @@ func (s *LocalStore) moveKeys(format string, cur, next KeyChoice, passphrase str
 			}
 		}
 	}
-	dst := s.keyStoreAt(format, next)
-	switch next.Store {
-	case StoreEncrypted:
-		// The choice is recorded only below; the file's users are counted
+	if to == StoreEncrypted {
+		// The choice is recorded only after; the file's users are counted
 		// as they are now, without this format.
 		if err := s.intoEncrypted(format, passphrase, values); err != nil {
 			return err
 		}
-	case StoreSecretVault:
-		if err := theSecretVault.ensureVault(next.Vault); err != nil {
-			return err
-		}
-		ks := svKeyStore{vault: next.Vault}
-		if err := ks.Ready(); errors.Is(err, ErrLocked) {
-			if err := ks.unlock(); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-		if err := dst.Update(values); err != nil {
-			return err
-		}
-	default:
+	} else {
+		dst := s.keyStoreIn(format, to)
 		if err := dst.Ready(); err != nil {
 			return err
 		}
@@ -557,15 +476,15 @@ func (s *LocalStore) moveKeys(format string, cur, next KeyChoice, passphrase str
 	}
 	if src != nil && len(values) > 0 {
 		if err := src.Forget(); err != nil {
-			Logf("keys: clearing %s: %v", StoreLabel(cur.Store), err)
+			Logf("keys: clearing %s: %v", StoreLabel(from), err)
 		}
 	}
 	return nil
 }
 
-// UnlockKeys opens where format's own keys are kept, for this run: the
-// encrypted file with passphrase, the keyring and secretvault with their
-// own prompts.
+// UnlockKeys opens where format's keys are, for this run: the encrypted
+// file with passphrase, the keyring and secretvault with their own
+// prompts.
 func (s *LocalStore) UnlockKeys(format, passphrase string) error {
 	if !validFormat(format) {
 		return fmt.Errorf("mail: no key format %q", format)
@@ -584,8 +503,9 @@ func (s *LocalStore) UnlockKeys(format, passphrase string) error {
 			return err
 		}
 		theKeyring.forgetLookups()
-	case StoreSecretVault:
-		if err := (svKeyStore{vault: c.Vault}).unlock(); err != nil {
+	case StorePlain:
+	default:
+		if err := svUnlockVault(c.svVault()); err != nil {
 			return err
 		}
 	}
@@ -593,14 +513,13 @@ func (s *LocalStore) UnlockKeys(format, passphrase string) error {
 	return nil
 }
 
-// KeyPlace is a format's engine and where its own keys are, for Settings.
+// KeyPlace is where a format's keys are, for Settings.
 type KeyPlace struct {
 	Engine string `json:"engine"`
-	Store  string `json:"store,omitempty"`
+	Store  string `json:"store"`
 	Vault  string `json:"vault,omitempty"`
-	// Ready: the keys can be used now; Locked: the place must be unlocked
-	// first; Problem why not, otherwise. All three are of comms-mail's own
-	// keys' place, while it has one.
+	// Ready: the keys can be used now; Locked: their place must be
+	// unlocked first; Problem why not, otherwise.
 	Ready   bool   `json:"ready,omitempty"`
 	Locked  bool   `json:"locked,omitempty"`
 	Problem string `json:"problem,omitempty"`
@@ -609,12 +528,14 @@ type KeyPlace struct {
 // keyPlace is format's KeyPlace.
 func (s *LocalStore) keyPlace(format string) KeyPlace {
 	c := s.keyChoice(format)
-	p := KeyPlace{Engine: c.engine(), Store: c.Store, Vault: c.Vault}
-	st := s.keyStoreAt(format, c)
-	if st == nil {
-		return p
+	p := KeyPlace{Engine: c.engine(), Store: firstNonEmpty(c.Store, StoreSecretVault), Vault: c.svVault()}
+	var err error
+	if p.Engine == EngineOwn {
+		err = s.keyStore(format).Ready()
+	} else {
+		err = svVaultReady(p.Vault)
 	}
-	switch err := st.Ready(); {
+	switch {
 	case err == nil:
 		p.Ready = true
 	case errors.Is(err, ErrLocked):

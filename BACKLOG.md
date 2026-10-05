@@ -73,10 +73,6 @@ new ones turn up.
   (`mail.inspect`), then Sign / Encrypt when writing (`mail.compose`),
   then keys in Settings. comms-mail uses secretvault's *default* vault; a
   setting for another is not there yet.
-- **secretvault: keys and the passwords' vault** — signing, decrypting
-  and your keys use secretvault's default vault; with the passwords in
-  another, comms-mail follows that vault's lock for both, so a locked
-  passwords vault holds signing back too.
 - **Edit account: Test connection** — with the password left empty it
   checks only that the server answers; testing with the saved password
   needs the daemon to probe by account id.
@@ -96,14 +92,14 @@ new ones turn up.
   opened, not as it arrives; the list has no signed / encrypted mark; an
   encrypted message cannot have Bcc recipients; the Write window cannot
   say before Send which recipients lack a key (asked of secretvault).
-- **PGP and S/MIME** — each format by secretvault or by comms-mail's own
-  engine, chosen in Settings › Security › Keys (decided 2026-10-04, done
-  the same day; the 2026-10-03 "secretvault only" now its default). Built
-  in: OpenPGP with ProtonMail's go-crypto, S/MIME with our own CMS
-  (`internal/cms`, standard library only); its private keys kept where
-  you choose, like the passwords and apart from them. secretvault no
-  longer needs to keep the passwords to do the crypto: its daemon running
-  is enough. Left for the built-in engine: no key lookup beyond mail and
+- **PGP and S/MIME** — each format's keys kept where chosen in Settings ›
+  Security › Keys (decided 2026-10-04, done the same day; the 2026-10-03
+  "secretvault only" now the default): in Secret Vault, secretvault keeps
+  them and does the work, in the vault chosen for them; in the keyring,
+  the encrypted file or a plain file, comms-mail does it — OpenPGP with
+  ProtonMail's go-crypto, S/MIME with our own CMS (`internal/cms`,
+  standard library only). secretvault no longer needs to keep the
+  passwords to do the crypto: its daemon running is enough. Left for the built-in engine: no key lookup beyond mail and
   files (WKD, keyservers, LDAP); certificate revocation (CRL, OCSP) is not
   checked; no key expiry or renewal reminders; one OpenPGP key per
   address is used (the newest); attachments inside an encrypted message

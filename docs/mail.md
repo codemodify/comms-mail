@@ -640,18 +640,21 @@ comms-mail tells signed and encrypted mail apart by its structure —
 PGP/MIME (`multipart/signed`, `multipart/encrypted`), S/MIME (detached
 `smime.p7s`, opaque or enveloped `smime.p7m`) and inline OpenPGP.
 Checking a signature, judging whose key made it, decrypting, signing and
-encrypting are done, **format by format**, by the engine chosen in
-**Settings › Security › Keys** — apart from where the passwords are kept:
+encrypting are done, **format by format**, by whoever keeps the keys —
+chosen in **Settings › Security › Keys** among the places the passwords
+can be, and apart from them:
 
-| | **Secret Vault** (the default) | **Built into comms-mail** |
+| | **Secret Vault** (the default) | **System Keyring, Encrypted file, Plain file** |
 | --- | --- | --- |
-| Who does the work | secretvault, in its own daemon (`mail.inspect`, `mail.compose`) | comms-maild itself: OpenPGP with ProtonMail's go-crypto, S/MIME with comms-mail's own CMS (`internal/cms`, standard library only) |
-| Your private keys | in secretvault; comms-mail never holds one | where you choose, like the passwords and independently of them: System Keyring, a Secret Vault vault (Default or Custom), the encrypted file, or a plain file (`keys.json` beside `mail.json`) |
+| Who does the work | secretvault, in its own daemon (`mail.inspect`, `mail.compose`), with the keys in the vault chosen for them — its default, or a Custom one (asked for when it is not there) | comms-maild itself: OpenPGP with ProtonMail's go-crypto, S/MIME with comms-mail's own CMS (`internal/cms`, standard library only) |
+| Your private keys | in secretvault; comms-mail never holds one | in that place (the plain file is `keys.json` beside `mail.json`) |
 | Other people's keys | secretvault's contacts | comms-mail's own list: OpenPGP keys from Autocrypt headers and attached keys (first seen in mail), S/MIME certificates from signed mail whose certificate holds, and what you bring in from a file |
 | Trust | secretvault's verdicts (in person, organisation, published, …) | OpenPGP: your own key, a key you brought in (verified), or first seen in mail (not verified); a key for another address than From is someone else's. S/MIME: a certificate issued, through the certificates the message carries, by an authority this computer trusts, for the From address — or one you brought in |
 
-The two formats are chosen separately, so OpenPGP can be comms-mail's own
-while secretvault does S/MIME, or the other way round. Your keys and the
+The two formats are chosen separately, so OpenPGP's keys can be
+comms-mail's while secretvault does S/MIME, or the other way round, and
+each format's secretvault vault is its own (whether it is locked is that
+vault's, not the passwords'). Your keys and the
 passwords can share a place: each keeps to its own names there
 (`pass/…`, `oauth/…`, `keys/<format>/…`), moving one never takes the
 other with it, and the encrypted file — one file, one passphrase, for
@@ -698,13 +701,15 @@ are in the data folder, `keys/index.json`.
 Your keys — **Settings › Security › Keys**, OpenPGP and S/MIME a page
 each (switched at the top), asked again each time it shows:
 
-- **Who signs, encrypts, checks and opens:** *Built into comms-mail*,
-  with where its keys are kept — the same places as the passwords, each
-  with its path and a green check on the one in use; the encrypted file
-  asks a new passphrase twice, or, when it already keeps other secrets,
-  its own passphrase if it is not open — or *Secret Vault*. **Apply** makes
-  it so, moving comms-mail's own keys to a new place (written there first,
-  taken out of the old one last). Keys secretvault keeps stay in it.
+- **Where the keys are:** the same places as the passwords, each with its
+  path and a green check on the one in use — *Secret Vault (keeps the keys
+  and does the work)*, with Default or Custom, or a place of comms-mail's,
+  where it does the work itself. The encrypted file asks a new passphrase
+  twice, or, when it already keeps other secrets, its own passphrase if it
+  is not open. **Apply** makes it so, moving comms-mail's own keys to a new
+  place of its own (written there first, taken out of the old one last).
+  Choosing Secret Vault leaves them where they are, for when a place of
+  comms-mail's is chosen again; keys secretvault keeps stay in it.
 - **Your keys,** for each address you send from: the OpenPGP key and the
   S/MIME certificates. With secretvault, comms-mail asks it about those
   addresses only (`pgp.public`, `smime.list`) and never holds a private

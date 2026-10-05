@@ -376,7 +376,7 @@ func (s *Server) dispatch(req Request) Response {
 		case MethodKeysView:
 			result = ls.KeysView(p.Format)
 		case MethodKeysUse:
-			err = ls.UseKeys(p.Format, p.Engine, p.Store, string(p.Passphrase), p.Vault)
+			err = ls.UseKeys(p.Format, p.Store, string(p.Passphrase), p.Vault)
 			clear(p.Passphrase)
 		case MethodKeysUnlock:
 			err = ls.UnlockKeys(p.Format, string(p.Passphrase))

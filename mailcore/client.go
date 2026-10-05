@@ -361,12 +361,13 @@ func (c *Client) KeysView(format string) (KeysView, error) {
 	return r, err
 }
 
-// UseKeys has engine do format's work and, for comms-mail's own, keeps its
-// keys in store (vault: secretvault's vault, "" its default; passphrase
-// for the encrypted file, wiped once sent).
-func (c *Client) UseKeys(format, engine, store, vault string, passphrase []byte) error {
+// UseKeys keeps format's keys in store — Secret Vault, where secretvault
+// does the work (vault: its vault for them, "" its default), or a place of
+// comms-mail's, where it does (passphrase for the encrypted file, wiped
+// once sent).
+func (c *Client) UseKeys(format, store, vault string, passphrase []byte) error {
 	defer clear(passphrase)
-	return c.call(MethodKeysUse, keysParams{Format: format, Engine: engine, Store: store, Vault: vault, Passphrase: passphrase}, nil)
+	return c.call(MethodKeysUse, keysParams{Format: format, Store: store, Vault: vault, Passphrase: passphrase}, nil)
 }
 
 // UnlockKeys opens where comms-mail keeps format's keys, for this run.

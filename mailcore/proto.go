@@ -246,7 +246,6 @@ type makePGPParams struct {
 // keysParams are a keys.* call's: the format, and what the call needs.
 type keysParams struct {
 	Format     string `json:"format"`
-	Engine     string `json:"engine,omitempty"`
 	Store      string `json:"store,omitempty"`
 	Vault      string `json:"vault,omitempty"`
 	Passphrase []byte `json:"passphrase,omitempty"`

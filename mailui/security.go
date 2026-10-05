@@ -83,7 +83,7 @@ func (p *securityPart) show(sec mailcore.MessageSecurity) {
 	}
 	p.unlock.SetVisible(sec.Locked)
 	p.keysFormat = sec.KeysLocked
-	p.unlockKeys.SetVisible(sec.KeysLocked != "")
+	p.unlockKeys.SetVisible(sec.KeysLocked != "" && !sec.Locked)
 	p.view.SetVisible(len(p.lines.Children()) > 0 || sec.Locked || sec.KeysLocked != "")
 	p.view.RequestLayout()
 }
@@ -247,8 +247,13 @@ func (r *reader) unlockKeys() {
 // unlockSecretVault asks secretvault to unlock (with its own prompt), then
 // checks the message showing again.
 func (r *reader) unlockSecretVault() {
-	m := r.msg
-	r.s.async(func() (any, error) { return nil, r.s.cli.UnlockSecrets("") }, func(_ any, err error) {
+	m, format := r.msg, r.sec.keysFormat
+	r.s.async(func() (any, error) {
+		if format != "" {
+			return nil, r.s.cli.UnlockKeys(format, nil) // the vault the keys are in
+		}
+		return nil, r.s.cli.UnlockSecrets("")
+	}, func(_ any, err error) {
 		if err != nil {
 			widgets.Warn(r.view, "secretvault", "secretvault stayed locked: "+err.Error(), nil)
 			return

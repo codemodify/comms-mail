@@ -30,7 +30,7 @@ type KeysView struct {
 func (s *LocalStore) KeysView(format string) KeysView {
 	out := KeysView{Format: format, Place: s.keyPlace(format)}
 	if out.Place.Engine == EngineSecretVault {
-		ok := s.OwnKeys()
+		ok := s.svOwnKeys(format)
 		out.Available, out.Locked, out.Why = ok.Available, ok.Locked, ok.Why
 		for _, ak := range ok.Addresses {
 			a := AddressKeys{Address: ak.Address}
@@ -84,10 +84,11 @@ func certWarnings(e KeyEntry) []string {
 	return w
 }
 
-// ownEngine says format is comms-mail's own, or says why not.
+// ownEngine says format's keys are in a place of comms-mail's, or says why
+// not.
 func (s *LocalStore) ownEngine(format string) error {
 	if s.engineOf(format) != EngineOwn {
-		return fmt.Errorf("secretvault does %s here", formatName(format))
+		return fmt.Errorf("the %s keys are in secretvault, which does that itself", formatName(format))
 	}
 	return nil
 }
