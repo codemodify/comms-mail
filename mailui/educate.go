@@ -151,30 +151,50 @@ func domainStep(l lesson) step {
 	return step{title, points, tags}
 }
 
-// throughStep is 8: what gets through anyway.
+// throughStep is 8: what gets through anyway, and what catches it.
 func throughStep(l lesson) step {
 	points := []point{
-		pt("acrne.com, posing as your supplier acme.com",
+		pt("acrne.com, posing as your acme.com",
 			"\"rn\" reads as \"m\""),
 		pt("Its own SPF, DKIM and DMARC: all pass",
-			"The attacker owns that domain"),
+			"The attacker owns that domain",
+			"They prove the domain, not the person"),
 		pt("A real account, broken into: passes too"),
 	}
 	if !l.dmarc {
 		points = append(points, pt("Without DMARC: your exact domain, forged",
 			"From: you@yourdomain, sent by anyone"))
 	}
-	points = append(points,
-		pt("Checks prove the domain, not the person"),
-		pt("Confirm payment changes another way"),
+	// What catches it.
+	sign := pt("Your OpenPGP or S/MIME signature proves you",
+		"Verified with a key TARGET knows is yours",
+		"A look-alike has no such key",
+		"Nor a broken-into mailbox: your key is not there")
+	if l.signed {
+		sign.sub = append(sign.sub, "Yours are signed: an unsigned one stands out")
+	} else {
+		sign.sub = append(sign.sub, "Yours are not signed: nothing tells them apart")
+	}
+	points = append(points, sign,
+		pt("comms-mail warns of a look-alike domain",
+			"One close to a domain you write to",
+			"Or in letters of another alphabet"),
+		pt("BIMI: a brand's verified logo by its mail",
+			"Only with DMARC enforced and a mark certificate",
+			"A look-alike gets none; not all apps show it"),
+		pt("Confirm payment changes another way",
+			"A number you already have, not the mail's"),
 		pt("Distrust attachments and links you did not expect"))
-	return step{"What gets through anyway", points, one("SPF", "DKIM", "DMARC")}
+	return step{"What gets through, and what catches it", points,
+		[][]string{alt("SPF"), alt("DKIM"), alt("DMARC"), alt("OpenPGP", "S/MIME"), alt("BIMI")}}
 }
 
 // submitStep is 2: comms-mail hands it to YOUR SERVER.
 func submitStep(tls bool) step {
 	if !tls {
 		return step{"comms-mail hands it to YOUR SERVER", []point{
+			pt("First, DNS gives YOUR SERVER's address",
+				"A forged answer leads elsewhere, unnoticed"),
 			pt("SMTP in the clear: TCP port 587, or 25"),
 			pt("Anyone on the network can read and change it"),
 			pt("Signs in: password, or OAuth token",
@@ -185,6 +205,8 @@ func submitStep(tls bool) step {
 		}, [][]string{alt("SMTP:TCP:587", "SMTP:TCP:25"), alt("Password", "OAuth")}}
 	}
 	return step{"comms-mail hands it to YOUR SERVER", []point{
+		pt("First, DNS gives YOUR SERVER's address",
+			"A forged answer fails the certificate check"),
 		pt("SMTP inside TLS from the start: TCP port 465"),
 		pt("Or SMTP with STARTTLS: TCP port 587",
 			"Starts plain, then upgrades to TLS",
@@ -204,6 +226,8 @@ func submitStep(tls bool) step {
 func fetchStep(tls bool) step {
 	if !tls {
 		return step{"TARGET fetches it", []point{
+			pt("First, DNS gives TARGET SERVER's address",
+				"A forged answer leads elsewhere, unnoticed"),
 			pt("IMAP (TCP 143): stays on the server, synced"),
 			pt("POP3 (TCP 110): downloaded to one device"),
 			pt("In the clear: the sign-in and the message",
@@ -211,6 +235,8 @@ func fetchStep(tls bool) step {
 		}, [][]string{alt("IMAP:TCP:143", "POP3:TCP:110")}}
 	}
 	return step{"TARGET fetches it", []point{
+		pt("First, DNS gives TARGET SERVER's address",
+			"A forged answer fails the certificate check"),
 		pt("Signs in, over TLS"),
 		pt("IMAP (TCP 993): stays on the server, synced"),
 		pt("POP3 (TCP 995): downloaded to one device"),
@@ -421,7 +447,8 @@ func problems(l lesson) []problem {
 	var out []problem
 	add := func(text string, sub ...string) { out = append(out, problem{text, sub}) }
 	if !l.signed {
-		add("Not signed: nothing proves you wrote it")
+		add("Not signed: nothing proves you wrote it",
+			"A look-alike passes as you: step 8")
 	}
 	if !l.encrypted {
 		add("Not encrypted: every server on the way reads it",
@@ -469,7 +496,7 @@ func problemList(ps []problem) widget.Component {
 		ok.Tone = widgets.ToneSuccess
 		row := widgets.NewRow(ok).WithGap(6).WithAlign(layout.AlignStart)
 		says := widgets.NewColumn(wrapLabel("Nothing on the way reads or changes it"))
-		hint := wrapLabel("Look-alikes still get through: step 8")
+		hint := wrapLabel("Look-alikes still get through: step 8 says what catches them")
 		hint.Tone = widgets.ToneMuted
 		says.Add(hint)
 		row.AddFlex(says, 1)
@@ -576,7 +603,7 @@ func educateSection() widget.Component {
 	show()
 	side := widgets.NewColumn(widgets.NewTitle("What goes wrong"), wrong).WithGap(10)
 	slot := widgets.NewColumn()
-	words := widgets.NewColumn(ticks, slot, widgets.NewTitle("Step by step"), stepTabs).WithGap(14)
+	words := widgets.NewColumn(ticks, slot, stepTabs).WithGap(14)
 	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), side, slot, scene, words)
 }
 

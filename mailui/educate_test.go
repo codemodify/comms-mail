@@ -375,30 +375,48 @@ func TestEducateIsOnePicture(t *testing.T) {
 			if !slices.Equal(gone, off) {
 				t.Errorf("at %d, %+v: drawn as missing %v, want %v", width, les, gone, off)
 			}
-			wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags, "dns": dnsTagsFor(les)}
+			wantTags := map[string][][]string{"e2e": steps[0].tags, "2": steps[1].tags, "4": steps[3].tags, "6": steps[5].tags}
+			// DNS in two: TARGET's domain's MX, your domain's SPF, DKIM
+			// and DMARC.
+			for _, grp := range dnsTagsFor(les) {
+				in := "dnsY"
+				if grp[0] == "MX" {
+					in = "dnsT"
+				}
+				wantTags[in] = append(wantTags[in], grp)
+			}
 			if !les.signed && !les.encrypted {
 				delete(wantTags, "e2e")
 				if slices.ContainsFunc(g.lines, func(l routeLine) bool { return l.ink == inkAccent }) {
 					t.Errorf("at %d: a plain message, drawn end to end", width)
 				}
 			}
-			// Red where it goes wrong: the connections without TLS, DNS's
-			// line to your server without MX, to theirs without any of
-			// SPF, DKIM and DMARC.
+			// Red where it goes wrong: the connections without TLS. No
+			// other lines but the one from YOU to TARGET.
 			for _, l := range g.lines {
 				switch {
 				case l.head && l.ink != inkAccent && stepOf[l] >= 2 && stepOf[l] <= 6:
 					if (l.ink == inkBad) != !les.tls {
 						t.Errorf("at %d, %+v: step %d's connection red: %v", width, les, stepOf[l], l.ink == inkBad)
 					}
-				case l.dashed && l.ink != inkAccent && l.b.Y < l.a.Y:
-					if (l.ink == inkBad) != !les.mx {
-						t.Errorf("at %d, %+v: the MX lookup red: %v", width, les, l.ink == inkBad)
-					}
 				case l.dashed && l.ink != inkAccent:
-					if (l.ink == inkBad) != (!les.spf || !les.dkim || !les.dmarc) {
-						t.Errorf("at %d, %+v: the checks' lookup red: %v", width, les, l.ink == inkBad)
-					}
+					t.Errorf("at %d: a dotted line %v to %v", width, l.a, l.b)
+				}
+			}
+			// Each DNS by the server that asks it: TARGET's domain's over
+			// YOUR SERVER or beside it, your domain's over TARGET SERVER.
+			var pills []routeDisc
+			for _, dc := range g.discs {
+				if dc.text == dnsName {
+					pills = append(pills, dc)
+				}
+			}
+			if len(pills) != 2 || !(pills[0].c.Y < g.y1 || pills[0].c.X > g.R) || pills[0].c.Y >= pills[1].c.Y || pills[1].c.Y <= g.y1 || pills[1].c.Y >= g.y2 || pills[1].c.X <= g.R {
+				t.Errorf("at %d: DNS drawn at %v, YOUR SERVER at %v,%v, TARGET SERVER at %v,%v", width, pills, g.R, g.y1, g.R, g.y2)
+			}
+			for _, cap := range []string{theirsDNS, yoursDNS} {
+				if !slices.ContainsFunc(g.texts, func(tx placedText) bool { return tx.text == cap && tx.muted }) {
+					t.Errorf("at %d: no %q over its DNS", width, cap)
 				}
 			}
 			if forged := slices.ContainsFunc(g.texts, func(tx placedText) bool { return tx.text == "or your domain" && tx.bad }); forged != !les.dmarc {
@@ -590,11 +608,11 @@ func TestEducatePinsThePicture(t *testing.T) {
 	page := educateSection().(*educatePage)
 	w.SetContent(page)
 	a.PumpOnce()
-	var title *widgets.Label
+	var steps *widgets.TabView
 	var key *symbolItem
 	widget.Walk(page, func(c widget.Component) {
-		if l, ok := c.(*widgets.Label); ok && l.Text == "Step by step" {
-			title = l
+		if v, ok := c.(*widgets.TabView); ok && steps == nil {
+			steps = v
 		}
 		if k, ok := c.(*symbolItem); ok && key == nil {
 			key = k
@@ -610,7 +628,7 @@ func TestEducatePinsThePicture(t *testing.T) {
 		}
 		page.scroll.ScrollTo(0)
 		a.PumpOnce()
-		scene, words, legend := widget.DeviceOrigin(page.scene), widget.DeviceOrigin(title), widget.DeviceOrigin(key)
+		scene, words, legend := widget.DeviceOrigin(page.scene), widget.DeviceOrigin(steps), widget.DeviceOrigin(key)
 		page.scroll.ScrollTo(150)
 		a.PumpOnce()
 		if page.scroll.OffsetY == 0 {
@@ -622,7 +640,7 @@ func TestEducatePinsThePicture(t *testing.T) {
 		if moved := widget.DeviceOrigin(key) != legend; moved == tall {
 			t.Errorf("tall %v: what the symbols mean moved with the words: %v", tall, moved)
 		}
-		if widget.DeviceOrigin(title) == words {
+		if widget.DeviceOrigin(steps) == words {
 			t.Errorf("tall %v: the words stayed where they were", tall)
 		}
 	}
