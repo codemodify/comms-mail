@@ -13,30 +13,38 @@ import (
 	"github.com/codemodify/uitoolkit/icons"
 )
 
-// comms-mail's logo (logo.png at the top of the source), at the sizes a
-// desktop asks for: the window icon its task bar, title bar and switcher
-// show, and the tray's.
+// comms-mail's logo (logo-normal.png at the top of the source), at the
+// sizes a desktop asks for: the window icon its task bar, title bar and
+// switcher show, and the tray's; and the logo in a seal
+// (logo-new-mail.png), the tray's while new mail waits to be seen.
 
-var logo struct {
+// logoArt is one of the logos, read once.
+type logoArt struct {
+	png    []byte
 	once   sync.Once
 	master *image.RGBA // the logo, square, logoMaster pixels across
 }
+
+var (
+	logo        = &logoArt{png: commsmail.Logo}
+	newMailLogo = &logoArt{png: commsmail.LogoNewMail}
+)
 
 // logoMaster is the size every icon is made from: the 1100-pixel logo is
 // read once, into this, and each size from it.
 const logoMaster = 256
 
-func logoSource() *image.RGBA {
-	logo.once.Do(func() {
-		src, err := png.Decode(bytes.NewReader(commsmail.Logo))
+func (l *logoArt) source() *image.RGBA {
+	l.once.Do(func() {
+		src, err := png.Decode(bytes.NewReader(l.png))
 		if err != nil {
 			return
 		}
 		rgba := image.NewRGBA(src.Bounds()) // premultiplied, read directly
 		draw.Draw(rgba, rgba.Bounds(), src, src.Bounds().Min, draw.Src)
-		logo.master = scaleSquare(rgba, logoMaster)
+		l.master = scaleSquare(rgba, logoMaster)
 	})
-	return logo.master
+	return l.master
 }
 
 // AppIcons is the logo at every size a window icon is asked for
@@ -44,16 +52,16 @@ func logoSource() *image.RGBA {
 func AppIcons() []*paintengine2d.Image {
 	var out []*paintengine2d.Image
 	for _, side := range icons.AppIconSizes {
-		if img := logoAt(side); img != nil {
+		if img := logo.at(side); img != nil {
 			out = append(out, img)
 		}
 	}
 	return out
 }
 
-// logoAt is the logo side pixels square, or nil if it cannot be read.
-func logoAt(side int) *paintengine2d.Image {
-	src := logoSource()
+// at is the logo side pixels square, or nil if it cannot be read.
+func (l *logoArt) at(side int) *paintengine2d.Image {
+	src := l.source()
 	if src == nil || side <= 0 {
 		return nil
 	}

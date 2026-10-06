@@ -14,8 +14,8 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
 #2 (declined and settled), #29 (a design change), #47, #48, #49 and #50
-(found 2026-10-04), #51 (found 2026-10-05), and #52 and #53 (found
-2026-10-06). What comms-mail uses for each closed item is under
+(found 2026-10-04), #51 (found 2026-10-05), and #52, #53 and #54
+(found 2026-10-06). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 **v0.23.4** (2026-10-04) closes none of them: every open item was
@@ -247,6 +247,26 @@ stem with a vector for the drawn sets (`style.RegisterIcon(stem, draw)`),
 that the user's file sets can still replace by stem.
 
 Found 2026-10-06 against 0.23.4.
+
+### 54. A window tells no one when it takes or loses the focus
+comms-mail's tray shows the logo in a seal while new mail waits to be
+seen, and puts the plain logo back when the window takes the focus.
+`Window.Active` says whether it has the focus (app/window.go:520 in
+0.23.3, :538 in 0.23.4), but nothing says when that changes: `setActive`
+(:524 / :542), reached from the desktop's activated state and from
+focus in and out, repaints the window and calls nothing else. The
+window's hooks are `OnMove`, `OnResize`, `OnLockKeys`, `OnSecureInput`,
+`SetOnCaptionDrag` and `SetOnCloseRequest`, and the application's
+`OnLookChange`; none is for the focus.
+comms-mail's root component checks `widget.WindowActive` each time it
+paints, since `setActive` repaints the whole window (mailui/tray.go,
+`mailSeen`; mailui/keys.go, `shortcutRoot.painted`): a check on every
+frame, which works only while the toolkit repaints on the change.
+**Fix asked for:** `Window.OnActiveChange(func(active bool))`, called
+from `setActive` when the state changes (Qt's `QEvent::WindowActivate`,
+GTK's `notify::is-active`, Win32's `WM_ACTIVATE`).
+
+Found 2026-10-06 against 0.23.3 and 0.23.4.
 
 ## Resolved
 

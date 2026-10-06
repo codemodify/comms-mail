@@ -65,7 +65,7 @@ func main() {
 	// X11's WM_CLASS), whatever the binary is called.
 	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: *headless, WatchLook: true, AppID: "comms-mail"})
 	// The window icon the desktop shows in its title bar, task bar and
-	// switcher: comms-mail's logo (logo.png).
+	// switcher: comms-mail's logo (logo-normal.png).
 	a.SetIcon(mailui.AppIcons()...)
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, MinWidth: 860, MinHeight: 560,

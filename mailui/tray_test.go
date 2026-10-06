@@ -12,6 +12,7 @@ import (
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
+	"github.com/codemodify/uitoolkit/widgets"
 )
 
 func TestMailTrayFakeClickRaises(t *testing.T) {
@@ -202,5 +203,72 @@ func TestFormatNewMailNoticeUsesSender(t *testing.T) {
 	}
 	if title == "New mail" && strings.Contains(body, "new message") {
 		t.Fatalf("demo inbox should yield sender/subject, got %q %q", title, body)
+	}
+}
+
+// New mail puts the logo in a seal in the tray until the window is looked
+// at: it takes the focus, or is opened from the tray or the notification.
+// Painted without the focus, it has not been seen.
+func TestTrayShowsNewMailUntilSeen(t *testing.T) {
+	t.Setenv("UITK_TRAY", "fake")
+	item, err := platform.NewStatusItem(platform.StatusItemOptions{Icon: trayIcon(false)})
+	tray, _ := item.(*platform.FakeStatusItem)
+	if err != nil || tray == nil {
+		t.Fatalf("fake tray %T %v", item, err)
+	}
+	t.Cleanup(func() { _ = tray.Close() })
+
+	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 320, Height: 200, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &session{app: a, win: w, tray: tray, notes: &recNotifier{}}
+	root := wrapShortcutsReady(widgets.NewColumn(), nil, nil)
+	root.painted = s.mailSeen
+	w.SetContent(root)
+	a.PumpOnce()
+
+	// The seal's rim is where the plain logo is clear, above its disc.
+	sealed := func() bool {
+		img := tray.Icon().Image
+		if img == nil || img.Width != trayIconSize {
+			t.Fatalf("tray icon %v: want a %d px picture", img != nil, trayIconSize)
+		}
+		_, _, _, al := img.PremulAt(trayIconSize/2, 3)
+		return al != 0
+	}
+	if sealed() {
+		t.Fatal("the tray starts with the new-mail logo")
+	}
+
+	w.Inject(platform.Event{Kind: platform.EventFocusOut})
+	a.PumpOnce()
+	s.onDaemonEvent(mailcore.Event{Method: mailcore.EventNotify, Title: "Ada Lovelace"})
+	a.PumpOnce()
+	if !sealed() || !s.newMailWaiting() {
+		t.Fatal("new mail, behind another window: the tray keeps the plain logo")
+	}
+	root.Invalidate()
+	a.PumpOnce()
+	a.DrainPosted()
+	if !sealed() {
+		t.Fatal("a paint without the focus counted as seeing the mail")
+	}
+	w.Inject(platform.Event{Kind: platform.EventFocusIn})
+	a.PumpOnce()
+	a.DrainPosted() // what the paint posted, as the run loop's next turn would
+	if sealed() || s.newMailWaiting() {
+		t.Fatal("the window took the focus: the tray still shows new mail")
+	}
+
+	w.Hide()
+	s.onDaemonEvent(mailcore.Event{Method: mailcore.EventNotify, Title: "Ada Lovelace"})
+	if !sealed() {
+		t.Fatal("new mail, the window hidden: no new-mail logo")
+	}
+	s.showMain()
+	if sealed() {
+		t.Fatal("opened from the tray: the tray still shows new mail")
 	}
 }

@@ -26,13 +26,15 @@ type shortcutRoot struct {
 	onKey   func(widget.KeyEvent) bool
 	onReady func(widget.Component)
 	ready   bool
+	// painted, when set, is called each time the window paints.
+	painted func(widget.Component)
 }
 
 func wrapShortcuts(col *widgets.FlexBox, on func(widget.KeyEvent) bool) widget.Component {
 	return wrapShortcutsReady(col, on, nil)
 }
 
-func wrapShortcutsReady(col *widgets.FlexBox, on func(widget.KeyEvent) bool, ready func(widget.Component)) widget.Component {
+func wrapShortcutsReady(col *widgets.FlexBox, on func(widget.KeyEvent) bool, ready func(widget.Component)) *shortcutRoot {
 	s := &shortcutRoot{onKey: on, onReady: ready}
 	s.Init(s)
 	if col != nil {
@@ -59,7 +61,11 @@ func (s *shortcutRoot) Arrange(r paintengine2d.Rect) {
 	}
 }
 
-func (s *shortcutRoot) Paint(*paintengine2d.Context) {}
+func (s *shortcutRoot) Paint(*paintengine2d.Context) {
+	if s.painted != nil {
+		s.painted(s)
+	}
+}
 
 func (s *shortcutRoot) KeyPress(e widget.KeyEvent) bool {
 	if s.onKey != nil && s.onKey(e) {

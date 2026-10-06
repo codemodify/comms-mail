@@ -124,6 +124,7 @@ type session struct {
 	trayMu     sync.Mutex
 	tray       platform.StatusItem
 	notes      mailNotifier
+	newMail    bool // the tray shows the new-mail logo (trayMu)
 	// The title bar (titlebar.go): empty over the folder pane (its
 	// StartWidth, from where the pages land), then the app menu's button
 	// and Fetch / Write / Search, then the tabs.
@@ -437,10 +438,12 @@ func (s *session) build() widget.Component {
 	s.refreshAll()
 	// Once laid out (the look known), the window's minimum width follows
 	// what the panes need, then a first run offers to add an account.
-	return wrapShortcutsReady(root, s.handleKey, func(c widget.Component) {
+	r := wrapShortcutsReady(root, s.handleKey, func(c widget.Component) {
 		fitMinWidth(s.win, c)
 		s.maybeAskAddAccount(c)
 	})
+	r.painted = s.mailSeen
+	return r
 }
 
 // appMenuItems is the app menu: View, Notify, Settings, Quit. Its button

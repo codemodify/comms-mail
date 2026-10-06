@@ -7,6 +7,7 @@ import (
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
+	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
@@ -28,9 +29,7 @@ func (s *session) attachTray() {
 			Title:      "Mail",
 			Tooltip:    "Mail",
 			MenuChrome: platform.HostMenu,
-			// The logo, as a picture: a tray host given a theme name too
-			// would draw its theme's icon instead.
-			Icon: platform.StatusIcon{Image: logoAt(trayIconSize)},
+			Icon:       trayIcon(false),
 			Menu: app.StatusMenuFromItems([]*widgets.MenuItem{
 				widgets.ItemIcon(style.IconMail, "Show Mail", s.showMain),
 				widgets.Sep(),
@@ -95,6 +94,52 @@ func (s *session) setStatusItem(it platform.StatusItem) {
 	s.tray = it
 	s.trayMu.Unlock()
 }
+
+// trayIcon is the tray's picture: the logo, or the logo in a seal while
+// new mail waits to be seen. Pictures, not theme names: a tray host given
+// a name too would draw its theme's icon instead.
+func trayIcon(newMail bool) platform.StatusIcon {
+	if newMail {
+		return platform.StatusIcon{Image: newMailLogo.at(trayIconSize)}
+	}
+	return platform.StatusIcon{Image: logo.at(trayIconSize)}
+}
+
+// setNewMail puts the new-mail logo in the tray, or the logo back. Any
+// goroutine may call it; the icon is set under the lock, so two calls
+// cannot leave the tray showing the older one.
+func (s *session) setNewMail(on bool) {
+	s.trayMu.Lock()
+	defer s.trayMu.Unlock()
+	if s.newMail == on {
+		return
+	}
+	s.newMail = on
+	if s.tray != nil {
+		_ = s.tray.SetIcon(trayIcon(on))
+	}
+}
+
+func (s *session) newMailWaiting() bool {
+	s.trayMu.Lock()
+	defer s.trayMu.Unlock()
+	return s.newMail
+}
+
+// mailSeen is called whenever the window paints: uitoolkit repaints all of
+// it when it takes the focus, and tells nothing else that it did
+// (uitoolkit-gaps.md #54). Painted with the focus, new mail has been seen.
+func (s *session) mailSeen(root widget.Component) {
+	if s.newMailWaiting() && widget.WindowActive(root) {
+		s.post(func() { s.setNewMail(false) })
+	}
+}
+
+// windowInFront reports whether the window is open and has the focus, so
+// new mail is seen as it comes. UI goroutine only.
+func (s *session) windowInFront() bool {
+	return s.win != nil && !s.win.Closed() && s.win.Visible() && s.win.Active()
+}
 func (s *session) listenDaemon() {
 	if s.cli == nil || s.refresher != nil {
 		return
@@ -146,6 +191,7 @@ func (s *session) showMain() {
 	}
 	s.win.Show()
 	s.win.Raise()
+	s.setNewMail(false)
 }
 func (s *session) quitFromTray() {
 	s.commitUndoNow()
@@ -192,6 +238,16 @@ func (s *session) onDaemonEvent(ev mailcore.Event) {
 			// than stacked (Thunderbird's and KMail's way); this runs on
 			// the daemon's event goroutine, so the D-Bus call may wait.
 			_, _ = n.Send(newMailNotification(title, ev.Body, s.showMain))
+		}
+		// The tray wears the new-mail logo until the window is looked at,
+		// unless it is being looked at now. With no loop running there is
+		// no window to look at.
+		if !s.postLive(func() {
+			if !s.windowInFront() {
+				s.setNewMail(true)
+			}
+		}) {
+			s.setNewMail(true)
 		}
 		if s.refresher != nil {
 			s.refresher.request()
