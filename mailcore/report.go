@@ -54,6 +54,8 @@ type SecurityReport struct {
 	DKIM []DKIMSignature `json:"dkim,omitempty"`
 	// Autocrypt: the message carries its sender's OpenPGP key.
 	Autocrypt bool `json:"autocrypt,omitempty"`
+	// Route is the way it came, first hop first (route.go).
+	Route []RouteHop `json:"route,omitempty"`
 }
 
 // AuthCheck is one result of an Authentication-Results header.
@@ -488,27 +490,44 @@ func (s *LocalStore) SecurityReport(id MessageID) (SecurityReport, error) {
 	if err != nil {
 		return SecurityReport{}, err
 	}
-	r := SecurityReportOf(raw)
-	r.Sender, r.Trust = sc, sc.AuthTrust
+	var provider map[string]bool
 	s.mu.Lock()
 	if i, ok := s.indexLocked(s.resolveLocked(id)); ok {
-		for d := range s.providerDomainsLocked(s.Messages[i].AccountID) {
-			r.Provider = append(r.Provider, d)
-		}
+		provider = s.providerDomainsLocked(s.Messages[i].AccountID)
 	}
 	s.mu.Unlock()
+	r := securityReportFor(raw, provider)
+	r.Sender, r.Trust = sc, sc.AuthTrust
+	for d := range provider {
+		r.Provider = append(r.Provider, d)
+	}
 	sort.Strings(r.Provider)
 	return r, nil
 }
 
 // SecurityReportOf is a raw message's report, with no account to tell its
 // provider by: its sender is checked against nobody.
-func SecurityReportOf(raw []byte) SecurityReport {
+func SecurityReportOf(raw []byte) SecurityReport { return securityReportFor(raw, nil) }
+
+// securityReportFor is a raw message's report, provider the organisations
+// your provider's servers go by (none: there is no account to tell by).
+func securityReportFor(raw []byte, provider map[string]bool) SecurityReport {
 	msg, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return SecurityReport{Sender: SenderCheck{Auth: AuthNone}}
 	}
 	h := msg.Header
+	if len(provider) > 0 {
+		// The server that put it in the mailbox is your provider's too.
+		mine := map[string]bool{}
+		for d := range provider {
+			mine[d] = true
+		}
+		if by := deliveredBy(h); by != "" {
+			mine[by] = true
+		}
+		provider = mine
+	}
 	from := decodeRFC2047(h.Get("From"))
 	fromOrg := registrableDomain(domainOf(ExtractAddr(from)))
 	r := SecurityReport{Server: authServerOf(h), Autocrypt: h.Get("Autocrypt") != ""}
@@ -553,5 +572,6 @@ func SecurityReportOf(raw []byte) SecurityReport {
 	for _, v := range h["Dkim-Signature"] {
 		r.DKIM = append(r.DKIM, dkimSignature(v, fromOrg, r.Checks))
 	}
+	r.Route = routeOf(h, provider)
 	return r
 }

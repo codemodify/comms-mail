@@ -91,8 +91,9 @@ new ones turn up.
 - **Security in the reading pane** (asked 2026-10-05: everything we can
   say of a message's security) — chips under From and a Security tab, done
   2026-10-05 for what was already worked out (docs/mail.md, Security at a
-  glance). Next, in this order: the route from the `Received` headers (each
-  hop, TLS and cipher where stamped, times); content checks (links whose
+  glance), and the way it came from the `Received` headers (each hop, TLS
+  and cipher where noted, times; done 2026-10-05). Next, in this order:
+  content checks (links whose
   text names another domain, IP / look-alike / punycode links, tracking
   pixels and the hosts the HTML would reach, risky attachments, read
   receipts asked, forms); the sender domain's DMARC policy, MTA-STS, DANE,
@@ -123,15 +124,17 @@ new ones turn up.
   before Send of which recipients can be encrypted to; an Autocrypt header
   on outgoing mail; encrypting to yourself only (for drafts). Publishing
   it is not needed: comms-mail talks to its daemon, not its code.
-  Asked 2026-10-05, for the Security tab, in `mail.inspect`'s report:
-  each encrypted layer's recipients (OpenPGP key IDs or fingerprints,
-  S/MIME issuer and serial or subject key identifier), which are yours and
-  which one opened it, and the cipher and mode (SEIPDv1 with MDC or
-  SEIPDv2 with OCB/GCM; S/MIME AuthEnvelopedData AES-GCM or EnvelopedData
-  AES-CBC; key transport RSA-OAEP, RSA PKCS#1 v1.5 or ECDH); and each
-  signature's creation time, hash, the key's algorithm and size, the
-  key's creation and expiry, and an S/MIME certificate's issuer and
-  validity dates.
+  For the Security tab (2026-10-05): `mail.inspect` already reports each
+  encrypted layer's recipients, the key that opened it, its cipher and
+  integrity, each signature's time, hash and algorithm, the signing
+  subkey, and an S/MIME certificate's issuer, serial, dates and chain —
+  comms-mail is to read them (it reads a few today). Asked of it: the
+  signing key's size and its creation and expiry dates, and a
+  certificate's key algorithm; S/MIME revocation (CRL, OCSP) and the
+  system's roots (both on its roadmap); refreshing contacts' keys from
+  WKD or keyservers, so a revocation reaches them. Already there, to use:
+  `contact.lookup` (LDAP, WKD, keyserver) for a signer whose key you do
+  not have.
 - **Keys from one secretvault vault to another** — done 2026-10-05:
   secretvault answered with `item.move` (its b8a5f52), and Settings ›
   Security › Keys moves a format's keys with it when another of its vaults

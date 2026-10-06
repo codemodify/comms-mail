@@ -619,6 +619,9 @@ stopping for, grey for what is simply not there — as few as say it:
   not verified*, *Signed, unknown key*, *Signature broken*, *Encrypted*,
   *Encrypted, not opened*, *Not encrypted* — or, for most mail, one *Not
   signed or encrypted*;
+- **the way it came** — *TLS on every hop*, *1 hop in the clear*, or *TLS
+  on 2 of 3 hops* where a server did not say (hops inside one organisation
+  do not count);
 - **a weak domain signature** — when the DKIM signature that vouches for
   From's domain uses SHA-1, or signs only the first part of the text
   (`l=`), so more can be added after it.
@@ -635,6 +638,19 @@ its section. The tab has all there is (`messages.report`, and
   met; it asks to reject what fails*, ARC, Microsoft's `compauth`,
   `iprev`, BIMI, `auth`; that a pass proves the domain, not the person;
   and the warnings and notes about the sender.
+- **The way it came** — drawn as Educate draws it, from the `Received`
+  headers read bottom up: each server a disc, the first the sender's app
+  when it signed in to send; each hop an arrow down to the next, green with
+  TLS, red in the clear, grey and dashed inside one organisation, grey
+  where the server did not say — and by it the protocol (`ESMTPS`,
+  `ESMTPSA`, `SMTP`, `LMTP`, Microsoft's), the TLS version and cipher as
+  the server noted them (Gmail's `version=TLS1_3 cipher=…`, Postfix's
+  `using TLSv1.3 with cipher …`, Exim's `(TLS1.3) tls …`, Microsoft's),
+  whether the sender signed in, and when, how long after the hop before.
+  The servers your provider's own wrote — down to the one that took it in
+  from outside — can be believed; the hops under them came with the
+  message, and the tab says how many. TLS 1.0, 1.1 and SSL are warned of,
+  and that TLS hides a hop from the network, not from the servers.
 - **Forwarded on the way** — what each server that passed the message on
   saw as it got it, as it signed it (ARC): a mailing list or a forwarder
   changes a message, which can break its checks. Your provider's own ARC

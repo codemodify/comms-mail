@@ -13,6 +13,7 @@ import (
 	"github.com/codemodify/comms-mail/internal/svtest"
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit"
+	"github.com/codemodify/uitoolkit/a11y"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
@@ -609,5 +610,96 @@ func TestKeysPlaces(t *testing.T) {
 	radios()["Secret Vault"].SetSelected(true)
 	if _, buttons = sectionParts(section); !buttons["Apply"].Enabled() {
 		t.Fatal("Secret Vault again offers no Apply")
+	}
+}
+
+// importedSession is a window on a store holding mails (file name → raw
+// message, with \n line ends), imported from files; and the messages'
+// ids by subject.
+func importedSession(t *testing.T, mails map[string]string) (*session, *app.Application, map[string]mailcore.MessageID) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv(mailcore.EnvConfig, filepath.Join(dir, "mail.json"))
+	st, err := mailcore.NewLocalStoreDir(mailcore.MailConfig{}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	for name, raw := range mails {
+		if err := os.WriteFile(filepath.Join(src, name), []byte(strings.ReplaceAll(raw, "\n", "\r\n")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.ImportLocalMail([]mailcore.LocalMailStore{{Source: "Folder", Name: "Inbox", Path: src, Kind: mailcore.StoreEML}}); err != nil {
+		t.Fatal(err)
+	}
+	sock, stop, err := mailcore.StartStore(context.Background(), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	cli, err := mailcore.DialWait(sock, 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cli.Close() })
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(a, main, cli, AppOptions{})
+	main.SetContent(s.build())
+	folders, _ := cli.ListFolders(mailcore.LocalAccountID)
+	s.selectFolder(folders[0].ID)
+	s.waitIdle()
+	ids := map[string]mailcore.MessageID{}
+	for _, m := range s.rows {
+		ids[m.Subject] = m.ID
+	}
+	return s, a, ids
+}
+
+// The way a message came, from its Received headers: a chip says how
+// many hops were in the clear, and the Security tab draws each hop — the
+// sender's app signing in, a relay in the clear, TLS 1.3 to the provider,
+// and inside it — with the protocol, TLS and cipher, and when.
+func TestTheWayItCame(t *testing.T) {
+	s, a, ids := importedSession(t, map[string]string{"a.eml": "" +
+		"Received: by 2002:a05:7300:d311:b0:1c5:f6de:a6c with SMTP id k4csp1; Mon, 5 Oct 2026 10:00:05 +0000\n" +
+		"Received: from mail.example.com (mail.example.com [203.0.113.5]) by mx.google.com with ESMTPS id x (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384); Mon, 5 Oct 2026 10:00:03 +0000\n" +
+		"Received: from old.relay.example (old.relay.example [192.0.2.1]) by mail.example.com with SMTP id 9; Mon, 5 Oct 2026 10:00:01 +0000\n" +
+		"Received: from [10.0.0.2] (unknown [198.51.100.9]) (Authenticated sender: ann@example.com) by old.relay.example with ESMTPSA id 1; Mon, 5 Oct 2026 10:00:00 +0000\n" +
+		"From: Ann <ann@example.com>\nTo: me@example.org\nSubject: Numbers\n\nHello.\n"})
+	open(s, a, ids["Numbers"])
+	tones, chips := chipsOf(s.rd)
+	i := slices.Index(chips, "1 hop in the clear")
+	if i < 0 || tones[i] != secWarn {
+		t.Fatalf("chips %q %v", chips, tones)
+	}
+	var rv *routeView
+	widget.Walk(s.rd.secView.body, func(c widget.Component) {
+		if v, ok := c.(*routeView); ok {
+			rv = v
+		}
+	})
+	if rv == nil || len(rv.hops) != 4 || len(rv.nodes()) != 5 || rv.nodes()[0].name != "the sender's app" || rv.nodes()[4].note != "your mailbox" {
+		t.Fatalf("route %+v", rv)
+	}
+	var n a11y.Node
+	rv.Describe(&n)
+	for _, want := range []string{"ESMTPSA · TLS · signed in", "SMTP · in the clear", "ESMTPS · TLS 1.3 TLS_AES_256_GCM_SHA384", "inside one organisation"} {
+		if !strings.Contains(n.Name, want) {
+			t.Errorf("the route says %q, not %q", n.Name, want)
+		}
+	}
+	if how, when := hopWords(rv.hops[2], rv.hops[1].At); !strings.Contains(how, "TLS 1.3") || !strings.HasSuffix(when, "2 s later") {
+		t.Errorf("hop 3: %q, %q", how, when)
+	}
+	if tab := securityTab(s.rd); !strings.Contains(tab, "The way it came") || !strings.Contains(tab, "TLS hides a hop from the network") {
+		t.Fatalf("security tab:\n%s", tab)
+	}
+	if hopInk(s.rd.view.Look(), rv.hops[1]) != inksOf(s.rd.view.Look()).bad || hopInk(s.rd.view.Look(), rv.hops[2]) != inksOf(s.rd.view.Look()).good {
+		t.Error("the hop in the clear is not red, or the one with TLS not green")
 	}
 }

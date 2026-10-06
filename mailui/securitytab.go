@@ -51,6 +51,7 @@ func (t secTone) ink(lk style.LookAndFeel) paintengine2d.Color {
 // The Security tab's sections, which the chips open it at.
 const (
 	secSectionSender  = "sender"
+	secSectionRoute   = "route"
 	secSectionForward = "forward"
 	secSectionDKIM    = "dkim"
 	secSectionCrypto  = "crypto"
@@ -268,6 +269,7 @@ func (v *securityView) show(m mailcore.Message) {
 	}
 	if v.report != nil {
 		section(secSectionSender, "Who sent it", senderRows(m, *v.report)...)
+		section(secSectionRoute, "The way it came", routeRows(*v.report)...)
 		if rows := forwardRows(*v.report); len(rows) > 0 {
 			section(secSectionForward, "Forwarded on the way", rows...)
 		}
@@ -293,7 +295,8 @@ func fromDomain(m mailcore.Message) string {
 
 // chipsFor are the chips for m, as few as say it: its sender — the
 // warnings about it, when there are any — its signature and encryption,
-// and a weak signature by From's domain. The rest is the tab's.
+// the TLS of its way here, and a weak signature by From's domain. The
+// rest is the tab's.
 func (v *securityView) chipsFor(m mailcore.Message) []*secChip {
 	var out []*secChip
 	add := func(tone secTone, icon style.ToolIcon, text, section string) {
@@ -340,6 +343,10 @@ func (v *securityView) chipsFor(m mailcore.Message) []*secChip {
 		}
 	}
 	if r := v.report; r != nil {
+		if tone, text, ok := routeSummary(r.Route); ok {
+			icon := map[secTone]style.ToolIcon{secGood: style.IconLock, secWarn: style.IconWarning, secNeutral: style.IconInfo}[tone]
+			add(tone, icon, text, secSectionRoute)
+		}
 		for _, d := range r.DKIM {
 			// Only From's domain's, which is what vouches for the sender.
 			if d.Aligned && d.Result == "pass" && (d.Weak != "" || d.Length > 0) {
