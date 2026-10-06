@@ -815,3 +815,41 @@ func TestTheLastHopIsYours(t *testing.T) {
 		t.Fatalf("summary %v %q", tone, text)
 	}
 }
+
+// The Security tab stays quick to switch through: a newsletter's many
+// click-counting links are one line, and the tab measures its sections
+// once — not on every layout — until they change.
+func TestSecurityTabStaysQuick(t *testing.T) {
+	var c mailcore.ContentReport
+	c.LinkCount = 200
+	for i := 0; i < 200; i++ {
+		c.Links = append(c.Links, mailcore.LinkIssue{Text: "shop.example", Href: "https://click.esp.example/r", Host: "click.esp.example",
+			Kind: mailcore.LinkElsewhere, Shown: "shop.example"})
+	}
+	rows := linkRows(c)
+	if len(rows) != 3 {
+		t.Fatalf("200 alike links in %d lines", len(rows))
+	}
+	if _, tx := iconLines(rows[1]); len(tx) != 1 || tx[0] != "“shop.example” and 199 more show shop.example but go to click.esp.example" {
+		t.Fatalf("grouped: %q", tx)
+	}
+
+	s, a, ids := importedSession(t, map[string]string{"a.eml": "From: Ann <ann@example.com>\nSubject: Hi\n\nHello.\n"})
+	open(s, a, ids["Hi"])
+	s.rd.tabs.Select(readerTabSecurity)
+	a.PumpOnce()
+	box := s.rd.secView.box
+	if box.MinWidth() <= 0 || len(box.measured) == 0 {
+		t.Fatalf("min width %v, measured %d", box.MinWidth(), len(box.measured))
+	}
+	n := len(box.measured)
+	s.rd.view.RequestLayout()
+	a.PumpOnce()
+	if len(box.measured) != n {
+		t.Fatalf("measured anew on a layout with nothing changed: %d, then %d", n, len(box.measured))
+	}
+	s.rd.secView.show(s.rd.msg)
+	if len(box.measured) != 0 {
+		t.Fatal("new sections kept the old measures")
+	}
+}

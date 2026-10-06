@@ -52,24 +52,30 @@ func quoted(s string) string {
 	return "“" + s + "”"
 }
 
-// linkLine is one link worth a word, in words, with its mark.
-func linkLine(l mailcore.LinkIssue) (style.ToolIcon, string) {
+// linkLine is one link worth a word — and more like it — in words, with
+// its mark.
+func linkLine(l mailcore.LinkIssue, more int) (style.ToolIcon, string) {
 	what := quoted(l.Text)
+	verb := func(one, many string) string { return one }
+	if more > 0 {
+		what += " and " + strconv.Itoa(more) + " more"
+		verb = func(one, many string) string { return many }
+	}
 	switch l.Kind {
 	case mailcore.LinkScript:
-		return style.IconError, what + " runs code (" + strings.SplitN(l.Href, ":", 2)[0] + "): comms-mail never runs it"
+		return style.IconError, what + " " + verb("runs", "run") + " code (" + strings.SplitN(l.Href, ":", 2)[0] + "): comms-mail never runs it"
 	case mailcore.LinkLookAlike:
-		return style.IconError, what + " goes to " + l.Host + ", which looks like " + l.Like + ", a domain you write to"
+		return style.IconError, what + " " + verb("goes", "go") + " to " + l.Host + ", which looks like " + l.Like + ", a domain you write to"
 	case mailcore.LinkElsewhere:
-		return style.IconWarning, what + " shows " + l.Shown + " but goes to " + l.Host
+		return style.IconWarning, what + " " + verb("shows", "show") + " " + l.Shown + " but " + verb("goes", "go") + " to " + l.Host
 	case mailcore.LinkAddress:
-		return style.IconWarning, what + " goes to an address, " + l.Host + ", not a name"
+		return style.IconWarning, what + " " + verb("goes", "go") + " to an address, " + l.Host + ", not a name"
 	case mailcore.LinkIDN:
-		return style.IconWarning, what + " goes to " + l.Unicode + " (" + l.Host + "): letters of another alphabet can imitate familiar ones"
+		return style.IconWarning, what + " " + verb("goes", "go") + " to " + l.Unicode + " (" + l.Host + "): letters of another alphabet can imitate familiar ones"
 	case mailcore.LinkShortener:
-		return style.IconInfo, what + " is a short link (" + l.Host + "): where it goes is hidden until it is opened"
+		return style.IconInfo, what + " " + verb("is a short link", "are short links") + " (" + l.Host + "): where " + verb("it goes", "they go") + " is hidden until opened"
 	}
-	return style.IconInfo, what + " goes to " + l.Host
+	return style.IconInfo, what + " " + verb("goes", "go") + " to " + l.Host
 }
 
 // linkRows are the Links section.
@@ -87,12 +93,46 @@ func linkRows(c mailcore.ContentReport) []widget.Component {
 		}
 		rows = append(rows, iconLine(style.IconInfo, pluralize(c.LinkCount, "link")+"; "+worth))
 	}
+	// Links alike — the same worry, to the same place — are one line: a
+	// newsletter's hundred click-counting links are one line, not a
+	// hundred.
+	type group struct {
+		first mailcore.LinkIssue
+		more  int
+	}
+	var groups []*group
+	byKey := map[string]*group{}
 	for _, l := range c.Links {
-		icon, text := linkLine(l)
+		key := l.Kind + "|" + l.Host + "|" + l.Shown + "|" + l.Like
+		if l.Kind == mailcore.LinkScript {
+			key = l.Kind
+		}
+		if g := byKey[key]; g != nil {
+			g.more++
+			continue
+		}
+		g := &group{first: l}
+		byKey[key] = g
+		groups = append(groups, g)
+	}
+	for i, g := range groups {
+		if i == maxLinkLines {
+			rest := 0
+			for _, h := range groups[i:] {
+				rest += 1 + h.more
+			}
+			rows = append(rows, iconLine(style.IconInfo, "And "+pluralize(rest, "more link")+" like these"))
+			break
+		}
+		icon, text := linkLine(g.first, g.more)
 		rows = append(rows, iconLine(icon, text))
 	}
 	return append(rows, iconLine(style.IconInfo, "Clicking a link shows where it goes before it opens"))
 }
+
+// maxLinkLines is as many kinds of link as the Links section says one by
+// one.
+const maxLinkLines = 12
 
 // remoteRows are the Images and what it would load section, and its
 // forms.

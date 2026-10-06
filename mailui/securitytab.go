@@ -187,6 +187,7 @@ type securityView struct {
 	jump    string
 	lookup  func(domain string)
 	looking bool
+	box     *jumpBox
 }
 
 func newSecurityView(crypto widget.Component) *securityView {
@@ -195,7 +196,8 @@ func newSecurityView(crypto widget.Component) *securityView {
 	v.chips.Gap, v.chips.LineGap = 5, 4
 	v.chips.SetVisible(false)
 	v.body = widgets.NewColumn().WithGap(14)
-	v.scroll = widgets.NewScrollView(widgets.NewPad(10, newJumpBox(v)))
+	v.box = newJumpBox(v)
+	v.scroll = widgets.NewScrollView(widgets.NewPad(10, v.box))
 	return v
 }
 
@@ -205,15 +207,35 @@ func (v *securityView) clear() {
 	v.chips.ClearChildren()
 	v.chips.SetVisible(false)
 	v.body.ClearChildren()
+	v.box.changed()
 	v.scroll.ScrollTo(0)
 }
 
 // jumpBox is the tab's sections, and scrolls the tab to the one a chip
 // asked for once they are laid out.
+//
+// It is measured over and over — the reading pane's splitter asks how
+// narrow the tab can be on every layout, and the tab view measures it
+// besides — and a message with many links has hundreds of lines to wrap
+// each time: switching messages crawled while the tab was showing. So it
+// answers how narrow it can be itself, keeps what it measured until its
+// sections change (or the font does), and lays them out again only when
+// its size changes, not when it scrolls.
 type jumpBox struct {
 	widget.Base
-	v *securityView
+	v        *securityView
+	measured map[layout.Constraints]paintengine2d.Point
+	fontH    float32
+	laid     paintengine2d.Point // the size the sections were laid out at
 }
+
+// changed is new sections: what was measured and laid out is gone.
+func (b *jumpBox) changed() {
+	b.measured, b.laid = nil, paintengine2d.Point{}
+}
+
+// MinWidth is as narrow as the tab's lines are let wrap.
+func (b *jumpBox) MinWidth() float32 { return style.Dip(b.Look(), 200) }
 
 func newJumpBox(v *securityView) *jumpBox {
 	b := &jumpBox{v: v}
@@ -228,12 +250,27 @@ func (b *jumpBox) Measure(c layout.Constraints) paintengine2d.Point {
 	if !c.HasMaxW() {
 		c.MaxW = style.Dip(b.Look(), 280)
 	}
-	return b.v.body.Measure(c)
+	if fh := b.Look().Font().Height(); fh != b.fontH {
+		b.fontH = fh
+		b.changed()
+	}
+	if p, ok := b.measured[c]; ok {
+		return p
+	}
+	p := b.v.body.Measure(c)
+	if b.measured == nil {
+		b.measured = map[layout.Constraints]paintengine2d.Point{}
+	}
+	b.measured[c] = p
+	return p
 }
 
 func (b *jumpBox) Arrange(r paintengine2d.Rect) {
 	b.SetBounds(r)
-	b.v.body.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(0, 0), Max: paintengine2d.Pt(r.Dx(), r.Dy())})
+	if size := paintengine2d.Pt(r.Dx(), r.Dy()); size != b.laid {
+		b.laid = size
+		b.v.body.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(0, 0), Max: size})
+	}
 	if sec := b.v.sections[b.v.jump]; sec != nil && b.v.jump != "" && r.Dy() > 0 {
 		b.v.jump = ""
 		top := float32(0)
@@ -261,6 +298,7 @@ func (v *securityView) show(m mailcore.Message) {
 	v.chips.RequestLayout()
 
 	v.body.ClearChildren()
+	v.box.changed()
 	v.sections = map[string]widget.Component{}
 	section := func(name, title string, rows ...widget.Component) {
 		col := widgets.NewColumn(widgets.NewTitle(title)).WithGap(4)
