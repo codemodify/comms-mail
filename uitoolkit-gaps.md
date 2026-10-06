@@ -190,9 +190,12 @@ content as it would be at *that* width until the next `Arrange`: the
 thumb half-way down at the end of the content, the wheel going on into
 nothing. In comms-mail's Security tab, scrolled to the end, the range
 read 573 px after the layout, 2979 after a min-width probe and 4147
-after a narrow measure. comms-mail puts the tab's scroll view behind a
-wrapper that answers measures itself (mailui/securitytab.go,
-`stillScroll`).
+after a narrow measure; the Message tab's header, whose chips and
+warnings wrap, 609 then 1144, its scroll jumping. comms-mail puts the
+Security tab's scroll view behind a wrapper that answers measures itself
+(mailui/securitytab.go, `stillScroll`), and sizes the header by
+measuring what its scroll view shows, never the scroll view
+(mailui/sharebox.go, `reserveBox`).
 **Fix asked for:** `Measure` without side effects — the scroll range
 from `Arrange` alone.
 

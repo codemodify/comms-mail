@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -880,5 +881,49 @@ func TestTabsOnTopAndTheSecurityTabScrollsItsContent(t *testing.T) {
 	r.tabs.Measure(layout.Constraints{MaxW: 120, MaxH: -1})
 	if got := r.secView.scroll.MaxOffset(); got != want || want <= 0 {
 		t.Fatalf("measuring the pane changed how far the tab scrolls: %v, then %v", want, got)
+	}
+}
+
+// The Message tab's header — tall with its attachments, so it scrolls —
+// scrolls its own content however the pane is measured (uitoolkit-gaps.md
+// #51).
+func TestTheHeaderScrollsItsContent(t *testing.T) {
+	s, a, w, done := openMailLookSession(t, style.LightLook(), false, AppOptions{})
+	defer done()
+	w.SetSize(1280, 520)
+	var names []string
+	for i := 0; i < 12; i++ {
+		names = append(names, "file-"+strconv.Itoa(i)+".pdf")
+	}
+	m := mailcore.Message{ID: "tall", Subject: "A long one", From: "a@example.com", To: "b@example.com",
+		Cc: "c@example.com, d@example.com", HasAttach: true, Attachments: names, Body: "the text"}
+	s.showHeaders(m)
+	s.showBody(m)
+	// What wraps, and so is as tall as the pane is narrow: the chips, and
+	// the warnings about the sender.
+	s.rd.sender.show(mailcore.SenderCheck{Warnings: []string{
+		"Your mail server could not confirm this is from example.com: it failed example.com's own sender policy (DMARC).",
+		"The name shows service@paypal.com, but it is from a@example.com."}})
+	s.rd.secView.report = &mailcore.SecurityReport{Sender: mailcore.SenderCheck{Auth: mailcore.AuthFail, Warnings: []string{"x", "y"}},
+		Content: mailcore.ContentReport{Trackers: []string{"t.example"}, Links: []mailcore.LinkIssue{{Kind: mailcore.LinkElsewhere, Host: "a.example", Shown: "b.example"}}}}
+	s.rd.secView.show(m)
+	for i := 0; i < 3; i++ {
+		a.PumpOnce()
+	}
+	var head *widgets.ScrollView
+	widget.Walk(s.rd.view, func(c widget.Component) {
+		if sv, ok := c.(*widgets.ScrollView); ok && head == nil && widget.Contains(sv, s.rd.subj) {
+			head = sv
+		}
+	})
+	if head == nil {
+		t.Fatal("no header scroll")
+	}
+	want := head.MaxOffset()
+	widget.MinWidthOf(s.rd.view)
+	s.rd.view.Measure(layout.Unbounded())
+	s.rd.tabs.Measure(layout.Constraints{MaxW: 120, MaxH: -1})
+	if got := head.MaxOffset(); got != want || want <= 0 {
+		t.Fatalf("measuring the pane changed how far the header scrolls: %v, then %v", want, got)
 	}
 }

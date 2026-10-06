@@ -15,6 +15,13 @@ import (
 // a scroll view inside it (newHeaderScroll), so what does not fit scrolls.
 // (A scroll view's MaxHeight is a fixed cap; this one moves with the
 // window.)
+//
+// It measures what the scroll view shows, never the scroll view: a
+// ScrollView takes a measure's content size for what it scrolls
+// (uitoolkit-gaps.md #51), and the reading pane is measured at other
+// widths after every layout — the header's chips and warnings, which wrap,
+// were then scrolled as they would be at that width, and the scroll
+// jumped.
 type reserveBox struct {
 	widget.Base
 	reserve float32
@@ -36,7 +43,23 @@ func (b *reserveBox) Measure(c layout.Constraints) paintengine2d.Point {
 	if c.HasMaxH() {
 		cc.MaxH = max(c.MaxH-style.Dip(b.Look(), b.reserve), c.MaxH/3)
 	}
-	p := kids[0].Measure(cc)
+	var p paintengine2d.Point
+	if sv, ok := kids[0].(*widgets.ScrollView); ok && sv.ShrinkToContent && len(sv.Children()) == 1 {
+		// As tall as what it shows, at the width it will have — its bar's
+		// gutter is always kept.
+		g := style.ScrollGutter(b.Look())
+		w := c.MaxW
+		if c.HasMaxW() {
+			w = max(c.MaxW-g, 0)
+		}
+		p = sv.Children()[0].Measure(layout.Constraints{MaxW: w, MaxH: -1})
+		p.X += g
+		if c.HasMaxW() {
+			p.X = c.MaxW
+		}
+	} else {
+		p = kids[0].Measure(cc)
+	}
 	if c.HasMaxH() && p.Y > cc.MaxH {
 		p.Y = cc.MaxH
 	}
@@ -55,6 +78,6 @@ func newHeaderScroll(content widget.Component) *widgets.ScrollView {
 func (b *reserveBox) Arrange(r paintengine2d.Rect) {
 	b.SetBounds(r)
 	for _, k := range b.Children() {
-		k.Arrange(r)
+		k.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
 	}
 }
