@@ -56,6 +56,10 @@ type SecurityReport struct {
 	Autocrypt bool `json:"autocrypt,omitempty"`
 	// Route is the way it came, first hop first (route.go).
 	Route []RouteHop `json:"route,omitempty"`
+	// Content is what its text, HTML, attachments and other headers do
+	// (content.go) — of the message as it came: an encrypted one's are
+	// checked by the window, once it is opened.
+	Content ContentReport `json:"content"`
 }
 
 // AuthCheck is one result of an Authentication-Results header.
@@ -496,7 +500,7 @@ func (s *LocalStore) SecurityReport(id MessageID) (SecurityReport, error) {
 		provider = s.providerDomainsLocked(s.Messages[i].AccountID)
 	}
 	s.mu.Unlock()
-	r := securityReportFor(raw, provider)
+	r := securityReportFor(raw, provider, s.correspondents().domains)
 	r.Sender, r.Trust = sc, sc.AuthTrust
 	for d := range provider {
 		r.Provider = append(r.Provider, d)
@@ -507,11 +511,12 @@ func (s *LocalStore) SecurityReport(id MessageID) (SecurityReport, error) {
 
 // SecurityReportOf is a raw message's report, with no account to tell its
 // provider by: its sender is checked against nobody.
-func SecurityReportOf(raw []byte) SecurityReport { return securityReportFor(raw, nil) }
+func SecurityReportOf(raw []byte) SecurityReport { return securityReportFor(raw, nil, nil) }
 
 // securityReportFor is a raw message's report, provider the organisations
-// your provider's servers go by (none: there is no account to tell by).
-func securityReportFor(raw []byte, provider map[string]bool) SecurityReport {
+// your provider's servers go by (none: there is no account to tell by),
+// known those you write to (for look-alike links).
+func securityReportFor(raw []byte, provider, known map[string]bool) SecurityReport {
 	msg, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
 		return SecurityReport{Sender: SenderCheck{Auth: AuthNone}}
@@ -573,5 +578,12 @@ func securityReportFor(raw []byte, provider map[string]bool) SecurityReport {
 		r.DKIM = append(r.DKIM, dkimSignature(v, fromOrg, r.Checks))
 	}
 	r.Route = routeOf(h, provider)
+	var text string
+	var parts []Part
+	if m, err := ParseRFC822(raw, "", ""); err == nil {
+		text, parts = m.Body, m.Parts
+	}
+	htmlBody, _ := OriginalHTML(raw)
+	r.Content = CheckContent(htmlBody, text, parts, h, known)
 	return r
 }

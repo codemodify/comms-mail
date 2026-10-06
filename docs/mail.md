@@ -608,7 +608,8 @@ the secretvault code against a stand-in daemon (`internal/svtest`).
 
 Under From, a row of chips says a message's security at a glance — green
 for what holds, amber for what is worth a look, red for what is worth
-stopping for, grey for what is simply not there — as few as say it:
+stopping for, grey for what is simply not there, worst first — as few as
+say it:
 
 - **the sender** — *example.com confirmed* (your provider's check of the
   sender's domain passed), *… not confirmed* (it failed), *… not checked*
@@ -622,6 +623,13 @@ stopping for, grey for what is simply not there — as few as say it:
 - **the way it came** — *TLS on every hop*, *1 hop in the clear*, or *TLS
   on 2 of 3 hops* where a server did not say (hops inside one organisation
   do not count);
+- **what its content does** — *2 risky links* (one that runs code, or goes
+  to a look-alike of a domain you write to), *3 links to look at* (that
+  show one domain and go to another, or to an address, or to an
+  international domain), *2 tracking images*, *Asks for a password*, *Has
+  a form*, *1 risky attachment* (a program, a script, a disk image, or one
+  that hides its real ending), *1 attachment to look at* (macros, or a
+  type its name is not);
 - **a weak domain signature** — when the DKIM signature that vouches for
   From's domain uses SHA-1, or signs only the first part of the text
   (`l=`), so more can be added after it.
@@ -651,6 +659,28 @@ its section. The tab has all there is (`messages.report`, and
   from outside — can be believed; the hops under them came with the
   message, and the tab says how many. TLS 1.0, 1.1 and SSL are warned of,
   and that TLS hides a hop from the network, not from the servers.
+- **Links** — how many, and each worth a word: *“www.paypal.com” shows
+  paypal.com but goes to evil.example*, one that runs code
+  (`javascript:`, `vbscript:`, `data:text/html`), one to a look-alike of a
+  domain you write to, to an IP address, to an international domain
+  (shown both ways), a short link (bit.ly and the like) — from the HTML as
+  sent, or the addresses in plain text.
+- **Images and what it would load** — the tracking images (one pixel, or
+  hidden) and whose they are; every organisation the HTML would load
+  anything from — images, style sheets, backgrounds — none of which loads
+  until you choose Show Images; its forms and where they send, and a
+  password asked for.
+- **Attachments** — a program, a script or a disk image (`.exe`, `.js`,
+  `.iso`, `.one`, … — opening it runs it); one that hides its real ending
+  (`invoice.pdf.exe`, or right-to-left letters); Office files that can carry
+  macros (`.docm`, `.xlsm`, the old `.doc`/`.xls`); an archive, whose
+  contents are not checked; a type its name is not.
+- **Other headers** — a read receipt asked for (comms-mail never sends
+  one), bounces or the Message-ID on another domain than From's, a date
+  after it arrived, a mailing list's way out (in one click, RFC 8058).
+
+  An encrypted message's links, images and attachments are checked on what
+  was decrypted, in the window, once it is opened.
 - **Forwarded on the way** — what each server that passed the message on
   saw as it got it, as it signed it (ARC): a mailing list or a forwarder
   changes a message, which can break its checks. Your provider's own ARC

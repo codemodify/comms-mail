@@ -89,17 +89,15 @@ new ones turn up.
   server or the account's usual checker has no "trust this server" button
   yet.
 - **Security in the reading pane** (asked 2026-10-05: everything we can
-  say of a message's security) — chips under From and a Security tab, done
-  2026-10-05 for what was already worked out (docs/mail.md, Security at a
-  glance), and the way it came from the `Received` headers (each hop, TLS
-  and cipher where noted, times; done 2026-10-05). Next, in this order:
-  content checks (links whose
-  text names another domain, IP / look-alike / punycode links, tracking
-  pixels and the hosts the HTML would reach, risky attachments, read
-  receipts asked, forms); the sender domain's DMARC policy, MTA-STS, DANE,
-  BIMI and DNSSEC looked up (opt-in), your own connection's TLS; whom it
-  was encrypted to (asked of secretvault, below; comms-mail's own engine
-  can say it itself).
+  say of a message's security) — chips under From and a Security tab
+  (docs/mail.md, Security at a glance): what was already worked out, the
+  way it came from the `Received` headers (each hop, TLS and cipher where
+  noted, times), and what its content does (links, tracking images and
+  what the HTML would load, forms, attachments, read receipts, other
+  headers) — done 2026-10-05. Next: the sender domain's DMARC policy,
+  MTA-STS, DANE, BIMI and DNSSEC looked up (opt-in), your own connection's
+  TLS; whom it was encrypted to and with what (read from what
+  `mail.inspect` already says; comms-mail's own engine can say it itself).
 - **Reading and sending signed / encrypted mail** — done 2026-10-03
   (docs/mail.md, Signed and encrypted mail). Left: attachments *inside* an
   encrypted message are not listed or opened yet, nor carried by a

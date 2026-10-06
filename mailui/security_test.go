@@ -703,3 +703,34 @@ func TestTheWayItCame(t *testing.T) {
 		t.Error("the hop in the clear is not red, or the one with TLS not green")
 	}
 }
+
+// What a message's content does: a link that shows one domain and goes to
+// another, a tracking pixel, a form asking for a password, an attachment
+// that hides its real ending, a read receipt asked for — each a chip, and
+// each said in the Security tab.
+func TestWhatItsContentDoes(t *testing.T) {
+	s, a, ids := importedSession(t, map[string]string{"a.eml": "" +
+		"From: \"PayPal\" <service@paypa1.com>\nTo: me@example.org\nSubject: Verify\n" +
+		"Disposition-Notification-To: x@paypa1.com\nMIME-Version: 1.0\nContent-Type: multipart/mixed; boundary=\"b\"\n\n" +
+		"--b\nContent-Type: text/html\n\n<p><a href=\"https://evil.example/login\">www.paypal.com</a>" +
+		"<img src=\"https://t.tracker.example/o.gif\" width=\"1\" height=\"1\">" +
+		"<form action=\"https://collect.example/\"><input type=\"password\"></form></p>\n" +
+		"--b\nContent-Type: application/octet-stream; name=\"invoice.pdf.exe\"\nContent-Disposition: attachment; filename=\"invoice.pdf.exe\"\n" +
+		"Content-Transfer-Encoding: base64\n\nTVo=\n--b--\n"})
+	open(s, a, ids["Verify"])
+	tones, chips := chipsOf(s.rd)
+	for want, tone := range map[string]secTone{"1 link to look at": secWarn, "1 tracking image": secNeutral, "Asks for a password": secBad, "1 risky attachment": secBad} {
+		i := slices.Index(chips, want)
+		if i < 0 || tones[i] != tone {
+			t.Errorf("no %q chip of tone %v: %q %v", want, tone, chips, tones)
+		}
+	}
+	tab := securityTab(s.rd)
+	for _, want := range []string{"Links", "“www.paypal.com” shows paypal.com but goes to evil.example",
+		"1 tracking image, from tracker.example", "It asks for a password", "Attachments",
+		"invoice.pdf.exe hides its real ending, which is a program's: .exe", "Other headers", "It asks for a read receipt, to x@paypa1.com"} {
+		if !strings.Contains(tab, want) {
+			t.Errorf("the tab lacks %q:\n%s", want, tab)
+		}
+	}
+}

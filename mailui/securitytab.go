@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -275,6 +276,16 @@ func (v *securityView) show(m mailcore.Message) {
 		}
 		section(secSectionDKIM, "Domain signatures (DKIM)", dkimRows(*v.report)...)
 	}
+	if c, ok := contentOf(m, v.report, v.sec); ok {
+		section(secSectionLinks, "Links", linkRows(c)...)
+		section(secSectionRemote, "Images and what it would load", remoteRows(c)...)
+		if rows := attachRows(m, c); len(rows) > 0 {
+			section(secSectionAttach, "Attachments", rows...)
+		}
+		if rows := headerRows(m, c); len(rows) > 0 {
+			section(secSectionHeaders, "Other headers", rows...)
+		}
+	}
 	if v.crypto.Parent() != nil {
 		if p, ok := v.crypto.Parent().(*widgets.FlexBox); ok {
 			p.Remove(v.crypto)
@@ -295,8 +306,8 @@ func fromDomain(m mailcore.Message) string {
 
 // chipsFor are the chips for m, as few as say it: its sender — the
 // warnings about it, when there are any — its signature and encryption,
-// the TLS of its way here, and a weak signature by From's domain. The
-// rest is the tab's.
+// risky links, tracking images, a form, risky attachments, the TLS of its
+// way here, and a weak signature by From's domain. The rest is the tab's.
 func (v *securityView) chipsFor(m mailcore.Message) []*secChip {
 	var out []*secChip
 	add := func(tone secTone, icon style.ToolIcon, text, section string) {
@@ -342,6 +353,9 @@ func (v *securityView) chipsFor(m mailcore.Message) []*secChip {
 			add(secWarn, style.IconLock, "Encrypted, not opened", secSectionCrypto)
 		}
 	}
+	if c, ok := contentOf(m, v.report, v.sec); ok {
+		contentChips(c, add)
+	}
 	if r := v.report; r != nil {
 		if tone, text, ok := routeSummary(r.Route); ok {
 			icon := map[secTone]style.ToolIcon{secGood: style.IconLock, secWarn: style.IconWarning, secNeutral: style.IconInfo}[tone]
@@ -355,6 +369,10 @@ func (v *securityView) chipsFor(m mailcore.Message) []*secChip {
 			}
 		}
 	}
+	// Worst first: what is worth stopping for, then a look, then what
+	// holds, then what is simply not there.
+	rank := map[secTone]int{secBad: 0, secWarn: 1, secGood: 2, secNeutral: 3}
+	sort.SliceStable(out, func(i, j int) bool { return rank[out[i].Tone] < rank[out[j].Tone] })
 	return out
 }
 
