@@ -12,9 +12,9 @@ import (
 )
 
 // Settings › Security › Educate has the room its picture needs at
-// Settings' smallest size, and at its first keeps the picture in view,
-// what goes wrong beside it — as first shown, and with everything turned
-// on, which draws the most.
+// Settings' smallest size, and at its first keeps the picture and the
+// ticks in view, what goes wrong beside it and the ports beside the steps
+// — as first shown, and with everything turned on.
 func TestEducateFitsSettings(t *testing.T) {
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
 	cli := demoClient(t)
@@ -74,6 +74,11 @@ func TestEducateFitsSettings(t *testing.T) {
 			})
 			if len(ys) != 9 || slices.Min(ys) != slices.Max(ys) {
 				t.Errorf("%dx%d: the ticks are not on one line: %v", sz.w, sz.h, ys)
+			}
+			// The ports beside the steps, under what goes wrong.
+			steps, ports, side := widget.DeviceOrigin(ed.steps), widget.DeviceOrigin(ed.ports), widget.DeviceOrigin(ed.side)
+			if ports.X < steps.X+float32(ed.steps.Bounds().Dx()) || ports.Y != steps.Y || ports.X != side.X {
+				t.Errorf("%dx%d: the ports at %v, the steps at %v, what goes wrong at %v", sz.w, sz.h, ports, steps, side)
 			}
 			// Everything turned on draws the most, and stays in view too.
 			all := lesson{signed: true, encrypted: true, tls: true, mx: true, spf: true, dkim: true, dmarc: true, mtaSTS: true, dane: true}

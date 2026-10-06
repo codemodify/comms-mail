@@ -167,37 +167,8 @@ func drawPadlock(ctx *paintengine2d.Context, lk style.LookAndFeel, c paintengine
 	ctx.DrawCircle(paintengine2d.Pt(c.X, body.Min.Y+body.Dy()*0.45), s*0.08, paintengine2d.Fill(p.Field))
 }
 
-// drawTube draws an encrypted connection from a to b, which share an x or
-// a y: a tunnel of thickness th, its two mouths open.
-func drawTube(ctx *paintengine2d.Context, lk style.LookAndFeel, a, b paintengine2d.Point, th float32) {
-	ink := inksOf(lk).good
-	pen := paintengine2d.StrokePaint(ink, style.Dip(lk, 1.5))
-	mouth := th * 0.34
-	if a.Y == b.Y {
-		x0, x1 := min(a.X, b.X), max(a.X, b.X)
-		ctx.DrawRect(paintengine2d.XYWH(x0, a.Y-th/2, x1-x0, th), paintengine2d.Fill(ink.WithAlpha(0.12)))
-		ctx.DrawLine(paintengine2d.Pt(x0, a.Y-th/2), paintengine2d.Pt(x1, a.Y-th/2), pen)
-		ctx.DrawLine(paintengine2d.Pt(x0, a.Y+th/2), paintengine2d.Pt(x1, a.Y+th/2), pen)
-		for _, x := range []float32{x0, x1} {
-			ctx.DrawOval(paintengine2d.XYWH(x-mouth/2, a.Y-th/2, mouth, th), paintengine2d.Fill(ink.WithAlpha(0.22)))
-			ctx.DrawOval(paintengine2d.XYWH(x-mouth/2, a.Y-th/2, mouth, th), pen)
-		}
-		return
-	}
-	y0, y1 := min(a.Y, b.Y), max(a.Y, b.Y)
-	ctx.DrawRect(paintengine2d.XYWH(a.X-th/2, y0, th, y1-y0), paintengine2d.Fill(ink.WithAlpha(0.12)))
-	ctx.DrawLine(paintengine2d.Pt(a.X-th/2, y0), paintengine2d.Pt(a.X-th/2, y1), pen)
-	ctx.DrawLine(paintengine2d.Pt(a.X+th/2, y0), paintengine2d.Pt(a.X+th/2, y1), pen)
-	for _, y := range []float32{y0, y1} {
-		ctx.DrawOval(paintengine2d.XYWH(a.X-th/2, y-mouth/2, th, mouth), paintengine2d.Fill(ink.WithAlpha(0.22)))
-		ctx.DrawOval(paintengine2d.XYWH(a.X-th/2, y-mouth/2, th, mouth), pen)
-	}
-}
-
-// drawPlainLine draws a connection in the clear from a to b: a plain line
-// and its head, where an encrypted one is a tunnel.
-func drawPlainLine(ctx *paintengine2d.Context, lk style.LookAndFeel, a, b paintengine2d.Point) {
-	ink := inksOf(lk).muted
+// drawArrow draws a connection from a to b in ink: a line and its head.
+func drawArrow(ctx *paintengine2d.Context, lk style.LookAndFeel, a, b paintengine2d.Point, ink paintengine2d.Color) {
 	h := style.Dip(lk, 7)
 	dir := b.Sub(a).Normalize()
 	ctx.DrawLine(a, b.Sub(dir.Mul(h/2)), paintengine2d.StrokePaint(ink, style.Dip(lk, 1.75)))

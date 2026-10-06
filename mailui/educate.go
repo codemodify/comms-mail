@@ -525,12 +525,13 @@ func problemList(ps []problem) widget.Component {
 const fakeDomain = "acrne.com"
 
 // educateSection is the Educate page: the picture, what its symbols mean,
-// and each step.
+// which message and road, and each step.
 //
-// The picture and what its symbols mean — all of them, always — stay
-// together, in view; under them, which message and road — what YOU do to
-// it, TLS or not, what the domains publish — and its steps, the picture
-// showing that one, and nothing of what is turned off.
+// The picture, what its symbols mean — all of them, always — and which
+// message and road — what YOU do to it, TLS or not, what the domains
+// publish — stay together, in view; under them its steps, the picture
+// showing that one, and nothing of what is turned off; and beside the
+// steps, email's ports and how they came to be.
 func educateSection() widget.Component {
 	scene := newRouteScene()
 	key := widgets.NewWrap()
@@ -602,25 +603,72 @@ func educateSection() widget.Component {
 	}
 	show()
 	side := widgets.NewColumn(widgets.NewTitle("What goes wrong"), wrong).WithGap(10)
-	slot := widgets.NewColumn()
-	words := widgets.NewColumn(ticks, slot, stepTabs).WithGap(14)
-	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), side, slot, scene, words)
+	return newEducatePage(widgets.NewColumn(scene, key).WithGap(10), ticks, side, stepTabs, portList(), scene)
 }
 
-// educatePage keeps the picture in view while the words under it scroll,
-// so each step can be read with the picture beside it — when the page is
-// tall enough to leave the words room (pinMin); when not, the picture
-// scrolls with them. What goes wrong stands beside the picture, in view
-// with it, where the page is wide enough for both; else among the words,
-// under the ticks.
+// port is a port email uses, by its tag, and how it came to be: a few
+// words a line, the year first.
+type port struct {
+	tag  string
+	says []string
+}
+
+// ports are email's ports: SMTP's, IMAP's, POP3's, and DNS's and HTTPS's,
+// which mail asks on the way.
+var ports = []port{
+	{"SMTP:TCP:25", []string{"1982: server to server", "No encryption, no sign-in"}},
+	{"SMTP:STARTTLS:TCP:25", []string{"1999: upgrades to TLS, starts in the clear",
+		"Anyone in between can strip the upgrade", "2015 DANE, 2018 MTA-STS: TLS a must"}},
+	{"SMTP:TCP:587", []string{"1998: apps hand mail in here, signed in", "Port 25 left to servers"}},
+	{"SMTP:STARTTLS:TCP:587", []string{"1999: upgrades to TLS, starts in the clear",
+		"The app must insist on it: comms-mail does", "MTA-STS and DANE are for port 25 only"}},
+	{"SMTP:TLS:TCP:465", []string{"1997: SMTP over SSL, withdrawn in 1998", "Kept in use anyway",
+		"2018: official again, TLS from the start", "Preferred over STARTTLS"}},
+	{"IMAP:TCP:143", []string{"1988: mail kept on the server", "In the clear"}},
+	{"IMAP:STARTTLS:TCP:143", []string{"1999: upgrades to TLS, starts in the clear"}},
+	{"IMAP:TLS:TCP:993", []string{"Late 1990s: TLS from the start", "2018: preferred over STARTTLS"}},
+	{"POP3:TCP:110", []string{"1988: mail downloaded to one device", "In the clear"}},
+	{"POP3:STARTTLS:TCP:110", []string{"1999: upgrades to TLS, starts in the clear"}},
+	{"POP3:TLS:TCP:995", []string{"Late 1990s: TLS from the start", "2018: preferred over STARTTLS"}},
+	{"DNS:UDP:53", []string{"1987: answers in the clear, unsigned", "A forged one sends mail astray",
+		"2005: DNSSEC signs them; DANE needs it"}},
+	{"HTTPS:TLS:TCP:443", []string{"2018: MTA-STS's policy is published here", "OAuth's sign-in page too"}},
+}
+
+// portList is the ports, each its tag and how it came to be.
+func portList() widget.Component {
+	col := widgets.NewColumn(widgets.NewTitle("Ports, then and now")).WithGap(12)
+	for _, pt := range ports {
+		says := widgets.NewColumn().WithGap(2)
+		for i, line := range pt.says {
+			l := wrapLabel(line)
+			if i > 0 {
+				l.Tone = widgets.ToneMuted
+			}
+			says.Add(l)
+		}
+		col.Add(widgets.NewColumn(widgets.NewRow(newProtoChip(pt.tag)), says).WithGap(4))
+	}
+	return col
+}
+
+// educatePage keeps the picture and the ticks under it in view while the
+// words under them scroll, so each step can be read with the picture
+// beside it — when the page is tall enough to leave the words room
+// (pinMin); when not, the picture scrolls with them. What goes wrong
+// stands beside the picture, in view with it, and the ports beside the
+// steps, where the page is wide enough for both; else each under the
+// other.
 type educatePage struct {
 	widget.Base
 	picture widget.Component // the picture, and its key
+	ticks   widget.Component // which message and road
 	side    widget.Component // what goes wrong
-	slot    *widgets.FlexBox // where side goes among the words
+	steps   widget.Component
+	ports   widget.Component
 	scene   *routeScene
-	words   widget.Component
 	rule    *widgets.Separator
+	words   *pair            // the steps, the ports beside them
 	body    *widgets.FlexBox // what scrolls: the words, and the picture when not pinned
 	scroll  *widgets.ScrollView
 	built   bool // pinned and beside say how it is put together
@@ -635,13 +683,14 @@ const pinMin = 120
 // sideMin is the least what goes wrong takes beside the picture; sideGap
 // is between them.
 const (
-	sideMin = 220
+	sideMin = 210
 	sideGap = 16
 )
 
-func newEducatePage(picture, side widget.Component, slot *widgets.FlexBox, scene *routeScene, words widget.Component) *educatePage {
-	p := &educatePage{picture: picture, side: side, slot: slot, scene: scene, words: words, rule: widgets.NewSeparator()}
+func newEducatePage(picture, ticks, side, steps, ports widget.Component, scene *routeScene) *educatePage {
+	p := &educatePage{picture: picture, ticks: ticks, side: side, steps: steps, ports: ports, scene: scene, rule: widgets.NewSeparator()}
 	p.Init(p)
+	p.words = newPair(steps, ports)
 	p.body = widgets.NewColumn().WithGap(14)
 	p.scroll = widgets.NewScrollView(widgets.NewPad(4, p.body))
 	p.Add(p.scroll)
@@ -663,7 +712,7 @@ func (p *educatePage) Measure(c layout.Constraints) paintengine2d.Point {
 
 // sideWidth is what goes wrong's width beside a picture in inner.
 func (p *educatePage) sideWidth(inner float32) float32 {
-	return min(max(inner*0.36, style.Dip(p.Look(), sideMin)), style.Dip(p.Look(), 340))
+	return min(max(inner*0.28, style.Dip(p.Look(), sideMin)), style.Dip(p.Look(), 340))
 }
 
 func (p *educatePage) Arrange(r paintengine2d.Rect) {
@@ -674,39 +723,50 @@ func (p *educatePage) Arrange(r paintengine2d.Rect) {
 	ruleH := p.rule.Measure(layout.Constraints{MaxW: r.Dx(), MaxH: -1}).Y
 	sw := p.sideWidth(inner)
 	pw := inner - sw - style.Dip(lk, sideGap)
-	pins := func(topH float32) bool { return r.Dy()-(pad+topH+pad+ruleH) >= style.Dip(lk, pinMin) }
+	// The ticks under the picture, across the page.
+	gap := style.Dip(lk, 10)
+	ticksH := p.ticks.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
+	pins := func(picH float32) bool { return r.Dy()-(pad+picH+gap+ticksH+pad+ruleH) >= style.Dip(lk, pinMin) }
 	// What goes wrong beside the picture, both in view, where they fit;
 	// else the picture alone in view; else everything scrolls.
 	beside := pw >= p.scene.MinWidth()
-	var topH float32
+	var picH float32
 	if beside {
-		topH = max(p.picture.Measure(layout.Constraints{MaxW: pw, MaxH: -1}).Y, p.side.Measure(layout.Constraints{MaxW: sw, MaxH: -1}).Y)
-		beside = pins(topH)
+		picH = max(p.picture.Measure(layout.Constraints{MaxW: pw, MaxH: -1}).Y, p.side.Measure(layout.Constraints{MaxW: sw, MaxH: -1}).Y)
+		beside = pins(picH)
 	}
 	if !beside {
-		topH = p.picture.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
+		picH = p.picture.Measure(layout.Constraints{MaxW: inner, MaxH: -1}).Y
 	}
-	pin := pins(topH)
+	pin := pins(picH)
+	// The ports beside the steps, under what goes wrong, when it is
+	// beside the picture: the steps as wide as the picture.
+	p.words.aw, p.words.gap = 0, 0
+	if beside {
+		p.words.aw, p.words.gap = pw, style.Dip(lk, sideGap)
+	}
 	if !p.built || pin != p.pinned || beside != p.beside {
 		p.built, p.pinned, p.beside = true, pin, beside
-		for _, c := range []widget.Component{p.picture, p.side, p.rule, p.scroll} {
+		for _, c := range []widget.Component{p.picture, p.ticks, p.side, p.rule, p.scroll} {
 			p.Remove(c)
 		}
 		p.body.ClearChildren()
-		p.slot.ClearChildren()
 		if beside {
 			p.Add(p.picture)
 			p.Add(p.side)
-		} else {
-			p.slot.Add(p.side)
 		}
 		if pin {
 			if !beside {
 				p.Add(p.picture)
 			}
+			p.Add(p.ticks)
 			p.Add(p.rule)
 		} else {
 			p.body.Add(p.picture)
+			p.body.Add(p.ticks)
+		}
+		if !beside {
+			p.body.Add(p.side)
 		}
 		p.body.Add(p.words)
 		p.Add(p.scroll)
@@ -717,14 +777,64 @@ func (p *educatePage) Arrange(r paintengine2d.Rect) {
 		return
 	}
 	if beside {
-		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, pw, topH))
-		p.side.Arrange(paintengine2d.XYWH(r.Min.X+pad+pw+style.Dip(lk, sideGap), r.Min.Y+pad, sw, topH))
+		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, pw, picH))
+		p.side.Arrange(paintengine2d.XYWH(r.Min.X+pad+pw+style.Dip(lk, sideGap), r.Min.Y+pad, sw, picH))
 	} else {
-		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, topH))
+		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, picH))
 	}
-	top := r.Min.Y + pad + topH + pad
+	p.ticks.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad+picH+gap, inner, ticksH))
+	top := r.Min.Y + pad + picH + gap + ticksH + pad
 	p.rule.Arrange(paintengine2d.XYWH(r.Min.X, top, r.Dx(), ruleH))
 	p.scroll.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(r.Min.X, top+ruleH), Max: r.Max})
+}
+
+// pair is a and b side by side, a aw wide and b gap after it; or, with
+// aw 0, b under a.
+type pair struct {
+	widget.Base
+	a, b    widget.Component
+	aw, gap float32
+}
+
+func newPair(a, b widget.Component) *pair {
+	p := &pair{a: a, b: b}
+	p.Init(p)
+	p.Add(a)
+	p.Add(b)
+	return p
+}
+
+// split is a's width and height, b's, at width w; side by side, or b
+// under a.
+func (p *pair) split(w float32) (aw, ah, bw, bh float32) {
+	aw, bw = w, w
+	if p.aw > 0 {
+		aw, bw = min(p.aw, w), max(w-p.aw-p.gap, 0)
+	}
+	return aw, p.a.Measure(layout.Constraints{MaxW: aw, MaxH: -1}).Y, bw, p.b.Measure(layout.Constraints{MaxW: bw, MaxH: -1}).Y
+}
+
+func (p *pair) Measure(c layout.Constraints) paintengine2d.Point {
+	w := style.Dip(p.Look(), 560)
+	if c.HasMaxW() {
+		w = c.MaxW
+	}
+	_, ah, _, bh := p.split(w)
+	if p.aw > 0 {
+		return c.Constrain(paintengine2d.Pt(w, max(ah, bh)))
+	}
+	return c.Constrain(paintengine2d.Pt(w, ah+style.Dip(p.Look(), 14)+bh))
+}
+
+func (p *pair) Arrange(r paintengine2d.Rect) {
+	p.SetBounds(r)
+	aw, ah, bw, bh := p.split(r.Dx())
+	p.a.Arrange(paintengine2d.XYWH(r.Min.X, r.Min.Y, aw, ah))
+	if p.aw > 0 {
+		p.b.Arrange(paintengine2d.XYWH(r.Min.X+aw+p.gap, r.Min.Y, bw, bh))
+		return
+	}
+	p.b.Arrange(paintengine2d.XYWH(r.Min.X, r.Min.Y+ah+style.Dip(p.Look(), 14), bw, bh))
 }
 
 // ---- marks ----
@@ -1027,7 +1137,7 @@ var symbols = []symbol{
 	{envelopeSymbol(envelope{stamp: true}), "Signed by its domain"},
 	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
 		y := box.Center().Y
-		drawTube(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 3), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 3), y), box.Dy()*0.8)
+		drawArrow(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 1), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 1), y), inksOf(lk).good)
 	}, "TLS"},
 }
 

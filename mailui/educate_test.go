@@ -18,8 +18,8 @@ import (
 // Educate is one picture of a message's route, its steps numbered 1 to 8
 // once each — on their lines, or by their names — what its symbols mean,
 // and a numbered line for each step. In the picture nothing is outside
-// it, cut short, or over anything else; tunnels and lines run through
-// nothing but their own number and envelope. The message is an envelope
+// it, cut short, or over anything else; lines run through nothing but
+// their own number and envelope. The message is an envelope
 // carrying what it should at each step: your seal and padlock from the
 // start, your domain's postmark from your server on, the attacker's only
 // its own domain's postmark. Every step's standards are drawn by it, and
@@ -227,8 +227,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 				}
 			}
 
-			// The lines and tunnels: through nothing but their own number and
-			// envelope; a line through no tunnel either.
+			// The lines: through nothing but their own number and envelope.
 			stepOf := map[routeLine]int{}
 			carried := slices.Clone(g.envs)
 			for _, st := range g.stops {
@@ -236,34 +235,16 @@ func TestEducateIsOnePicture(t *testing.T) {
 			}
 			for _, e := range carried {
 				for _, l := range g.lines {
-					if l.head && l.ink != inkAccent && (l.tube > 0 && l.body().Contains(e.c) || l.tube == 0 && distToSegment(e.c, l.a, l.b) < 3) {
+					if l.head && l.ink != inkAccent && distToSegment(e.c, l.a, l.b) < 3 {
 						stepOf[l] = e.step
 					}
 				}
 			}
-			var tubes []box
-			for _, l := range g.lines {
-				if l.tube > 0 {
-					tubes = append(tubes, box{"tunnel " + string(rune('0'+stepOf[l])), l.body(), 0, stepOf[l]})
-				}
-			}
 			for _, l := range g.lines {
 				own := stepOf[l]
-				if l.tube > 0 {
-					body := box{r: l.body()}
-					for _, x := range slices.Concat(discs, texts, marks, chips, envs, tubes) {
-						if (x.on != 0 && x.on == own) || x.r == body.r {
-							continue
-						}
-						if meet(body, x) {
-							t.Errorf("at %d: tunnel %d runs through %s", width, own, x.what)
-						}
-					}
-					continue
-				}
 				for k := float32(0.01); k < 1; k += 0.01 {
 					p := l.a.Lerp(l.b, k)
-					for _, x := range slices.Concat(discs, texts, marks, chips, envs, tubes) {
+					for _, x := range slices.Concat(discs, texts, marks, chips, envs) {
 						if x.on != 0 && x.on == own {
 							continue
 						}
@@ -278,7 +259,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 					}
 				}
 			}
-			// Each carried message: inside its tunnel, or on its line; with
+			// Each carried message: on its line; with
 			// what it carries by then; its number on the line too.
 			want := map[int]envelope{2: {lock: true, seal: true}, 4: {lock: true, seal: true, stamp: true}, 6: {lock: true, seal: true, stamp: true}, 8: {stamp: true, bad: true}}
 			want[2] = envelope{lock: les.encrypted, seal: les.signed}
@@ -300,10 +281,8 @@ func TestEducateIsOnePicture(t *testing.T) {
 				t.Errorf("at %d, %+v: step 6 carries it: %v", width, les, carriedOn)
 			}
 			for l, n := range stepOf {
-				for _, e := range envs {
-					if e.on == n && l.tube > 0 && (e.r.Min.X < l.body().Min.X || e.r.Max.X > l.body().Max.X || e.r.Min.Y < l.body().Min.Y-1 || e.r.Max.Y > l.body().Max.Y+1) {
-						t.Errorf("at %d: envelope %d sticks out of its tunnel: %v in %v", width, n, e.r, l.body())
-					}
+				if l.ink != inkBad && l.ink != inkGood || (l.ink == inkGood) != (les.tls && n != 8) {
+					t.Errorf("at %d, %+v: step %d's arrow is not green with TLS, red without", width, les, n)
 				}
 				for _, mk := range g.marks {
 					if mk.n == n && distToSegment(paintengine2d.Pt(mk.x, mk.y), l.a, l.b) > 0.5 {
@@ -594,9 +573,34 @@ func distToSegment(p, a, b paintengine2d.Point) float32 {
 	return p.Sub(a.Add(ab.Mul(t))).Len()
 }
 
-// The picture, and what its symbols mean, stay in view while the words
-// under them scroll — when the page leaves the words room — and scroll
-// with them when it does not,
+// The picture is as big whatever is ticked — its rows and columns where
+// they were — so ticking does not move what is under it.
+func TestEducateKeepsItsSize(t *testing.T) {
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 600, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	sc := newRouteScene()
+	w.SetContent(sc)
+	a.PumpOnce()
+	for _, width := range []float32{sc.MinWidth(), 460, 482, 560, 700} {
+		sc.l = firstLesson
+		first := sc.layoutAt(width)
+		for _, l := range lessons() {
+			sc.l = l
+			g := sc.layoutAt(width)
+			if g.h != first.h || g.y1 != first.y1 || g.y2 != first.y2 || g.L != first.L || g.R != first.R {
+				t.Fatalf("at %v, %+v: %v tall, rows %v %v, columns %v %v; first %v, %v %v, %v %v", width, l, g.h, g.y1, g.y2, g.L, g.R, first.h, first.y1, first.y2, first.L, first.R)
+			}
+		}
+	}
+}
+
+// The picture, what its symbols mean and the ticks stay in view while
+// the words under them scroll — when the page leaves the words room —
+// and scroll with them when it does not,
 // changing back and forth as the window is made taller and shorter.
 func TestEducatePinsThePicture(t *testing.T) {
 	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
@@ -610,9 +614,13 @@ func TestEducatePinsThePicture(t *testing.T) {
 	a.PumpOnce()
 	var steps *widgets.TabView
 	var key *symbolItem
+	var tick *widgets.Checkbox
 	widget.Walk(page, func(c widget.Component) {
 		if v, ok := c.(*widgets.TabView); ok && steps == nil {
 			steps = v
+		}
+		if v, ok := c.(*widgets.Checkbox); ok && tick == nil {
+			tick = v
 		}
 		if k, ok := c.(*symbolItem); ok && key == nil {
 			key = k
@@ -628,7 +636,7 @@ func TestEducatePinsThePicture(t *testing.T) {
 		}
 		page.scroll.ScrollTo(0)
 		a.PumpOnce()
-		scene, words, legend := widget.DeviceOrigin(page.scene), widget.DeviceOrigin(steps), widget.DeviceOrigin(key)
+		scene, words, legend, ticks := widget.DeviceOrigin(page.scene), widget.DeviceOrigin(steps), widget.DeviceOrigin(key), widget.DeviceOrigin(tick)
 		page.scroll.ScrollTo(150)
 		a.PumpOnce()
 		if page.scroll.OffsetY == 0 {
@@ -639,6 +647,12 @@ func TestEducatePinsThePicture(t *testing.T) {
 		}
 		if moved := widget.DeviceOrigin(key) != legend; moved == tall {
 			t.Errorf("tall %v: what the symbols mean moved with the words: %v", tall, moved)
+		}
+		if moved := widget.DeviceOrigin(tick) != ticks; moved == tall {
+			t.Errorf("tall %v: the ticks moved with the words: %v", tall, moved)
+		}
+		if tall && widget.DeviceOrigin(tick).Y < legend.Y {
+			t.Errorf("the ticks are over what the symbols mean")
 		}
 		if widget.DeviceOrigin(steps) == words {
 			t.Errorf("tall %v: the words stayed where they were", tall)
@@ -761,6 +775,29 @@ func TestEducateExplainsWhatIsOff(t *testing.T) {
 			name string
 		}{{l.mx, "MX"}, {l.spf, "SPF"}, {l.dkim, "DKIM"}, {l.dmarc, "DMARC"}} {
 			check(r.on == slices.Contains(dns, r.name), "DNS's tags: "+r.name)
+		}
+	}
+}
+
+// Every port a step's tags name is among the ports, each saying when it
+// came to be first.
+func TestEducateListsPorts(t *testing.T) {
+	listed := map[string]bool{}
+	for _, p := range ports {
+		listed[p.tag] = true
+		if len(p.says) == 0 || !(strings.HasPrefix(p.says[0], "Late 1990s: ") || len(p.says[0]) > 6 && p.says[0][4:6] == ": " && strings.Trim(p.says[0][:4], "0123456789") == "") {
+			t.Errorf("%s does not start with when: %q", p.tag, p.says)
+		}
+	}
+	for _, l := range lessons() {
+		for _, st := range scenarioSteps(l) {
+			for _, n := range flat(st.tags) {
+				if strings.Contains(n, ":TCP:") || strings.Contains(n, ":UDP:") {
+					if !listed[n] {
+						t.Errorf("%s is not among the ports", n)
+					}
+				}
+			}
 		}
 	}
 }
