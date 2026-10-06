@@ -13,13 +13,14 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// reader shows one message: its header — subject, From, To, Cc, Date, tags
-// — the calendar invitation it carries, a row of actions (the selected
+// reader shows one message in four tabs, from the top: Message — its
+// header (subject, From, the security chips, To, Cc, Date, tags), the
+// calendar invitation it carries, a row of actions (the selected
 // attachment's Open and Save, Save All, and Open HTML for a message that
-// has HTML) over its attachments, and four tabs: Message (the text),
-// Security (all there is to say of its security; chips under From say it
-// at a glance), Source (the raw message, fetched when the tab is shown)
-// and Markdown (the message rendered, with the remote-images bar).
+// has HTML) over its attachments, and its text — Security (all there is
+// to say of its security; the chips say it at a glance), Source (the raw
+// message, fetched when the tab is shown) and Markdown (the message
+// rendered, with the remote-images bar).
 //
 // The reading pane is one reader; a message opened in a tab of its own is
 // another, the same thing larger.
@@ -132,9 +133,19 @@ func newReader(s *session) *reader {
 	r.source.Wrap = false
 	r.md = newHTMLPane(s)
 	r.md.rich.Placeholder = "This message has no text."
+
+	r.secView.open = func() { r.tabs.Select(readerTabSecurity) }
+	r.secView.lookup = r.lookUpDomain
+	head := widgets.NewColumn(r.subj, r.from, r.secView.chips, r.sender.view, r.to, r.cc, r.date, r.extra, r.sec.view,
+		r.invite.view, r.actions, r.attStrip, r.retry).WithGap(3).WithPad(10)
+	// The Message tab is the header and the text. The header grows with
+	// what the message carries (an invitation, attachments) but always
+	// leaves the text room for a few lines: past that it scrolls.
+	message := widgets.NewColumn(newReserveBox(200, newHeaderScroll(head)), widgets.NewSeparator()).WithGap(0)
+	message.AddFlex(widgets.NewPad(8, r.text), 1)
 	r.tabs = widgets.NewTabView(
-		widgets.Tab{Title: "Message", Content: widgets.NewPad(8, r.text)},
-		widgets.Tab{Title: "Security", Content: r.secView.scroll},
+		widgets.Tab{Title: "Message", Content: message},
+		widgets.Tab{Title: "Security", Content: r.secView.tab},
 		widgets.Tab{Title: "Source", Content: widgets.NewPad(8, r.source)},
 		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(4, r.md.view)},
 	)
@@ -152,14 +163,8 @@ func newReader(s *session) *reader {
 		}
 	}
 
-	r.secView.open = func() { r.tabs.Select(readerTabSecurity) }
-	r.secView.lookup = r.lookUpDomain
-	head := widgets.NewColumn(r.subj, r.from, r.secView.chips, r.sender.view, r.to, r.cc, r.date, r.extra, r.sec.view,
-		r.invite.view, r.actions, r.attStrip, r.retry).WithGap(3).WithPad(10)
-	// The header grows with what the message carries (an invitation,
-	// attachments) but always leaves the body room for a few lines: past
-	// that it scrolls.
-	r.view = widgets.NewColumn(newReserveBox(200, newHeaderScroll(head)), widgets.NewSeparator(), r.tabs).WithGap(0)
+	// The tabs start at the top; the header is the Message tab's.
+	r.view = widgets.NewColumn().WithGap(0)
 	r.view.AddFlex(r.tabs, 1)
 	r.syncActions()
 	return r

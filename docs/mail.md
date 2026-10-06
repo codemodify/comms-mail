@@ -276,13 +276,14 @@ Type the incoming/SMTP password (masked field); **Save account** writes `protoco
 ### Message view: text and HTML
 
 The reading pane — and a message opened in a tab of its own, which is the
-same thing larger — shows the header (From, To, Cc, Date, tags,
-attachments, whether you replied or forwarded), the security chips under
-From (see *Security at a glance* below), the invitation card, a row of
-actions over the attachments, and four tabs: **Message** (the
-`text/plain` body, the default), **Security** (all there is to say of
-its security, below), **Source** (the raw RFC822, fetched when the tab is
-shown) and **Markdown** (the message rendered, below).
+same thing larger — is four tabs, starting at its top: **Message** (the
+default: the header — subject, From, the security chips under it (see
+*Security at a glance* below), To, Cc, Date, tags, attachments, whether
+you replied or forwarded — the invitation card, a row of actions over the
+attachments, and the `text/plain` body under them), **Security** (all
+there is to say of its security, below), **Source** (the raw RFC822,
+fetched when the tab is shown) and **Markdown** (the message rendered,
+below).
 
 Nothing of a message's HTML is drawn in the window. A message that has an
 HTML part has **Open HTML** in the action row, beside the attachments'

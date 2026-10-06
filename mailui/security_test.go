@@ -15,6 +15,7 @@ import (
 	"github.com/codemodify/uitoolkit"
 	"github.com/codemodify/uitoolkit/a11y"
 	"github.com/codemodify/uitoolkit/app"
+	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
@@ -851,5 +852,33 @@ func TestSecurityTabStaysQuick(t *testing.T) {
 	s.rd.secView.show(s.rd.msg)
 	if len(box.measured) != 0 {
 		t.Fatal("new sections kept the old measures")
+	}
+}
+
+// The tabs start at the top of the reading pane, the header — subject,
+// From, the chips — in the Message tab; and measuring the pane, as its
+// splitter does on every layout, does not change how far the Security
+// tab scrolls (uitoolkit-gaps.md #51).
+func TestTabsOnTopAndTheSecurityTabScrollsItsContent(t *testing.T) {
+	links := strings.Repeat(`<p><a href="https://click.example/x">shop.example</a> <img src="https://cdn.example/a.png"></p>`, 12)
+	s, a, ids := importedSession(t, map[string]string{"a.eml": "From: Shop <news@shop.example>\nTo: me@example.org\nSubject: Sale\nContent-Type: text/html\n\n" + links + "\n"})
+	open(s, a, ids["Sale"])
+	r := s.rd
+	if top, pane := widget.DeviceOrigin(r.tabs).Y, widget.DeviceOrigin(r.view).Y; top != pane {
+		t.Fatalf("the tabs start at %v, the pane at %v", top, pane)
+	}
+	if !widget.Contains(r.tabs, r.subj) || !widget.Contains(r.tabs, r.secView.chips) || widget.DeviceOrigin(r.subj).Y <= widget.DeviceOrigin(r.tabs).Y {
+		t.Fatal("the header is not in the Message tab")
+	}
+	r.tabs.Select(readerTabSecurity)
+	for i := 0; i < 3; i++ {
+		a.PumpOnce()
+	}
+	want := r.secView.scroll.MaxOffset()
+	widget.MinWidthOf(r.view)
+	r.view.Measure(layout.Unbounded())
+	r.tabs.Measure(layout.Constraints{MaxW: 120, MaxH: -1})
+	if got := r.secView.scroll.MaxOffset(); got != want || want <= 0 {
+		t.Fatalf("measuring the pane changed how far the tab scrolls: %v, then %v", want, got)
 	}
 }

@@ -173,6 +173,7 @@ func (c *secChip) AccessibleAction(_ int, a a11y.Action) bool {
 type securityView struct {
 	chips  *widgets.Wrap
 	scroll *widgets.ScrollView
+	tab    widget.Component // the scroll view, as the tab shows it
 	body   *widgets.FlexBox
 	// sections are the tab's, by name; crypto is the lines security.go
 	// keeps (securityPart.lines), shown in its section.
@@ -198,7 +199,46 @@ func newSecurityView(crypto widget.Component) *securityView {
 	v.body = widgets.NewColumn().WithGap(14)
 	v.box = newJumpBox(v)
 	v.scroll = widgets.NewScrollView(widgets.NewPad(10, v.box))
+	v.tab = newStillScroll(v.scroll, 200)
 	return v
+}
+
+// stillScroll is a scroll view measured without being asked: uitoolkit's
+// ScrollView takes a measure's content size for what it scrolls
+// (uitoolkit-gaps.md #51), so a parent measuring it after it was laid
+// out — the reading pane's splitter asking how narrow it can be — left
+// its bar and its wheel scrolling content of another width, the thumb
+// half-way down at the end. It is as big as it is given, never narrower
+// than minW, and only laid out.
+type stillScroll struct {
+	widget.Base
+	s    *widgets.ScrollView
+	minW float32
+}
+
+func newStillScroll(s *widgets.ScrollView, minW float32) *stillScroll {
+	w := &stillScroll{s: s, minW: minW}
+	w.Init(w)
+	w.Add(s)
+	return w
+}
+
+func (w *stillScroll) MinWidth() float32 { return style.Dip(w.Look(), w.minW) }
+
+func (w *stillScroll) Measure(c layout.Constraints) paintengine2d.Point {
+	size := paintengine2d.Pt(style.Dip(w.Look(), 300), style.Dip(w.Look(), 160))
+	if c.HasMaxW() {
+		size.X = c.MaxW
+	}
+	if c.HasMaxH() {
+		size.Y = c.MaxH
+	}
+	return c.Constrain(size)
+}
+
+func (w *stillScroll) Arrange(r paintengine2d.Rect) {
+	w.SetBounds(r)
+	w.s.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
 }
 
 // clear is no message.

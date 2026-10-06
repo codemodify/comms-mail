@@ -14,7 +14,7 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
 #2 (declined and settled), #29 (a design change), #47, #48, #49 and #50
-(found 2026-10-04). What comms-mail uses for each closed item is under
+(found 2026-10-04), and #51 (found 2026-10-05). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 ## Open
@@ -177,6 +177,26 @@ and its own wrapping (mailui/educate.go, `strong`).
 as a plain label does.
 
 Found 2026-10-04 against 0.23.3; the same in 0.23.4.
+
+### 51. Measuring a `ScrollView` changes what it scrolls
+`ScrollView.Measure` keeps the size its child measured as the size it
+scrolls (`s.content = s.child.Measure(…)`, widgets/scroll.go:130 in
+0.23.3), and `Arrange` does too (:174). The scroll range, the clamp and
+the bar's thumb all read it (`maxOff` :211, `clamp` :215, the bar's
+geometry :297). So a measure after the layout — a splitter asking its
+panes' minimum widths (`MinWidthOf` probes at a quarter of the natural
+width), a parent measuring unbounded — leaves the view scrolling the
+content as it would be at *that* width until the next `Arrange`: the
+thumb half-way down at the end of the content, the wheel going on into
+nothing. In comms-mail's Security tab, scrolled to the end, the range
+read 573 px after the layout, 2979 after a min-width probe and 4147
+after a narrow measure. comms-mail puts the tab's scroll view behind a
+wrapper that answers measures itself (mailui/securitytab.go,
+`stillScroll`).
+**Fix asked for:** `Measure` without side effects — the scroll range
+from `Arrange` alone.
+
+Found 2026-10-05 against 0.23.3.
 
 ## Resolved
 

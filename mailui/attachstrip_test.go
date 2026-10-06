@@ -7,7 +7,6 @@ import (
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
 )
 
 // The attachment strip is the same height for four attachments or twelve
@@ -29,12 +28,8 @@ func TestAttachmentStripKeepsItsSize(t *testing.T) {
 		s.showHeaders(m)
 		s.showBody(m)
 		a.PumpOnce()
-		tabsTop = -1
-		widget.Walk(w.Content(), func(c widget.Component) {
-			if tv, ok := c.(*widgets.TabView); ok && tabsTop < 0 {
-				tabsTop = widget.LocalToWindow(tv, tv.LocalBounds()).Min.Y
-			}
-		})
+		// The text starts under the header, in the Message tab.
+		tabsTop = widget.LocalToWindow(s.rd.text, s.rd.text.LocalBounds()).Min.Y
 		if s.rd.attStrip.Visible() {
 			paneH = s.rd.attStrip.LocalBounds().Dy()
 		}
@@ -44,7 +39,7 @@ func TestAttachmentStripKeepsItsSize(t *testing.T) {
 	fourTop, fourH := show(withAttachments(4))
 	twelveTop, twelveH := show(withAttachments(12))
 	againTop, _ := show(withAttachments(0))
-	t.Logf("tabs at: plain %v, 4 attachments %v, 12 attachments %v, plain again %v (window %d)", plainTop, fourTop, twelveTop, againTop, winH)
+	t.Logf("text at: plain %v, 4 attachments %v, 12 attachments %v, plain again %v (window %d)", plainTop, fourTop, twelveTop, againTop, winH)
 
 	if fourH != twelveH || fourTop != twelveTop {
 		t.Fatalf("the strip grew with the attachments: %v → %v (tabs %v → %v)", fourH, twelveH, fourTop, twelveTop)
