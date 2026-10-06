@@ -14,8 +14,13 @@ name and the owner's own. 0.22 closed sixteen of the first seventeen;
 #31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
 0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
 #2 (declined and settled), #29 (a design change), #47, #48, #49 and #50
-(found 2026-10-04), and #51 (found 2026-10-05). What comms-mail uses for each closed item is under
+(found 2026-10-04), #51 (found 2026-10-05), and #52 and #53 (found
+2026-10-06). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
+
+**v0.23.4** (2026-10-04) closes none of them: every open item was
+re-read against it on 2026-10-06. comms-mail stays on v0.23.3 and moves
+to the next release after 0.23.4.
 
 ## Open
 
@@ -199,7 +204,49 @@ measuring what its scroll view shows, never the scroll view
 **Fix asked for:** `Measure` without side effects — the scroll range
 from `Arrange` alone.
 
-Found 2026-10-05 against 0.23.3.
+Found 2026-10-05 against 0.23.3; the same in 0.23.4 (widgets/scroll.go
+is unchanged).
+
+### 52. No way to print
+The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
+print dialog, no page setup, no way to lay a document out on pages or
+render one to PDF, and no use of the desktop's print service (the
+`org.freedesktop.portal.Print` portal, which takes a PDF; `PrintDlgEx`
+on Windows; `NSPrintOperation` on macOS). Searched in 0.23.4: platform/,
+app/, widgets/, richtext/ and docs/ have no print path, and the only PDF
+in the repository is test data.
+comms-mail's Print writes the message as an HTML page, with a
+Content-Security-Policy that blocks every request so a remote image
+cannot tell the sender it was printed, and opens it in the browser to
+print or save as PDF (mailui/print.go, `printMessage`). The user leaves
+the app to print, in a window that is not the app's.
+**Fix asked for:** a print path — `richtext` (or a painted component) laid
+out on pages and rendered to PDF, and the platform's print dialog for
+that PDF (the portal's `PreparePrint` and `Print` on Linux).
+
+Found 2026-10-06 against 0.23.4.
+
+### 53. An app cannot add an icon of its own
+Some of comms-mail's marks are in neither the 56 typed ids nor the 80
+shipped stems (docs/widgets.md:282 and :317): a mail server, in the
+Security tab's route and the Educate page's three hops; Compact Folder;
+Body as plain text; a filter's Turn Off. `IconByStem` answers only typed
+names and shipped stems (style/icon.go:447) and gives `IconNone` for any
+other, so an app has no `ToolIcon` to pass to `Button.Icon`,
+`MenuItem.Icon` or `DrawToolIcon` for a mark it ships. `AddSearchPath`
+art (docs/recipes.md:102) can only stand in for stems the toolkit
+already knows, and even a known stem-only icon draws the missing-icon
+mark in the drawn sets (docs/widgets.md:326), which every pack uses unless
+the user picks otherwise.
+comms-mail draws the server itself in strokes like the drawn sets'
+(mailui/figure.go, `drawServer`), and leaves the other three rows
+without a mark.
+**Fix asked for:** typed ids for `server`, `compact`, `text` (plain text)
+and `power` (turn off), or a way for an app to register its own icon — a
+stem with a vector for the drawn sets (`style.RegisterIcon(stem, draw)`),
+that the user's file sets can still replace by stem.
+
+Found 2026-10-06 against 0.23.4.
 
 ## Resolved
 

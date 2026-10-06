@@ -53,7 +53,7 @@ new ones turn up.
 ## Icons
 - **A few rows still without an icon** — Compact Folder, Select All,
   Body as plain text and a filter's Turn Off: no toolkit icon means what
-  they do (Run Now, Unlock and an invitation's More / Less got theirs
+  they do, and an app cannot add its own (uitoolkit-gaps.md #53) (Run Now, Unlock and an invitation's More / Less got theirs
   from uitoolkit 0.23). Buttons with icons are wide (uitoolkit-gaps.md
   #29), so their rows fold in narrow windows.
 
