@@ -106,6 +106,7 @@ func ParseRFC822(raw []byte, folder FolderID, accountID string) (Message, error)
 	out.Signed, out.Encrypted = recogniseProtection(media, params, out.Body)
 	out.Autocrypt = h.Get("Autocrypt") != ""
 	out.Auth, out.AuthWhy = authVerdict(h, out.From)
+	out.AuthServer, out.DeliveredBy = authServerOf(h), deliveredBy(h)
 	if out.Signed {
 		// A detached signature is the signing's, not an attachment.
 		dropSignatureParts(&out)

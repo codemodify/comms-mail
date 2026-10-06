@@ -82,6 +82,9 @@ const (
 	MethodComposeKeys = "compose.keys"
 	// MethodMessagesSender checks a message's sender (SenderCheck).
 	MethodMessagesSender = "messages.sender"
+	// MethodMessagesReport is a message's security report, but for its
+	// signatures and encryption (SecurityReport).
+	MethodMessagesReport = "messages.report"
 	// Your own keys, in secretvault (OwnKeys, MakePGPKey, ImportSMIME).
 	MethodKeysList        = "keys.list"
 	MethodKeysMakePGP     = "keys.makePGP"

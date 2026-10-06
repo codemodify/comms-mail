@@ -348,6 +348,18 @@ func (s *Server) dispatch(req Request) Response {
 				result = SenderCheck{Auth: AuthNone} // the demo: nobody to check against
 			}
 		}
+	case MethodMessagesReport:
+		var p messageIDParams
+		if p, err = decodeParams[messageIDParams](req.Params); err == nil {
+			if ls, ok := s.Store.(*LocalStore); ok {
+				result, err = ls.SecurityReport(p.ID)
+			} else {
+				var raw []byte
+				if raw, err = s.Store.GetRaw(p.ID); err == nil {
+					result = SecurityReportOf(raw) // the demo: no provider to tell by
+				}
+			}
+		}
 	case MethodKeysList:
 		if ls, ok := s.Store.(*LocalStore); ok {
 			result = ls.OwnKeys()

@@ -477,6 +477,8 @@ func messageStamp(m *Message) uint64 {
 	flag(m.Autocrypt)
 	str(m.Auth)
 	str(m.AuthWhy)
+	str(m.AuthServer)
+	str(m.DeliveredBy)
 	if p := m.Protect; p != nil {
 		flag(true)
 		flag(p.Sign)

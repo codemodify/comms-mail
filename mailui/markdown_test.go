@@ -23,13 +23,13 @@ func TestReadingPaneHasAMarkdownTab(t *testing.T) {
 	var tabs *widgets.TabView
 	widget.Walk(w.Content(), func(c widget.Component) {
 		if tv, ok := c.(*widgets.TabView); ok && tabs == nil {
-			if titles := tv.Bar().Titles; len(titles) == 3 && titles[2] == "Markdown" {
+			if titles := tv.Bar().Titles; len(titles) == 4 && titles[readerTabMarkdown] == "Markdown" {
 				tabs = tv
 			}
 		}
 	})
 	if tabs == nil {
-		t.Fatal("no Message / Source / Markdown tabs")
+		t.Fatal("no Message / Security / Source / Markdown tabs")
 	}
 	tabs.Select(readerTabMarkdown)
 	a.PumpOnce()

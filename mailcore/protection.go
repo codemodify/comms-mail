@@ -119,6 +119,10 @@ type MessageSecurity struct {
 	// is often "...").
 	Subject  string   `json:"subject,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
+	// Engine is what checked it — EngineSecretVault or EngineOwn — and
+	// Vault secretvault's vault it used ("" its default).
+	Engine string `json:"engine,omitempty"`
+	Vault  string `json:"vault,omitempty"`
 }
 
 // SignatureCheck is one signature: whether it holds, and whose it is.
@@ -200,10 +204,14 @@ func (s *LocalStore) MessageSecurity(id MessageID, decrypt bool) (MessageSecurit
 	if s.engineOf(format) == EngineOwn {
 		if !m.Signed && !m.Encrypted {
 			s.ownInspect(raw, false, m) // the key it offers is recorded
+			sec.Engine = EngineOwn
 			return sec, nil
 		}
-		return s.ownInspect(raw, decrypt, m), nil
+		out := s.ownInspect(raw, decrypt, m)
+		out.Engine = EngineOwn
+		return out, nil
 	}
+	sec.Engine = EngineSecretVault
 	if err := theSecretVault.available(); err != nil {
 		if m.Signed || m.Encrypted {
 			sec.Why = whyNoSecretVault
@@ -211,6 +219,7 @@ func (s *LocalStore) MessageSecurity(id MessageID, decrypt bool) (MessageSecurit
 		return sec, nil
 	}
 	vault := s.svVaultOf(format)
+	sec.Vault = vault
 	switch err := svVaultReady(vault); {
 	case errors.Is(err, ErrLocked):
 		sec.Locked, sec.KeysLocked, sec.Why = true, format, "secretvault is locked"
@@ -233,6 +242,7 @@ func (s *LocalStore) MessageSecurity(id MessageID, decrypt bool) (MessageSecurit
 		return sec, nil
 	}
 	out := securityFromReport(res, m)
+	out.Engine, out.Vault = EngineSecretVault, vault
 	s.passOnKeys(res.Report.Keys, m)
 	return out, nil
 }
@@ -435,7 +445,7 @@ func contentMessage(raw []byte, inline bool, outer Message) *Message {
 	// PGP/MIME or S/MIME message usually has no From, To or Date.
 	m.From, m.To, m.Cc, m.Date = firstNonEmpty(m.From, outer.From), firstNonEmpty(m.To, outer.To), firstNonEmpty(m.Cc, outer.Cc), outer.Date
 	// The server's verdict on the sender is the outer message's.
-	m.Auth, m.AuthWhy = outer.Auth, outer.AuthWhy
+	m.Auth, m.AuthWhy, m.AuthServer, m.DeliveredBy = outer.Auth, outer.AuthWhy, outer.AuthServer, outer.DeliveredBy
 	if m.Subject == "" {
 		m.Subject = outer.Subject
 	}

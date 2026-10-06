@@ -330,6 +330,15 @@ func (c *Client) SenderCheck(id MessageID) (SenderCheck, error) {
 	return r, err
 }
 
+// SecurityReport is message id's security report: the server's checks
+// of its sender and whose they are, what forwarders saw, its domain
+// signatures — all but its signatures and encryption (MessageSecurity).
+func (c *Client) SecurityReport(id MessageID) (SecurityReport, error) {
+	var r SecurityReport
+	err := c.call(MethodMessagesReport, messageIDParams{ID: id}, &r)
+	return r, err
+}
+
 // OwnKeys are your keys in secretvault, for each address you send from.
 func (c *Client) OwnKeys() (OwnKeys, error) {
 	var r OwnKeys

@@ -616,7 +616,7 @@ func askP12Password(from widget.Component, name string, done func([]byte), cance
 // groupFingerprint is a fingerprint in groups of four, as people compare
 // them.
 func groupFingerprint(fp string) string {
-	fp = strings.ToUpper(strings.ReplaceAll(fp, " ", ""))
+	fp = strings.ToUpper(strings.NewReplacer(" ", "", ":", "").Replace(fp))
 	var b strings.Builder
 	for i, r := range fp {
 		if i > 0 && i%4 == 0 {

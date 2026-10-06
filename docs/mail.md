@@ -277,10 +277,12 @@ Type the incoming/SMTP password (masked field); **Save account** writes `protoco
 
 The reading pane — and a message opened in a tab of its own, which is the
 same thing larger — shows the header (From, To, Cc, Date, tags,
-attachments, whether you replied or forwarded), the invitation card, a
-row of actions over the attachments, and three tabs: **Message** (the
-`text/plain` body, the default), **Source** (the raw RFC822, fetched when
-the tab is shown) and **Markdown** (the message rendered, below).
+attachments, whether you replied or forwarded), the security chips under
+From (see *Security at a glance* below), the invitation card, a row of
+actions over the attachments, and four tabs: **Message** (the
+`text/plain` body, the default), **Security** (all there is to say of
+its security, below), **Source** (the raw RFC822, fetched when the tab is
+shown) and **Markdown** (the message rendered, below).
 
 Nothing of a message's HTML is drawn in the window. A message that has an
 HTML part has **Open HTML** in the action row, beside the attachments'
@@ -602,10 +604,58 @@ asks nothing. Tests never reach your real keyring or secretvault: they
 run the keyring code against a fake Secret Service on a private D-Bus, and
 the secretvault code against a stand-in daemon (`internal/svtest`).
 
+## Security at a glance, and the Security tab
+
+Under From, a row of chips says a message's security at a glance — green
+for what holds, amber for what is worth a look, red for what is worth
+stopping for, grey for what is simply not there — as few as say it:
+
+- **the sender** — *example.com confirmed* (your provider's check of the
+  sender's domain passed), *… not confirmed* (it failed), *… not checked*
+  (no check, or none conclusive), *Sender check not your provider's* (the
+  only one came with the message) — or, when there are warnings about the
+  sender (below), *2 warnings about the sender*;
+- **the signature and the encryption** — *Signed by Alice*, *Signed, key
+  not verified*, *Signed, unknown key*, *Signature broken*, *Encrypted*,
+  *Encrypted, not opened*, *Not encrypted* — or, for most mail, one *Not
+  signed or encrypted*;
+- **a weak domain signature** — when the DKIM signature that vouches for
+  From's domain uses SHA-1, or signs only the first part of the text
+  (`l=`), so more can be added after it.
+
+A chip — clicked, or Return or Space on it — opens the **Security** tab at
+its section. The tab has all there is (`messages.report`, and
+`messages.security` for signed and encrypted mail):
+
+- **Who sent it** — From; who checked the sender, and whether that is your
+  provider's server (below); each check the server wrote, in a few words,
+  with the domain it checked and whether that is From's: *SPF pass: sent
+  from a server mail.example.com allows — From's domain*, *DKIM pass:
+  signed by example.com (key s1)*, *DMARC pass: example.com's policy is
+  met; it asks to reject what fails*, ARC, Microsoft's `compauth`,
+  `iprev`, BIMI, `auth`; that a pass proves the domain, not the person;
+  and the warnings and notes about the sender.
+- **Forwarded on the way** — what each server that passed the message on
+  saw as it got it, as it signed it (ARC): a mailing list or a forwarder
+  changes a message, which can break its checks. Your provider's own ARC
+  set is not repeated.
+- **Domain signatures (DKIM)** — each `DKIM-Signature`: the domain, its
+  key's selector, the algorithm, whether it is From's domain, when it was
+  signed, and whether it held; SHA-1, `l=` and an expired signature are
+  said.
+- **Signature and encryption** — the lines below (*Signed and encrypted
+  mail*), each signer's key fingerprint in groups of four, what checked
+  it (secretvault and its vault, or comms-mail with the keys in Settings),
+  that the subject shown is the protected one, the key the message carries
+  (Autocrypt) — and, for what is not done, what follows: *Not signed:
+  nothing proves who wrote it*, *Not encrypted: each server on its way
+  could read it, and both providers keep it readable*.
+
 ## Who sent it
 
 Under From, the reading pane says what is worth knowing about the sender,
-and nothing for a sender with nothing to say (`messages.sender`):
+and nothing for a sender with nothing to say (`messages.sender`, and the
+`sender` of `messages.report`):
 
 - **Your mail server's check of the sender's domain.** On arrival your
   provider checks SPF, DKIM and DMARC and writes the outcome into an
@@ -618,6 +668,25 @@ and nothing for a sender with nothing to say (`messages.sender`):
   paypal.com: it failed paypal.com's own sender policy (DMARC).* The
   verdict is kept with the message (`auth`), and read from the raw message
   for one cached before.
+- **Only your provider's check counts.** The header names the server that
+  wrote it (its `authserv-id`, which Microsoft 365 leaves out). It is your
+  provider's when that server's organisation is one of your account's —
+  its IMAP, POP3 and SMTP servers', its address's, the other domains a
+  big provider's servers go by (Gmail's are `google.com`, Fastmail's
+  `messagingengine.com`, Microsoft's `outlook.com` and `office365.com`,
+  Yahoo's, iCloud's, Proton's, Zoho's, GMX's, Yandex's) — or the server
+  that put the message in your mailbox (the topmost `Received`, which no
+  sender writes), or the one that checked at least 80% of the account's
+  mail (10 or more). Microsoft's unnamed header counts for a Microsoft
+  account or a message Microsoft delivered. Any other server's verdict came
+  with the message: it counts for nothing — not for the chips, not for
+  loading a sender's images by themselves — and a note says *The sender
+  check in this message was written by mx.evil.example, not by your
+  provider's server: it came with the message, and proves nothing.* The
+  cache keeps what the message says, and who wrote it (`authServer`,
+  `deliveredBy`), read from the raw message for one cached before. Mail
+  imported from files has no account to tell by: its verdict counts, as it
+  did.
 - **A name that shows another address or domain** — `"service@paypal.com"
   <x@evil.biz>`, `PayPal.com Support <…@evil.biz>`.
 - **A name you know on an address you do not** — the name of someone you
@@ -673,7 +742,8 @@ are in the data folder, `keys/index.json`.
   opens what is encrypted to you — secretvault asks you the first time
   comms-maild wants to decrypt; comms-mail's own opens with your keys from
   where they are kept, peeling layer after layer (signed inside encrypted,
-  and so on). Under the header, a line for each layer:
+  and so on). In the Security tab, a line for each layer (a chip under From
+  says it at a glance):
   - a check — *Signed by Alice, verified in person* (or vouched for by the
     organisation, your own key, a key you brought in, certified by an
     authority your computer trusts, …);
@@ -694,9 +764,10 @@ are in the data folder, `keys/index.json`.
   Autocrypt key only for the sender's own address, and a certificate only
   when it holds. Nothing is trusted for arriving.
 - **While the keys are locked** — secretvault, or where comms-mail keeps
-  its own — nothing is opened and nobody is asked: the line says so, with
-  **Unlock secretvault…** or **Unlock your keys…** (the encrypted file's
-  passphrase; the keyring and secretvault show their own prompts).
+  its own — nothing is opened and nobody is asked: the line says so, and
+  **Unlock secretvault…** or **Unlock your keys…** under the header
+  (the encrypted file's passphrase; the keyring and secretvault show their
+  own prompts).
 
 Your keys — **Settings › Security › Keys**, OpenPGP and S/MIME a page
 each (switched at the top), asked again each time it shows:

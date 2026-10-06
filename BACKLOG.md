@@ -83,8 +83,22 @@ new ones turn up.
 ## Security (decided 2026-09-28, revised 2026-10-03 and 2026-10-04; docs/security/security-primer.md)
 - **Sender warnings** — done 2026-10-03 (docs/mail.md, Who sent it). Left:
   the message list still shows only the display name and has no mark for
-  a failed check or a look-alike; the topmost `Authentication-Results` is
-  trusted as the provider's without checking its server name.
+  a failed check or a look-alike. The topmost `Authentication-Results`
+  counts only when your provider's server wrote it — done 2026-10-05; a
+  provider not told by its servers' names, the alias table, the delivering
+  server or the account's usual checker has no "trust this server" button
+  yet.
+- **Security in the reading pane** (asked 2026-10-05: everything we can
+  say of a message's security) — chips under From and a Security tab, done
+  2026-10-05 for what was already worked out (docs/mail.md, Security at a
+  glance). Next, in this order: the route from the `Received` headers (each
+  hop, TLS and cipher where stamped, times); content checks (links whose
+  text names another domain, IP / look-alike / punycode links, tracking
+  pixels and the hosts the HTML would reach, risky attachments, read
+  receipts asked, forms); the sender domain's DMARC policy, MTA-STS, DANE,
+  BIMI and DNSSEC looked up (opt-in), your own connection's TLS; whom it
+  was encrypted to (asked of secretvault, below; comms-mail's own engine
+  can say it itself).
 - **Reading and sending signed / encrypted mail** — done 2026-10-03
   (docs/mail.md, Signed and encrypted mail). Left: attachments *inside* an
   encrypted message are not listed or opened yet, nor carried by a
@@ -109,6 +123,15 @@ new ones turn up.
   before Send of which recipients can be encrypted to; an Autocrypt header
   on outgoing mail; encrypting to yourself only (for drafts). Publishing
   it is not needed: comms-mail talks to its daemon, not its code.
+  Asked 2026-10-05, for the Security tab, in `mail.inspect`'s report:
+  each encrypted layer's recipients (OpenPGP key IDs or fingerprints,
+  S/MIME issuer and serial or subject key identifier), which are yours and
+  which one opened it, and the cipher and mode (SEIPDv1 with MDC or
+  SEIPDv2 with OCB/GCM; S/MIME AuthEnvelopedData AES-GCM or EnvelopedData
+  AES-CBC; key transport RSA-OAEP, RSA PKCS#1 v1.5 or ECDH); and each
+  signature's creation time, hash, the key's algorithm and size, the
+  key's creation and expiry, and an S/MIME certificate's issuer and
+  validity dates.
 - **Keys from one secretvault vault to another** — done 2026-10-05:
   secretvault answered with `item.move` (its b8a5f52), and Settings ›
   Security › Keys moves a format's keys with it when another of its vaults

@@ -9,8 +9,9 @@ import (
 )
 
 // The reading pane's say on signed and encrypted mail: a line for the
-// encryption and one for each signature, each with its mark, under the
-// header. The engine chosen for the message's format — secretvault, or
+// encryption and one for each signature, each with its mark, in the
+// Security tab (securitytab.go), the buttons to unlock under the header.
+// The engine chosen for the message's format — secretvault, or
 // comms-mail's own — checks it and opens what is encrypted to you
 // (mailcore.MessageSecurity); what is decrypted is shown and held in this
 // window only — never cached or indexed.
@@ -37,7 +38,7 @@ func newSecurityPart() *securityPart {
 	p.unlockKeys = newButton("Unlock your keys…", nil)
 	p.unlockKeys.Icon = style.IconLock
 	p.unlockKeys.SetVisible(false)
-	p.view = widgets.NewColumn(p.lines, foldRow(p.unlock, p.unlockKeys)).WithGap(4)
+	p.view = widgets.NewColumn(foldRow(p.unlock, p.unlockKeys)).WithGap(4)
 	p.view.SetVisible(false)
 	return p
 }
@@ -84,8 +85,9 @@ func (p *securityPart) show(sec mailcore.MessageSecurity) {
 	p.unlock.SetVisible(sec.Locked)
 	p.keysFormat = sec.KeysLocked
 	p.unlockKeys.SetVisible(sec.KeysLocked != "" && !sec.Locked)
-	p.view.SetVisible(len(p.lines.Children()) > 0 || sec.Locked || sec.KeysLocked != "")
+	p.view.SetVisible(sec.Locked || sec.KeysLocked != "")
 	p.view.RequestLayout()
+	p.lines.RequestLayout()
 }
 
 func coverage(c string) string {
@@ -186,11 +188,14 @@ func (r *reader) loadSecurity(m mailcore.Message) {
 		if err != nil {
 			p.lines.ClearChildren()
 			p.line(style.IconWarning, "Could not check this message: "+err.Error())
-			p.view.SetVisible(true)
+			r.secView.sec = &mailcore.MessageSecurity{Signed: "none", Encrypted: "none"}
+			r.secView.show(r.msg)
 			return
 		}
 		sec := v.(mailcore.MessageSecurity)
 		p.show(sec)
+		r.secView.sec = &sec
+		r.secView.show(r.msg)
 		if sec.Subject != "" {
 			r.subj.SetText(sec.Subject)
 		}

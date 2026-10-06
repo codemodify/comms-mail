@@ -95,51 +95,41 @@ func authVerdict(h mail.Header, from string) (verdict, why string) {
 	return AuthNone, ""
 }
 
-// authFromRaw is authVerdict for a raw message.
-func authFromRaw(raw []byte, from string) (verdict, why string, ok bool) {
+// authFromRaw is authVerdict for a raw message, with who wrote it
+// (authServerOf) and who delivered it (deliveredBy).
+func authFromRaw(raw []byte, from string) (a rawAuth, ok bool) {
 	m, err := mail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
-		return "", "", false
+		return rawAuth{}, false
 	}
-	verdict, why = authVerdict(m.Header, from)
-	return verdict, why, true
+	a.verdict, a.why = authVerdict(m.Header, from)
+	a.server, a.by = authServerOf(m.Header), deliveredBy(m.Header)
+	return a, true
+}
+
+// rawAuth is what a message's header says of its sender's check.
+type rawAuth struct{ verdict, why, server, by string }
+
+// apply puts it on m.
+func (a rawAuth) apply(m *Message) {
+	m.Auth, m.AuthWhy, m.AuthServer, m.DeliveredBy = a.verdict, a.why, a.server, a.by
 }
 
 type authResult struct {
 	method, result string
 	props          map[string]string
+	comment        string
 }
 
 var authComment = regexp.MustCompile(`\([^()]*\)`)
 
 // authMethods are the methods a result is read for.
-var authMethods = map[string]bool{"spf": true, "dkim": true, "dmarc": true, "compauth": true, "arc": true, "iprev": true, "auth": true}
+var authMethods = map[string]bool{"spf": true, "dkim": true, "dmarc": true, "compauth": true, "arc": true, "iprev": true, "auth": true, "bimi": true}
 
 // parseAuthResults reads an Authentication-Results value (RFC 8601):
 // "authserv-id; method=result prop=value …; …". Microsoft 365 leaves the
-// server's id out and starts with the first result.
-func parseAuthResults(v string) []authResult {
-	v = authComment.ReplaceAllString(strings.ReplaceAll(v, "\r\n", " "), " ")
-	var out []authResult
-	for _, p := range strings.Split(v, ";") {
-		fields := strings.Fields(p)
-		if len(fields) == 0 {
-			continue
-		}
-		method, result, ok := strings.Cut(fields[0], "=")
-		if !ok || !authMethods[strings.ToLower(method)] {
-			continue // the server's id, or something not read
-		}
-		r := authResult{method: strings.ToLower(method), result: strings.ToLower(result), props: map[string]string{}}
-		for _, f := range fields[1:] {
-			if k, val, ok := strings.Cut(f, "="); ok {
-				r.props[strings.ToLower(k)] = strings.Trim(strings.ToLower(val), `"`)
-			}
-		}
-		out = append(out, r)
-	}
-	return out
-}
+// server's id out and starts with the first result (readAuthHeader).
+func parseAuthResults(v string) []authResult { return readAuthHeader(v).results }
 
 func domainOf(addr string) string {
 	addr = strings.TrimSpace(addr)
@@ -172,9 +162,13 @@ func registrableDomain(d string) string {
 // SenderCheck is what the reading pane says of a message's sender.
 type SenderCheck struct {
 	// Auth is the receiving server's verdict on the sender's domain
-	// ("pass", "fail", "none"); AuthWhy what failed.
-	Auth    string `json:"auth"`
-	AuthWhy string `json:"authWhy,omitempty"`
+	// ("pass", "fail", "none"); AuthWhy what failed. It is none when the
+	// header that gave it is not your provider's: AuthServer wrote it,
+	// and AuthTrust says whose that is (AuthBy…).
+	Auth       string `json:"auth"`
+	AuthWhy    string `json:"authWhy,omitempty"`
+	AuthServer string `json:"authServer,omitempty"`
+	AuthTrust  string `json:"authTrust,omitempty"`
 	// Warnings are worth stopping for; Notes worth knowing.
 	Warnings []string `json:"warnings,omitempty"`
 	Notes    []string `json:"notes,omitempty"`
@@ -190,19 +184,37 @@ func (s *LocalStore) SenderCheck(id MessageID) (SenderCheck, error) {
 		s.mu.Unlock()
 		return SenderCheck{}, errNoMessage(id)
 	}
+	s.fillAuthLocked(i)
 	m := s.Messages[i].Clone()
-	if m.Auth == "" {
-		// Cached before the server's verdict was read: from the raw
-		// message on disk, if it is there.
-		if raw := s.readRawLocked(m); len(raw) > 0 {
-			if verdict, why, ok := authFromRaw(raw, m.From); ok {
-				s.Messages[i].Auth, s.Messages[i].AuthWhy = verdict, why
-				m.Auth, m.AuthWhy = verdict, why
-			}
+	trust := s.authTrustLocked(m)
+	s.mu.Unlock()
+	said := m.Auth
+	m.Auth, m.AuthWhy = trustedVerdict(m, trust)
+	out := checkSender(m, s.correspondents())
+	out.AuthServer, out.AuthTrust = m.AuthServer, trust
+	if trust == AuthByOther && said != AuthNone {
+		server := m.AuthServer
+		if server == "?" {
+			server = "a server that does not name itself"
+		}
+		out.Notes = append(out.Notes, "The sender check in this message was written by "+server+
+			", not by your provider's server: it came with the message, and proves nothing.")
+	}
+	return out, nil
+}
+
+// fillAuthLocked reads message i's sender check from its raw message,
+// when it was cached before it was read: the verdict, or who wrote it.
+func (s *LocalStore) fillAuthLocked(i int) {
+	m := &s.Messages[i]
+	if m.Auth != "" && (m.Auth == AuthNone || m.AuthServer != "") {
+		return
+	}
+	if raw := s.readRawLocked(*m); len(raw) > 0 {
+		if a, ok := authFromRaw(raw, m.From); ok {
+			a.apply(m)
 		}
 	}
-	s.mu.Unlock()
-	return checkSender(m, s.correspondents()), nil
 }
 
 func errNoMessage(id MessageID) error { return &noMessageError{id} }

@@ -689,22 +689,17 @@ func (s *LocalStore) GetMessage(id MessageID) (Message, bool) {
 			}
 		}
 	}
-	if m.Auth == "" && (m.Body != "" || m.HTML != "" || m.Encrypted) {
+	if m.Body != "" || m.HTML != "" || m.Encrypted {
 		// Cached before the server's verdict on the sender was read: read
 		// it from the raw message's header, once (the cache keeps it).
-		if raw := s.readRawLocked(m); len(raw) > 0 {
-			if verdict, why, ok := authFromRaw(raw, m.From); ok {
-				s.Messages[i].Auth, s.Messages[i].AuthWhy = verdict, why
-				m.Auth, m.AuthWhy = verdict, why
-			}
-		}
-	}
-	if m.Body != "" || m.HTML != "" || m.Encrypted {
+		s.fillAuthLocked(i)
+		m.Auth, m.AuthWhy, m.AuthServer, m.DeliveredBy = s.Messages[i].Auth, s.Messages[i].AuthWhy, s.Messages[i].AuthServer, s.Messages[i].DeliveredBy
+		m = s.servedLocked(m)
 		s.mu.Unlock()
 		return m, true
 	}
 	if raw := s.readRawLocked(m); len(raw) > 0 {
-		out := s.applyRawLocked(i, raw)
+		out := s.servedLocked(s.applyRawLocked(i, raw))
 		s.mu.Unlock()
 		return out, true
 	}
@@ -713,10 +708,18 @@ func (s *LocalStore) GetMessage(id MessageID) (Message, bool) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if j, ok := s.indexLocked(id); ok {
-			return s.applyRawLocked(j, raw), true
+			return s.servedLocked(s.applyRawLocked(j, raw)), true
 		}
 	}
 	return m, true
+}
+
+// servedLocked is m as the window gets it: its verdict on the sender
+// counts only when your provider's server gave it. The cache keeps what
+// the message says.
+func (s *LocalStore) servedLocked(m Message) Message {
+	m.Auth, m.AuthWhy = trustedVerdict(m, s.authTrustLocked(m))
+	return m
 }
 
 // applyRawLocked parses raw into the cached message at index i, preserving

@@ -1330,7 +1330,7 @@ func TestMailMessageSourceShowsRFC822(t *testing.T) {
 	if tabs == nil {
 		t.Fatal("preview tabs")
 	}
-	tabs.Select(1)
+	tabs.Select(readerTabSource)
 	a.PumpOnce()
 	var sourceTab *widgets.TextArea
 	widget.Walk(mailTree(w), func(c widget.Component) {

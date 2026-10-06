@@ -16,9 +16,10 @@ import (
 // reader shows one message: its header — subject, From, To, Cc, Date, tags
 // — the calendar invitation it carries, a row of actions (the selected
 // attachment's Open and Save, Save All, and Open HTML for a message that
-// has HTML) over its attachments, and three tabs: Message (the text),
-// Source (the raw message, fetched when the tab is shown) and Markdown
-// (the message rendered, with the remote-images bar).
+// has HTML) over its attachments, and four tabs: Message (the text),
+// Security (all there is to say of its security; chips under From say it
+// at a glance), Source (the raw message, fetched when the tab is shown)
+// and Markdown (the message rendered, with the remote-images bar).
 //
 // The reading pane is one reader; a message opened in a tab of its own is
 // another, the same thing larger.
@@ -33,7 +34,9 @@ type reader struct {
 	// (security.go).
 	sender *senderPart
 	sec    *securityPart
-	invite *inviteCard
+	// secView is the chips under From and the Security tab.
+	secView *securityView
+	invite  *inviteCard
 	// retry is offered when the message could not be loaded; onRetry is
 	// what it does.
 	retry   *widgets.FlexBox
@@ -65,6 +68,7 @@ type reader struct {
 // The reader's tabs.
 const (
 	readerTabText = iota
+	readerTabSecurity
 	readerTabSource
 	readerTabMarkdown
 )
@@ -90,6 +94,7 @@ func newReader(s *session) *reader {
 	r.sec = newSecurityPart()
 	r.sec.unlock.OnClick = r.unlockSecretVault
 	r.sec.unlockKeys.OnClick = r.unlockKeys
+	r.secView = newSecurityView(r.sec.lines)
 	r.invite = newInviteCard(s)
 
 	// Short labels: the row fits the narrowest reading pane (the header
@@ -129,6 +134,7 @@ func newReader(s *session) *reader {
 	r.md.rich.Placeholder = "This message has no text."
 	r.tabs = widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: widgets.NewPad(8, r.text)},
+		widgets.Tab{Title: "Security", Content: r.secView.scroll},
 		widgets.Tab{Title: "Source", Content: widgets.NewPad(8, r.source)},
 		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(4, r.md.view)},
 	)
@@ -139,12 +145,15 @@ func newReader(s *session) *reader {
 			r.loadSource()
 		case readerTabMarkdown:
 			s.mark("Markdown")
+		case readerTabSecurity:
+			s.mark("Security")
 		default:
 			s.mark("Message")
 		}
 	}
 
-	head := widgets.NewColumn(r.subj, r.from, r.sender.view, r.to, r.cc, r.date, r.extra, r.sec.view,
+	r.secView.open = func() { r.tabs.Select(readerTabSecurity) }
+	head := widgets.NewColumn(r.subj, r.from, r.secView.chips, r.sender.view, r.to, r.cc, r.date, r.extra, r.sec.view,
 		r.invite.view, r.actions, r.attStrip, r.retry).WithGap(3).WithPad(10)
 	// The header grows with what the message carries (an invitation,
 	// attachments) but always leaves the body room for a few lines: past
@@ -164,6 +173,7 @@ func (r *reader) showHeaders(m mailcore.Message) {
 		r.source.SetText("")
 		r.sec.clear()
 		r.sender.clear()
+		r.secView.clear()
 	} else if !hasBody(m) {
 		m.Body, m.HTML = r.msg.Body, r.msg.HTML
 	}
@@ -214,6 +224,9 @@ func (r *reader) showBody(m mailcore.Message) {
 		md.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(m))
 		r.md.show(md)
 	}
+	if r.secView.report == nil || r.sec.id != m.ID {
+		r.secView.show(m) // signed or encrypted: checking, until it is
+	}
 	if m.Signed || m.Encrypted || m.Autocrypt {
 		r.loadSecurity(m)
 	}
@@ -245,6 +258,7 @@ func (r *reader) clear() {
 	r.cc.SetVisible(false)
 	r.sec.clear()
 	r.sender.clear()
+	r.secView.clear()
 	r.attNames = nil
 	r.syncAttachPane()
 	r.invite.clear()

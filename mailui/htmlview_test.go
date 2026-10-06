@@ -243,7 +243,7 @@ func TestRemoteImagesRemovesATrustedSender(t *testing.T) {
 func TestReaderTabsAreTheSameEverywhere(t *testing.T) {
 	s, a, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
-	want := []string{"Message", "Source", "Markdown"}
+	want := []string{"Message", "Security", "Source", "Markdown"}
 	titles := func() [][]string {
 		var out [][]string
 		widget.Walk(mailTree(w), func(c widget.Component) {

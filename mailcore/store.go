@@ -258,6 +258,12 @@ type Message struct {
 	// check that failed (sender.go).
 	Auth    string `json:"auth,omitempty"`
 	AuthWhy string `json:"authWhy,omitempty"`
+	// AuthServer wrote that header: its authserv-id, "?" when it names
+	// none. DeliveredBy is the organisation of the server that put the
+	// message in the mailbox (the topmost Received). Together they tell
+	// whether the verdict is your provider's (report.go).
+	AuthServer  string `json:"authServer,omitempty"`
+	DeliveredBy string `json:"deliveredBy,omitempty"`
 	// Protect is how the writer asked the message to go — signed,
 	// encrypted — while it is a draft and while it waits in the Outbox
 	// (sendprotect.go). It is never part of what is sent.

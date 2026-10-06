@@ -42,7 +42,9 @@ func (p *senderPart) show(c mailcore.SenderCheck) {
 	p.view.RequestLayout()
 }
 
-// loadSender checks m's sender, once per message shown.
+// loadSender checks m's sender, once per message shown, with the rest of
+// its security report: the warnings go under From, the rest to the chips
+// and the Security tab (securitytab.go).
 func (r *reader) loadSender(m mailcore.Message) {
 	p := r.sender
 	if p.id == m.ID || m.ID == "" {
@@ -52,11 +54,14 @@ func (r *reader) loadSender(m mailcore.Message) {
 	p.id = m.ID
 	gen, id := r.gen, m.ID
 	r.s.async(func() (any, error) {
-		return r.s.cli.SenderCheck(id)
+		return r.s.cli.SecurityReport(id)
 	}, func(v any, err error) {
 		if err != nil || gen != r.gen || p.id != id {
 			return
 		}
-		p.show(v.(mailcore.SenderCheck))
+		rep := v.(mailcore.SecurityReport)
+		p.show(rep.Sender)
+		r.secView.report = &rep
+		r.secView.show(r.msg)
 	})
 }

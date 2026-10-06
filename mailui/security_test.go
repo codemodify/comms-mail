@@ -157,6 +157,27 @@ func securityLines(r *reader) (icons []style.ToolIcon, texts []string) {
 	return iconLines(r.sec.lines)
 }
 
+// chipsOf are the reading pane's chips under From: their tones and words.
+func chipsOf(r *reader) (tones []secTone, texts []string) {
+	widget.Walk(r.secView.chips, func(c widget.Component) {
+		if ch, ok := c.(*secChip); ok {
+			tones, texts = append(tones, ch.Tone), append(texts, ch.Text)
+		}
+	})
+	return
+}
+
+// securityTab is the Security tab's words: its section titles and lines.
+func securityTab(r *reader) string {
+	var out []string
+	widget.Walk(r.secView.body, func(c widget.Component) {
+		if l, ok := c.(*widgets.Label); ok && l.Text != "" {
+			out = append(out, l.Text)
+		}
+	})
+	return strings.Join(out, "\n")
+}
+
 // iconLines are root's lines of text, each with the mark before it (an
 // iconLine: a mark alone, then its text), IconNone for a line with none.
 func iconLines(root widget.Component) (icons []style.ToolIcon, texts []string) {
@@ -188,6 +209,15 @@ func TestReadingSignedAndEncryptedMail(t *testing.T) {
 	if len(texts) != 1 || icons[0] != style.IconCheck || !strings.Contains(texts[0], "Signed by Alice, verified in person") {
 		t.Fatalf("signed: %v %q", icons, texts)
 	}
+	// At a glance under From, all of it in the Security tab: the lines,
+	// the key, and what checked it.
+	tones, chips := chipsOf(s.rd)
+	if !slices.Contains(chips, "Signed by Alice") || tones[slices.Index(chips, "Signed by Alice")] != secGood || !slices.Contains(chips, "Not encrypted") {
+		t.Fatalf("chips %q %v", chips, tones)
+	}
+	if tab := securityTab(s.rd); !strings.Contains(tab, "Signature and encryption") || !strings.Contains(tab, "Signed by Alice, verified in person") || !strings.Contains(tab, "Checked by secretvault") {
+		t.Fatalf("security tab:\n%s", tab)
+	}
 	if !strings.Contains(s.rd.text.Text, "Shall we meet at noon?") {
 		t.Fatalf("signed body %q", s.rd.text.Text)
 	}
@@ -196,6 +226,9 @@ func TestReadingSignedAndEncryptedMail(t *testing.T) {
 	icons, texts = securityLines(s.rd)
 	if len(texts) != 1 || icons[0] != style.IconLock || !strings.Contains(texts[0], "opened with your key") {
 		t.Fatalf("encrypted: %v %q", icons, texts)
+	}
+	if _, chips := chipsOf(s.rd); !slices.Contains(chips, "Encrypted") {
+		t.Fatalf("encrypted chips %q", chips)
 	}
 	if !strings.Contains(s.rd.text.Text, "blue folder") || s.rd.subj.Text != "The real subject" {
 		t.Fatalf("decrypted: subject %q, text %q", s.rd.subj.Text, s.rd.text.Text)
@@ -458,9 +491,39 @@ func TestSenderWarningsInTheReadingPane(t *testing.T) {
 	if len(texts) != 2 || icons[0] != style.IconWarning || !strings.Contains(joined, "DMARC") || !strings.Contains(joined, "The name shows service@paypal.com") {
 		t.Fatalf("forged: %v %q", icons, texts)
 	}
+	// The chips say it at a glance: not confirmed, warnings; the tab says
+	// who checked and what each check found.
+	tones, chips := chipsOf(s.rd)
+	if len(chips) != 2 || chips[0] != "2 warnings about the sender" || tones[0] != secBad ||
+		chips[1] != "Not signed or encrypted" || tones[1] != secNeutral {
+		t.Fatalf("forged chips %q %v", chips, tones)
+	}
+	tab := securityTab(s.rd)
+	for _, want := range []string{"Who sent it", "Checked by mail.local", "DMARC fail: paypal.com's policy is not met", "Domain signatures (DKIM)", "No domain signed it", "Not signed: nothing proves who wrote it"} {
+		if !strings.Contains(tab, want) {
+			t.Fatalf("security tab lacks %q:\n%s", want, tab)
+		}
+	}
+	// A chip opens the tab.
+	var chip *secChip
+	widget.Walk(s.rd.secView.chips, func(c widget.Component) {
+		if ch, ok := c.(*secChip); ok && chip == nil {
+			chip = ch
+		}
+	})
+	chip.KeyPress(widget.KeyEvent{Key: platform.KeyReturn})
+	a.PumpOnce()
+	if s.rd.tabs.Selected() != readerTabSecurity {
+		t.Fatalf("the chip did not open the Security tab: %d", s.rd.tabs.Selected())
+	}
+	s.rd.tabs.Select(readerTabText)
+
 	open(s, a, ids["Lunch"])
 	if _, texts := lines(); len(texts) != 0 || s.rd.sender.view.Visible() {
 		t.Fatalf("a sender with nothing to say: %q", texts)
+	}
+	if tones, chips := chipsOf(s.rd); len(chips) == 0 || chips[0] != "example.org confirmed" || tones[0] != secGood {
+		t.Fatalf("confirmed chips %q %v", chips, tones)
 	}
 }
 
