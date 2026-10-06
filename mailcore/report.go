@@ -2,6 +2,7 @@ package mailcore
 
 import (
 	"bytes"
+	"crypto/tls"
 	"net"
 	"net/mail"
 	"regexp"
@@ -60,6 +61,78 @@ type SecurityReport struct {
 	// (content.go) — of the message as it came: an encrypted one's are
 	// checked by the window, once it is opened.
 	Content ContentReport `json:"content"`
+	// Fetched is how comms-mail fetches the account's mail: its last hop,
+	// from your mailbox to you. Domain is what the sender's domain
+	// publishes, when it was looked up within the hour (domaincheck.go).
+	Fetched *ConnectionInfo `json:"fetched,omitempty"`
+	Domain  *DomainReport   `json:"domain,omitempty"`
+}
+
+// ConnectionInfo is how comms-mail connects to a server: the protocol,
+// the server, and its TLS — the mode set, and, while a connection is
+// open, the version, cipher and certificate it has.
+type ConnectionInfo struct {
+	Protocol string    `json:"protocol"`
+	Server   string    `json:"server"`
+	Mode     string    `json:"mode"`
+	Live     bool      `json:"live,omitempty"`
+	Version  string    `json:"version,omitempty"`
+	Cipher   string    `json:"cipher,omitempty"`
+	Issuer   string    `json:"issuer,omitempty"`
+	NotAfter time.Time `json:"notAfter,omitzero"`
+}
+
+// fetchedVia is how comms-mail fetches an account's mail; nil for mail
+// with no server.
+func (s *LocalStore) fetchedVia(accountID string) *ConnectionInfo {
+	s.mu.Lock()
+	var a AccountConfig
+	ok := false
+	for _, c := range s.cfg.Accounts {
+		if id := c.ID; id == accountID || id == "" && slug(c.Address) == accountID {
+			a, ok = c, true
+		}
+	}
+	lives := []*imapClient{s.clients[accountID], s.fgClients[accountID]}
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	info := &ConnectionInfo{Protocol: "IMAP", Server: a.IMAP.HostPort(imapPorts), Mode: string(a.IMAP.Mode(imapPorts))}
+	host := a.IMAP.Host
+	if NormalizeProtocol(a.Protocol) == ProtoPOP3 {
+		info = &ConnectionInfo{Protocol: "POP3", Server: a.POP.HostPort(popPorts), Mode: string(a.POP.Mode(popPorts))}
+		host, lives = a.POP.Host, nil
+	}
+	if strings.TrimSpace(host) == "" || accountID == LocalAccountID {
+		return nil // mail kept here, fetched from nowhere
+	}
+	// A connection busy with a command is not waited for: the other may
+	// be free.
+	for _, live := range lives {
+		if live == nil || info.Live || !live.mu.TryLock() {
+			continue
+		}
+		conn := live.conn
+		live.mu.Unlock()
+		if t, ok := conn.(*tls.Conn); ok {
+			st := t.ConnectionState()
+			info.Live = true
+			info.Version = tls.VersionName(st.Version)
+			info.Cipher = tls.CipherSuiteName(st.CipherSuite)
+			if len(st.PeerCertificates) > 0 {
+				cert := st.PeerCertificates[0]
+				info.Issuer = cert.Issuer.CommonName
+				if len(cert.Issuer.Organization) > 0 {
+					info.Issuer = strings.TrimSpace(cert.Issuer.Organization[0] + " " + cert.Issuer.CommonName)
+				}
+				info.NotAfter = cert.NotAfter
+			}
+		} else if conn != nil {
+			info.Live = true // open, in the clear
+		}
+	}
+	return info
 }
 
 // AuthCheck is one result of an Authentication-Results header.
@@ -502,6 +575,13 @@ func (s *LocalStore) SecurityReport(id MessageID) (SecurityReport, error) {
 	s.mu.Unlock()
 	r := securityReportFor(raw, provider, s.correspondents().domains)
 	r.Sender, r.Trust = sc, sc.AuthTrust
+	s.mu.Lock()
+	acct := ""
+	if i, ok := s.indexLocked(s.resolveLocked(id)); ok {
+		acct = s.Messages[i].AccountID
+	}
+	s.mu.Unlock()
+	r.Fetched = s.fetchedVia(acct)
 	for d := range provider {
 		r.Provider = append(r.Provider, d)
 	}
@@ -585,5 +665,8 @@ func securityReportFor(raw []byte, provider, known map[string]bool) SecurityRepo
 	}
 	htmlBody, _ := OriginalHTML(raw)
 	r.Content = CheckContent(htmlBody, text, parts, h, known)
+	if d, ok := CachedDomain(domainOf(ExtractAddr(from))); ok {
+		r.Domain = &d
+	}
 	return r
 }

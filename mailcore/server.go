@@ -348,6 +348,11 @@ func (s *Server) dispatch(req Request) Response {
 				result = SenderCheck{Auth: AuthNone} // the demo: nobody to check against
 			}
 		}
+	case MethodDomainsCheck:
+		var p domainParams
+		if p, err = decodeParams[domainParams](req.Params); err == nil {
+			result = CheckDomain(p.Domain)
+		}
 	case MethodMessagesReport:
 		var p messageIDParams
 		if p, err = decodeParams[messageIDParams](req.Params); err == nil {

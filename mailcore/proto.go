@@ -85,6 +85,9 @@ const (
 	// MethodMessagesReport is a message's security report, but for its
 	// signatures and encryption (SecurityReport).
 	MethodMessagesReport = "messages.report"
+	// MethodDomainsCheck looks up what a domain publishes about its mail
+	// (CheckDomain), when the person asks.
+	MethodDomainsCheck = "domains.check"
 	// Your own keys, in secretvault (OwnKeys, MakePGPKey, ImportSMIME).
 	MethodKeysList        = "keys.list"
 	MethodKeysMakePGP     = "keys.makePGP"
@@ -240,6 +243,10 @@ type messagesListParams struct {
 
 type messageIDParams struct {
 	ID MessageID `json:"id"`
+}
+
+type domainParams struct {
+	Domain string `json:"domain"`
 }
 
 type makePGPParams struct {

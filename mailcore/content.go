@@ -140,7 +140,7 @@ func CheckContent(htmlBody, text string, parts []Part, h mail.Header, known map[
 	r.Trackers, r.Remote = sortedKeys(trackers), sortedKeys(remote)
 	sort.SliceStable(r.Links, func(i, j int) bool { return linkRank[r.Links[i].Kind] < linkRank[r.Links[j].Kind] })
 	for _, p := range parts {
-		if strings.TrimSpace(p.Filename) == "" {
+		if strings.TrimSpace(p.Filename) == "" || protocolPart[strings.ToLower(p.MIMEType)] {
 			continue
 		}
 		if kind := attachmentKind(p.Filename, p.MIMEType); kind != "" {
@@ -344,6 +344,17 @@ var (
 		".png": true, ".gif": true, ".txt": true, ".rtf": true, ".odt": true, ".ppt": true, ".pptx": true, ".csv": true, ".mp3": true, ".mp4": true}
 )
 
+// protocolPart are the types of a signed or encrypted message's own
+// parts — its signature, its ciphertext — which are no attachments.
+var protocolPart = map[string]bool{"application/pgp-signature": true, "application/pkcs7-signature": true,
+	"application/x-pkcs7-signature": true, "application/pgp-encrypted": true, "application/pkcs7-mime": true,
+	"application/x-pkcs7-mime": true}
+
+// keyTypes are the types keys come attached as: their names end as they
+// like (.asc, .pub, .key, .cer).
+var keyTypes = map[string]bool{"application/pgp-keys": true, "application/pkcs7-certificates": true,
+	"application/x-x509-ca-cert": true, "application/pkix-cert": true}
+
 // attachmentKind is what is worth a word about an attachment named name
 // of type ctype, "" when nothing is.
 func attachmentKind(name, ctype string) string {
@@ -365,7 +376,7 @@ func attachmentKind(name, ctype string) string {
 		return AttachArchive
 	}
 	declared := strings.ToLower(strings.TrimSpace(strings.SplitN(ctype, ";", 2)[0]))
-	if declared == "" || declared == "application/octet-stream" || ext == "" {
+	if declared == "" || declared == "application/octet-stream" || ext == "" || keyTypes[declared] {
 		return ""
 	}
 	expected, _, _ := mime.ParseMediaType(mime.TypeByExtension(ext))

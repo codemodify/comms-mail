@@ -83,6 +83,8 @@ func TestContentAttachments(t *testing.T) {
 		{ID: "7", MIMEType: "application/zip", Filename: "photos.zip"},
 		{ID: "8", MIMEType: "image/png", Filename: "scan.pdf"},
 		{ID: "9", MIMEType: "application/octet-stream", Filename: "disk.iso"},
+		{ID: "10", MIMEType: "application/pgp-signature", Filename: "signature.asc"},
+		{ID: "11", MIMEType: "application/pgp-keys", Filename: "ada.asc"},
 		{ID: "1", MIMEType: "text/plain"},
 	}
 	r := CheckContent("", "", parts, nil, nil)

@@ -144,6 +144,14 @@ func TestReportTrustsOnlyYourProvider(t *testing.T) {
 		if r.Trust != c.trust || r.Sender.Auth != c.auth || len(r.Checks) != 1 {
 			t.Errorf("%s: report %+v", c.id, r)
 		}
+		// The last hop: how comms-mail fetches the account's mail; none
+		// for mail kept here.
+		switch {
+		case c.id == imported && r.Fetched != nil:
+			t.Errorf("imported mail fetched: %+v", r.Fetched)
+		case c.id == gmail && (r.Fetched == nil || r.Fetched.Protocol != "IMAP" || r.Fetched.Server != "imap.gmail.com:993" || r.Fetched.Mode != string(TLSImplicit) || r.Fetched.Live):
+			t.Errorf("gmail fetched %+v", r.Fetched)
+		}
 	}
 	// The cache keeps what the message says.
 	st.mu.Lock()

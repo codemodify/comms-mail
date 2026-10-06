@@ -657,8 +657,12 @@ its section. The tab has all there is (`messages.report`, and
   whether the sender signed in, and when, how long after the hop before.
   The servers your provider's own wrote — down to the one that took it in
   from outside — can be believed; the hops under them came with the
-  message, and the tab says how many. TLS 1.0, 1.1 and SSL are warned of,
-  and that TLS hides a hop from the network, not from the servers.
+  message, and the tab says how many. The last hop is yours: from your
+  mailbox to *you, in comms-mail*, as comms-mail fetches the account's
+  mail — IMAP or POP3, its TLS mode, and, while a connection is open, its
+  TLS version, cipher and who certified the server; in the clear, it is
+  red and said. TLS 1.0, 1.1 and SSL are warned of, and that TLS hides a
+  hop from the network, not from the servers.
 - **Links** — how many, and each worth a word: *“www.paypal.com” shows
   paypal.com but goes to evil.example*, one that runs code
   (`javascript:`, `vbscript:`, `data:text/html`), one to a look-alike of a
@@ -689,8 +693,32 @@ its section. The tab has all there is (`messages.report`, and
   key's selector, the algorithm, whether it is From's domain, when it was
   signed, and whether it held; SHA-1, `l=` and an expired signature are
   said.
+- **The sender's domain** — what it publishes about its mail, looked up
+  in DNS only when you press **Look up example.com in DNS** (your
+  resolver sees which domain you look up; `domains.check`), kept an hour
+  and shown meanwhile for its other messages: its mail servers (MX), how
+  its SPF ends (`-all` refuse the rest, `~all` mark them, `?all`, `+all`
+  anyone), its DMARC policy (reject, quarantine, only reports, or none) and
+  for how much, its subdomains' and whether failures are reported to it,
+  MTA-STS (its DNS record: the policy itself is on the domain's web server,
+  which would see you fetch it, and is not fetched), DANE's TLSA records
+  for its first three mail servers (counting only when signed), TLS-RPT,
+  BIMI (a logo, and whether a mark certificate vouches for it), and
+  whether the resolver checked the answers' signatures (DNSSEC). It asks
+  the first nameserver of `/etc/resolv.conf` itself, with the DNSSEC flag
+  set, or the resolver `UITK_MAIL_DNS` names (`host:port`); tests never
+  reach a real one.
 - **Signature and encryption** — the lines below (*Signed and encrypted
-  mail*), each signer's key fingerprint in groups of four, what checked
+  mail*); each signature's key — fingerprint in groups of four, size, when
+  it was made and when it expires — when and with what it was made (hash,
+  algorithm), an S/MIME signer's certificate (who issued it, its dates, the
+  chain to a root), with SHA-1 and MD5, short RSA keys and expired keys or
+  certificates warned of; whom each encrypted layer is encrypted to — keys
+  by ID or fingerprint, certificates by issuer and serial, a passphrase,
+  a recipient the message hides — which of them opened it, and the cipher
+  and its integrity (authenticated encryption, the older MDC, or none, which
+  is warned of) — from secretvault's `mail.inspect`, or comms-mail's own
+  reading of the OpenPGP packets; what checked
   it (secretvault and its vault, or comms-mail with the keys in Settings),
   that the subject shown is the protected one, the key the message carries
   (Autocrypt) — and, for what is not done, what follows: *Not signed:

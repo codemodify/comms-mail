@@ -94,10 +94,13 @@ new ones turn up.
   way it came from the `Received` headers (each hop, TLS and cipher where
   noted, times), and what its content does (links, tracking images and
   what the HTML would load, forms, attachments, read receipts, other
-  headers) — done 2026-10-05. Next: the sender domain's DMARC policy,
-  MTA-STS, DANE, BIMI and DNSSEC looked up (opt-in), your own connection's
-  TLS; whom it was encrypted to and with what (read from what
-  `mail.inspect` already says; comms-mail's own engine can say it itself).
+  headers), the sender's domain looked up when asked (MX, SPF, DMARC,
+  MTA-STS's record, DANE, TLS-RPT, BIMI, DNSSEC), your own connection's TLS
+  as the last hop, and whom it was encrypted to and with what (from
+  `mail.inspect`, and the own engine's OpenPGP packets) — all done
+  2026-10-05. Left: the own engine's S/MIME recipients and cipher (its CMS
+  does not say them yet); MTA-STS's policy mode (it is on the sender's web
+  server, which would see the fetch); a mark in the message list.
 - **Reading and sending signed / encrypted mail** — done 2026-10-03
   (docs/mail.md, Signed and encrypted mail). Left: attachments *inside* an
   encrypted message are not listed or opened yet, nor carried by a

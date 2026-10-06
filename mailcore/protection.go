@@ -123,6 +123,38 @@ type MessageSecurity struct {
 	// Vault secretvault's vault it used ("" its default).
 	Engine string `json:"engine,omitempty"`
 	Vault  string `json:"vault,omitempty"`
+	// Encryptions are its encrypted layers, outermost first: whom each is
+	// encrypted to, and with what.
+	Encryptions []EncryptionCheck `json:"encryptions,omitempty"`
+}
+
+// EncryptionCheck is one encrypted layer: whom it is encrypted to, the
+// key that opened it, and the cipher.
+type EncryptionCheck struct {
+	Format     string      `json:"format"`
+	Recipients []Recipient `json:"recipients,omitempty"`
+	// OpenedWith is the key that opened it — an OpenPGP (sub)key's
+	// fingerprint, or a certificate's issuer and serial — "" when none
+	// did. Cipher is the content's ("AES-256-GCM", "AES256 OCB"),
+	// Integrity what keeps it from being changed: "aead", "mdc", "none".
+	OpenedWith string `json:"openedWith,omitempty"`
+	Cipher     string `json:"cipher,omitempty"`
+	Integrity  string `json:"integrity,omitempty"`
+}
+
+// Recipient is one key a layer is encrypted to: an OpenPGP key ID or
+// fingerprint, or a passphrase; an S/MIME certificate's issuer and
+// serial, or its subject key identifier; and how the message's key is
+// protected for it (Algorithm). Opened: it is the one that opened it.
+type Recipient struct {
+	KeyID        string `json:"keyId,omitempty"`
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	Passphrase   bool   `json:"passphrase,omitempty"`
+	Issuer       string `json:"issuer,omitempty"`
+	Serial       string `json:"serial,omitempty"`
+	SubjectKeyID string `json:"subjectKeyId,omitempty"`
+	Algorithm    string `json:"algorithm,omitempty"`
+	Opened       bool   `json:"opened,omitempty"`
 }
 
 // SignatureCheck is one signature: whether it holds, and whose it is.
@@ -147,6 +179,19 @@ type SignatureCheck struct {
 	Reasons []string `json:"reasons,omitempty"`
 	// Part says the signature covers only part of the message.
 	Part bool `json:"part,omitempty"`
+	// SignedAt is when it was made, Hash and Algorithm with what; the
+	// key's size and dates (OpenPGP) where known. An S/MIME signer's
+	// certificate: who issued it, its dates, and the chain to a root.
+	SignedAt   time.Time `json:"signedAt,omitzero"`
+	Hash       string    `json:"hash,omitempty"`
+	Algorithm  string    `json:"algorithm,omitempty"`
+	KeyBits    int       `json:"keyBits,omitempty"`
+	KeyCreated time.Time `json:"keyCreated,omitzero"`
+	KeyExpires time.Time `json:"keyExpires,omitzero"`
+	Issuer     string    `json:"issuer,omitempty"`
+	NotBefore  time.Time `json:"notBefore,omitzero"`
+	NotAfter   time.Time `json:"notAfter,omitzero"`
+	Chain      []string  `json:"chain,omitempty"`
 }
 
 // noSecurity is a message with nothing to check.
@@ -311,22 +356,44 @@ type svLayer struct {
 	Covers     string        `json:"covers"`
 	Signatures []svSignature `json:"signatures"`
 	Encryption *struct {
-		Decrypted bool   `json:"decrypted"`
-		Error     string `json:"error"`
+		Decrypted     bool   `json:"decrypted"`
+		DecryptedWith string `json:"decrypted_with"`
+		Cipher        string `json:"cipher"`
+		Integrity     string `json:"integrity"`
+		Error         string `json:"error"`
+		Recipients    []struct {
+			KeyID        string `json:"key_id"`
+			Fingerprint  string `json:"fingerprint"`
+			Passphrase   bool   `json:"passphrase"`
+			Issuer       string `json:"issuer"`
+			Serial       string `json:"serial"`
+			SubjectKeyID string `json:"subject_key_id"`
+			Algorithm    string `json:"algorithm"`
+		} `json:"recipients"`
 	} `json:"encryption"`
 	Error string `json:"error"`
 }
 
+type svCertificate struct {
+	Subject   string    `json:"subject"`
+	Issuer    string    `json:"issuer"`
+	Serial    string    `json:"serial"`
+	Emails    []string  `json:"emails"`
+	NotBefore time.Time `json:"not_before"`
+	NotAfter  time.Time `json:"not_after"`
+	SHA256    string    `json:"sha256"`
+}
+
 type svSignature struct {
-	Status      string   `json:"status"`
-	Error       string   `json:"error"`
-	Fingerprint string   `json:"fingerprint"`
-	UserIDs     []string `json:"user_ids"`
-	Certificate *struct {
-		Subject string   `json:"subject"`
-		Emails  []string `json:"emails"`
-		SHA256  string   `json:"sha256"`
-	} `json:"certificate"`
+	Status      string           `json:"status"`
+	Error       string           `json:"error"`
+	Fingerprint string           `json:"fingerprint"`
+	UserIDs     []string         `json:"user_ids"`
+	SignedAt    *time.Time       `json:"signed_at"`
+	Hash        string           `json:"hash"`
+	Algorithm   string           `json:"algorithm"`
+	Certificate *svCertificate   `json:"certificate"`
+	Chain       []*svCertificate `json:"chain"`
 }
 
 type svContent struct {
@@ -378,9 +445,21 @@ func securityFromReport(res svInspectResult, outer Message) MessageSecurity {
 		switch l.Kind {
 		case "signature":
 			for i, sig := range l.Signatures {
-				c := SignatureCheck{Format: format, Status: sig.Status, Fingerprint: sig.Fingerprint, Part: l.Covers == "part"}
+				c := SignatureCheck{Format: format, Status: sig.Status, Fingerprint: sig.Fingerprint, Part: l.Covers == "part",
+					Hash: sig.Hash, Algorithm: sig.Algorithm}
 				if sig.Status != "valid" {
 					c.Problem = sig.Error
+				}
+				if sig.SignedAt != nil {
+					c.SignedAt = *sig.SignedAt
+				}
+				if cert := sig.Certificate; cert != nil {
+					c.Issuer, c.NotBefore, c.NotAfter = cert.Issuer, cert.NotBefore, cert.NotAfter
+				}
+				for _, link := range sig.Chain {
+					if link != nil {
+						c.Chain = append(c.Chain, link.Subject)
+					}
 				}
 				switch {
 				case len(sig.UserIDs) > 0:
@@ -403,6 +482,16 @@ func securityFromReport(res svInspectResult, outer Message) MessageSecurity {
 				out.Signatures = append(out.Signatures, c)
 			}
 		case "encryption":
+			if e := l.Encryption; e != nil {
+				ec := EncryptionCheck{Format: format, OpenedWith: e.DecryptedWith, Cipher: e.Cipher, Integrity: e.Integrity}
+				for _, rc := range e.Recipients {
+					r := Recipient{KeyID: rc.KeyID, Fingerprint: rc.Fingerprint, Passphrase: rc.Passphrase, Issuer: rc.Issuer,
+						Serial: rc.Serial, SubjectKeyID: rc.SubjectKeyID, Algorithm: rc.Algorithm}
+					r.Opened = e.Decrypted && openedBy(r, e.DecryptedWith)
+					ec.Recipients = append(ec.Recipients, r)
+				}
+				out.Encryptions = append(out.Encryptions, ec)
+			}
 			if l.Encryption != nil {
 				if l.Encryption.Decrypted {
 					out.Decrypted = true
@@ -450,4 +539,23 @@ func contentMessage(raw []byte, inline bool, outer Message) *Message {
 		m.Subject = outer.Subject
 	}
 	return &m
+}
+
+// openedBy says recipient r is the key with: an OpenPGP key's ID is the
+// end of its fingerprint; a certificate is named by issuer and serial.
+func openedBy(r Recipient, with string) bool {
+	w := strings.ToUpper(strings.NewReplacer(" ", "", ":", "").Replace(with))
+	switch {
+	case w == "":
+		return false
+	case r.Fingerprint != "":
+		return strings.EqualFold(r.Fingerprint, w)
+	case r.KeyID != "":
+		return strings.HasSuffix(w, strings.ToUpper(r.KeyID))
+	case r.Serial != "":
+		return strings.Contains(strings.ToUpper(with), strings.ToUpper(r.Serial))
+	case r.SubjectKeyID != "":
+		return strings.Contains(w, strings.ToUpper(r.SubjectKeyID))
+	}
+	return false
 }

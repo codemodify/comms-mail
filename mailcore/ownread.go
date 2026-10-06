@@ -119,20 +119,24 @@ func (s *LocalStore) peel(out *MessageSecurity, entity []byte, decrypt bool, fro
 			out.DecryptError = "the encrypted message cannot be read"
 			return nil, false, false
 		}
-		if !decrypt {
-			return nil, false, false
-		}
 		f2, b2 := splitEntity(parts[1])
 		data, err := decodedBody(f2, b2)
 		if err != nil {
-			out.DecryptError = "the encrypted message cannot be read"
+			if decrypt {
+				out.DecryptError = "the encrypted message cannot be read"
+			}
 			return nil, false, false
 		}
-		inner, sig, err := s.pgpDecrypt(data, from)
+		out.Encryptions = append(out.Encryptions, pgpEncryption(data))
+		if !decrypt {
+			return nil, false, false
+		}
+		inner, sig, with, err := s.pgpDecrypt(data, from)
 		if err != nil {
 			s.notOpened(out, FormatOpenPGP, err)
 			return nil, false, false
 		}
+		openedPGP(&out.Encryptions[len(out.Encryptions)-1], with)
 		return s.opened(out, crlf(inner), sig, decrypt, from, depth)
 
 	case isOpaqueSMIME(media):
@@ -176,14 +180,16 @@ func (s *LocalStore) peel(out *MessageSecurity, entity []byte, decrypt bool, fro
 		return plain, true, true
 	case bytes.HasPrefix(t, []byte("-----BEGIN PGP MESSAGE-----")):
 		out.Encrypted = "full"
+		out.Encryptions = append(out.Encryptions, pgpEncryption(t))
 		if !decrypt {
 			return nil, false, false
 		}
-		plain, sig, err := s.pgpDecrypt(t, from)
+		plain, sig, with, err := s.pgpDecrypt(t, from)
 		if err != nil {
 			s.notOpened(out, FormatOpenPGP, err)
 			return nil, false, false
 		}
+		openedPGP(&out.Encryptions[len(out.Encryptions)-1], with)
 		out.Decrypted = true
 		if sig != nil {
 			out.Signed = "full"

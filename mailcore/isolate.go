@@ -32,6 +32,7 @@ func IsolateTestEnv(dir string) error {
 	_ = os.Setenv(EnvMail, "memory")
 	_ = os.Setenv("UITK_MAIL_NO_OPEN", "1")
 	_ = os.Setenv("UITK_MAIL_NO_NOTIFY", "1")
+	_ = os.Setenv(EnvDNS, "127.0.0.1:1") // never the real resolver
 	_ = os.Unsetenv(EnvSock)
 	_ = os.Unsetenv(EnvHost)
 	_ = os.Unsetenv(EnvUser)
@@ -77,6 +78,7 @@ func IsolateTestEnvTB(t envTB) {
 	t.Setenv(EnvMail, "memory")
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
 	t.Setenv("UITK_MAIL_NO_NOTIFY", "1")
+	t.Setenv(EnvDNS, "127.0.0.1:1") // never the real resolver
 	t.Setenv(EnvSock, "")
 	t.Setenv(EnvHost, "")
 	t.Setenv(EnvUser, "")

@@ -75,14 +75,18 @@ func securityDaemon(t *testing.T) (*session, *app.Application, *svtest.Vault, ma
 			return map[string]any{
 				"report": map[string]any{"signed": "full", "encrypted": "none",
 					"layers": []any{map[string]any{"id": 1, "kind": "signature", "format": "pgp-mime", "covers": "message",
-						"signatures": []any{map[string]any{"status": "valid", "fingerprint": "AAAA1111"}}}}},
+						"signatures": []any{map[string]any{"status": "valid", "fingerprint": "AAAA1111",
+							"signed_at": "2026-10-05T10:00:00Z", "hash": "SHA256", "algorithm": "EdDSA"}}}}},
 				"verdicts": []any{map[string]any{"layer": 1, "index": 0, "verdict": map[string]any{
 					"contact": "Alice", "level": "in-person", "status": "verified"}}},
 			}
 		}
 		report := map[string]any{"signed": "none", "encrypted": "full",
 			"layers": []any{map[string]any{"id": 1, "kind": "encryption", "format": "pgp-mime", "covers": "message",
-				"encryption": map[string]any{"decrypted": decrypt}}}}
+				"encryption": map[string]any{"decrypted": decrypt, "decrypted_with": "1234567890ABCDEFAAAA1111BBBB2222",
+					"cipher": "AES256 OCB", "integrity": "aead", "recipients": []any{
+						map[string]any{"key_id": "AAAA1111BBBB2222", "algorithm": "X25519"},
+						map[string]any{"key_id": "CCCC3333DDDD4444", "algorithm": "RSA"}}}}}}
 		if decrypt {
 			report["content"] = map[string]any{"layer": 1, "raw": []byte("Content-Type: text/plain; charset=utf-8\r\n\r\nThe plan is in the blue folder.\r\n")}
 			report["protected_headers"] = map[string]any{"headers": map[string]any{"subject": "The real subject"}}
@@ -216,7 +220,8 @@ func TestReadingSignedAndEncryptedMail(t *testing.T) {
 	if !slices.Contains(chips, "Signed by Alice") || tones[slices.Index(chips, "Signed by Alice")] != secGood || !slices.Contains(chips, "Not encrypted") {
 		t.Fatalf("chips %q %v", chips, tones)
 	}
-	if tab := securityTab(s.rd); !strings.Contains(tab, "Signature and encryption") || !strings.Contains(tab, "Signed by Alice, verified in person") || !strings.Contains(tab, "Checked by secretvault") {
+	if tab := securityTab(s.rd); !strings.Contains(tab, "Signature and encryption") || !strings.Contains(tab, "Signed by Alice, verified in person") ||
+		!strings.Contains(tab, "Checked by secretvault") || !strings.Contains(tab, "Signed Mon 05 Oct 2026") || !strings.Contains(tab, "with SHA256 and EdDSA") {
 		t.Fatalf("security tab:\n%s", tab)
 	}
 	if !strings.Contains(s.rd.text.Text, "Shall we meet at noon?") {
@@ -230,6 +235,11 @@ func TestReadingSignedAndEncryptedMail(t *testing.T) {
 	}
 	if _, chips := chipsOf(s.rd); !slices.Contains(chips, "Encrypted") {
 		t.Fatalf("encrypted chips %q", chips)
+	}
+	// Whom it is encrypted to, which key opened it, and with what.
+	if tab := securityTab(s.rd); !strings.Contains(tab, "Encrypted to 2 keys") || !strings.Contains(tab, "AAAA 1111 BBBB 2222 (X25519), which opened it") ||
+		!strings.Contains(tab, "CCCC 3333 DDDD 4444 (RSA)") || !strings.Contains(tab, "AES256 OCB, with authenticated encryption") {
+		t.Fatalf("encrypted tab:\n%s", tab)
 	}
 	if !strings.Contains(s.rd.text.Text, "blue folder") || s.rd.subj.Text != "The real subject" {
 		t.Fatalf("decrypted: subject %q, text %q", s.rd.subj.Text, s.rd.text.Text)
@@ -732,5 +742,76 @@ func TestWhatItsContentDoes(t *testing.T) {
 		if !strings.Contains(tab, want) {
 			t.Errorf("the tab lacks %q:\n%s", want, tab)
 		}
+	}
+}
+
+// The sender's domain is looked up only when asked: the button says
+// what it will look up, and the tab then says what was found — or, here,
+// with no resolver to answer, that nothing was.
+func TestLookingUpTheSendersDomain(t *testing.T) {
+	t.Setenv(mailcore.EnvDNS, "127.0.0.1:1")
+	s, a, ids := importedSession(t, map[string]string{"a.eml": "From: Ann <ann@example.com>\nTo: me@example.org\nSubject: Hi\n\nHello.\n"})
+	open(s, a, ids["Hi"])
+	var btn *widgets.Button
+	widget.Walk(s.rd.secView.body, func(c widget.Component) {
+		if b, ok := c.(*widgets.Button); ok && b.Text == "Look up example.com in DNS" {
+			btn = b
+		}
+	})
+	if btn == nil || strings.Contains(securityTab(s.rd), "Looked up") {
+		t.Fatalf("no button, or looked up by itself:\n%s", securityTab(s.rd))
+	}
+	btn.OnClick()
+	for i := 0; i < 3; i++ {
+		s.waitIdle()
+		a.PumpOnce()
+	}
+	if tab := securityTab(s.rd); !strings.Contains(tab, "Looked up") || !strings.Contains(tab, "Not answered — MX") {
+		t.Fatalf("after the lookup:\n%s", tab)
+	}
+}
+
+// What a domain publishes, in words: its mail servers, SPF's end, DMARC's
+// policy and for how much, MTA-STS, DANE that counts only signed, BIMI,
+// DNSSEC.
+func TestWhatADomainPublishes(t *testing.T) {
+	var texts []string
+	rows := domainRows("example.com", &mailcore.DomainReport{Domain: "example.com", MX: []string{"mx1.example.com"}, SPF: "v=spf1 -all", SPFAll: "-all",
+		DMARC: "v=DMARC1; p=quarantine; pct=50", Policy: "quarantine", Pct: 50, MTASTS: "1",
+		DANE: []mailcore.DANEHost{{Host: "mx1.example.com", Records: 2}}, BIMI: "https://example.com/l.svg", Checked: true}, false, nil)
+	for _, r := range rows {
+		_, tx := iconLines(r)
+		texts = append(texts, tx...)
+	}
+	all := strings.Join(texts, "\n")
+	for _, want := range []string{"Its mail servers: mx1.example.com", "SPF ends with -all", "DMARC: mail that fails its checks is to go to spam (for 50% of it)",
+		"MTA-STS: it publishes a policy", "DANE for mx1.example.com: 2 TLSA records, but not confirmed signed", "BIMI: a logo, with no mark certificate",
+		"DNSSEC not confirmed"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("lacks %q:\n%s", want, all)
+		}
+	}
+}
+
+// The way it came ends with the last hop, from your mailbox to you, as
+// comms-mail fetches it: green with TLS, its version and cipher, and who
+// certified the server; red in the clear.
+func TestTheLastHopIsYours(t *testing.T) {
+	hops := []mailcore.RouteHop{{From: "mail.example.com", By: "mx.example.org", With: "ESMTPS", TLS: mailcore.HopTLS}}
+	v := newRouteView(hops, &mailcore.ConnectionInfo{Protocol: "IMAP", Server: "imap.example.org:993", Mode: "ssl", Live: true,
+		Version: "TLS 1.3", Cipher: "TLS_AES_128_GCM_SHA256", Issuer: "Let's Encrypt R10"})
+	nodes, edges := v.nodes(), v.edges()
+	if len(nodes) != 3 || nodes[2].name != "you, in comms-mail" || len(edges) != 2 || edges[1].TLS != mailcore.HopTLS {
+		t.Fatalf("nodes %+v edges %+v", nodes, edges)
+	}
+	if how, _ := hopWords(edges[1], time.Time{}); how != "IMAP · TLS 1.3 TLS_AES_128_GCM_SHA256" || !strings.Contains(v.fetchWhen(), "certified by Let's Encrypt R10") {
+		t.Fatalf("last hop %q, %q", how, v.fetchWhen())
+	}
+	plain := newRouteView(hops, &mailcore.ConnectionInfo{Protocol: "IMAP", Server: "imap.example.org:143", Mode: "plain"})
+	if e := plain.edges(); e[1].TLS != mailcore.HopClear {
+		t.Fatalf("a plain fetch is not in the clear: %+v", e[1])
+	}
+	if tone, text, _ := routeSummary(plain.edges()); tone != secWarn || text != "1 hop in the clear" {
+		t.Fatalf("summary %v %q", tone, text)
 	}
 }

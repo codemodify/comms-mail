@@ -153,6 +153,7 @@ func newReader(s *session) *reader {
 	}
 
 	r.secView.open = func() { r.tabs.Select(readerTabSecurity) }
+	r.secView.lookup = r.lookUpDomain
 	head := widgets.NewColumn(r.subj, r.from, r.secView.chips, r.sender.view, r.to, r.cc, r.date, r.extra, r.sec.view,
 		r.invite.view, r.actions, r.attStrip, r.retry).WithGap(3).WithPad(10)
 	// The header grows with what the message carries (an invitation,

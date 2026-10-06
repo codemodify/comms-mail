@@ -16,6 +16,9 @@ const (
 	EnvSMTPHost = "UITK_MAIL_SMTP"
 	EnvPassEnv  = "UITK_MAIL_PASS_ENV" // name of env var that holds the password
 	EnvXOAuth   = "UITK_MAIL_XOAUTH2"
+	// EnvDNS is the DNS resolver a sender's domain is looked up with
+	// (host:port), instead of /etc/resolv.conf's first.
+	EnvDNS = "UITK_MAIL_DNS"
 )
 
 // Incoming protocols persisted on each account.

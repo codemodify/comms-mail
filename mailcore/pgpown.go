@@ -315,7 +315,7 @@ func (s *LocalStore) pgpSignatureCheck(c SignatureCheck, p *packet.Signature, er
 	default:
 		c.Status, c.Problem = "bad", err.Error()
 	}
-	_ = p
+	pgpSignatureDetail(&c, p, signer)
 	if c.Status != "valid" {
 		return c
 	}
@@ -417,12 +417,12 @@ func (s *LocalStore) pgpRecord(data []byte, source, from string, when time.Time)
 }
 
 // pgpDecrypt opens an OpenPGP message (armoured or not) with your keys,
-// checking the signature it may carry inside. locked: where the keys are
-// kept is locked.
-func (s *LocalStore) pgpDecrypt(data []byte, from string) (content []byte, sig *SignatureCheck, err error) {
+// checking the signature it may carry inside; with is the fingerprint of
+// the key that opened it. locked: where the keys are kept is locked.
+func (s *LocalStore) pgpDecrypt(data []byte, from string) (content []byte, sig *SignatureCheck, with string, err error) {
 	secret, err := s.pgpSecretRing()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	ring := append(openpgp.EntityList{}, secret...)
 	have := map[string]bool{}
@@ -438,23 +438,26 @@ func (s *LocalStore) pgpDecrypt(data []byte, from string) (content []byte, sig *
 	if bytes.Contains(data, []byte("-----BEGIN PGP")) {
 		block, err := armor.Decode(bytes.NewReader(data))
 		if err != nil {
-			return nil, nil, fmt.Errorf("the encrypted message cannot be read: %w", err)
+			return nil, nil, "", fmt.Errorf("the encrypted message cannot be read: %w", err)
 		}
 		in = block.Body
 	}
 	md, err := openpgp.ReadMessage(in, ring, nil, nil)
 	if err != nil {
 		if errors.Is(err, pgperrors.ErrKeyIncorrect) {
-			return nil, nil, errors.New("it is not encrypted to any of your keys")
+			return nil, nil, "", errors.New("it is not encrypted to any of your keys")
 		}
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 	if !md.IsEncrypted {
-		return nil, nil, errors.New("it is not encrypted")
+		return nil, nil, "", errors.New("it is not encrypted")
 	}
 	content, err = io.ReadAll(md.UnverifiedBody)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
+	}
+	if md.DecryptedWith.PublicKey != nil {
+		with = strings.ToUpper(hex.EncodeToString(md.DecryptedWith.PublicKey.Fingerprint))
 	}
 	if md.IsSigned {
 		c := SignatureCheck{Format: FormatOpenPGP}
@@ -478,7 +481,7 @@ func (s *LocalStore) pgpDecrypt(data []byte, from string) (content []byte, sig *
 		}
 		sig = &r
 	}
-	return content, sig, nil
+	return content, sig, with, nil
 }
 
 // pgpClearsigned checks an inline cleartext-signed text, and is its text.

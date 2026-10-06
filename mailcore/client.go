@@ -339,6 +339,14 @@ func (c *Client) SecurityReport(id MessageID) (SecurityReport, error) {
 	return r, err
 }
 
+// CheckDomain looks up what domain publishes about its mail: MX, SPF,
+// DMARC, MTA-STS, TLS-RPT, BIMI, DANE, and whether DNSSEC vouched for it.
+func (c *Client) CheckDomain(domain string) (DomainReport, error) {
+	var r DomainReport
+	err := c.call(MethodDomainsCheck, domainParams{Domain: domain}, &r)
+	return r, err
+}
+
 // OwnKeys are your keys in secretvault, for each address you send from.
 func (c *Client) OwnKeys() (OwnKeys, error) {
 	var r OwnKeys

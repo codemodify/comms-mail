@@ -182,9 +182,11 @@ type securityView struct {
 	report *mailcore.SecurityReport
 	sec    *mailcore.MessageSecurity
 	// open selects the tab; jump is the section to show once it is laid
-	// out.
-	open func()
-	jump string
+	// out. lookup looks the sender's domain up, looking while it does.
+	open    func()
+	jump    string
+	lookup  func(domain string)
+	looking bool
 }
 
 func newSecurityView(crypto widget.Component) *securityView {
@@ -199,7 +201,7 @@ func newSecurityView(crypto widget.Component) *securityView {
 
 // clear is no message.
 func (v *securityView) clear() {
-	v.report, v.sec, v.jump = nil, nil, ""
+	v.report, v.sec, v.jump, v.looking = nil, nil, "", false
 	v.chips.ClearChildren()
 	v.chips.SetVisible(false)
 	v.body.ClearChildren()
@@ -275,6 +277,7 @@ func (v *securityView) show(m mailcore.Message) {
 			section(secSectionForward, "Forwarded on the way", rows...)
 		}
 		section(secSectionDKIM, "Domain signatures (DKIM)", dkimRows(*v.report)...)
+		section(secSectionDomain, "The sender's domain", domainRows(fromDomain(m), v.report.Domain, v.looking, v.lookup)...)
 	}
 	if c, ok := contentOf(m, v.report, v.sec); ok {
 		section(secSectionLinks, "Links", linkRows(c)...)
@@ -357,7 +360,7 @@ func (v *securityView) chipsFor(m mailcore.Message) []*secChip {
 		contentChips(c, add)
 	}
 	if r := v.report; r != nil {
-		if tone, text, ok := routeSummary(r.Route); ok {
+		if tone, text, ok := routeSummary(newRouteView(r.Route, r.Fetched).edges()); ok {
 			icon := map[secTone]style.ToolIcon{secGood: style.IconLock, secWarn: style.IconWarning, secNeutral: style.IconInfo}[tone]
 			add(tone, icon, text, secSectionRoute)
 		}
@@ -689,14 +692,10 @@ func cryptoRows(m mailcore.Message, sec *mailcore.MessageSecurity, r *mailcore.S
 	var rows []widget.Component
 	if sec != nil {
 		for _, sig := range sec.Signatures {
-			if sig.Fingerprint == "" {
-				continue
-			}
-			format := "OpenPGP"
-			if sig.Format == "smime" {
-				format = "S/MIME"
-			}
-			rows = append(rows, iconLine(style.IconLock, format+" key "+groupFingerprint(sig.Fingerprint)))
+			rows = append(rows, signatureDetailRows(sig)...)
+		}
+		for _, enc := range sec.Encryptions {
+			rows = append(rows, encryptionRows(enc)...)
 		}
 		switch sec.Engine {
 		case mailcore.EngineSecretVault:
@@ -722,6 +721,128 @@ func cryptoRows(m mailcore.Message, sec *mailcore.MessageSecurity, r *mailcore.S
 	}
 	if m.Autocrypt || r != nil && r.Autocrypt {
 		rows = append(rows, iconLine(style.IconInfo, "It carries the sender's OpenPGP key (Autocrypt), kept for writing back encrypted"))
+	}
+	return rows
+}
+
+// day is a date as the tab says it.
+func day(t time.Time) string { return t.Local().Format("02 Jan 2006") }
+
+// signatureDetailRows are what is known of how a signature was made: its
+// key, when, with what, and an S/MIME signer's certificate.
+func signatureDetailRows(sig mailcore.SignatureCheck) []widget.Component {
+	var rows []widget.Component
+	format := "OpenPGP"
+	if sig.Format == "smime" {
+		format = "S/MIME"
+	}
+	if sig.Fingerprint != "" {
+		key := format + " key " + groupFingerprint(sig.Fingerprint)
+		if sig.KeyBits > 0 {
+			key += ", " + strconv.Itoa(sig.KeyBits) + "-bit"
+		}
+		if !sig.KeyCreated.IsZero() {
+			key += ", made " + day(sig.KeyCreated)
+		}
+		if !sig.KeyExpires.IsZero() {
+			key += ", expires " + day(sig.KeyExpires)
+		}
+		rows = append(rows, iconLine(style.IconLock, key))
+	}
+	if !sig.SignedAt.IsZero() || sig.Hash != "" {
+		made := "Signed"
+		if !sig.SignedAt.IsZero() {
+			made += " " + sig.SignedAt.Local().Format("Mon 02 Jan 2006 15:04")
+		}
+		switch {
+		case sig.Hash != "" && sig.Algorithm != "":
+			made += " with " + sig.Hash + " and " + sig.Algorithm
+		case sig.Hash != "":
+			made += " with " + sig.Hash
+		}
+		rows = append(rows, iconLine(style.IconInfo, made))
+	}
+	if h := strings.ToUpper(strings.ReplaceAll(sig.Hash, "-", "")); h == "SHA1" || h == "MD5" {
+		rows = append(rows, iconLine(style.IconWarning, sig.Hash+" is broken: a signature made with it can be forged"))
+	}
+	if strings.HasPrefix(strings.ToUpper(sig.Algorithm), "RSA") && sig.KeyBits > 0 && sig.KeyBits < 2048 {
+		rows = append(rows, iconLine(style.IconWarning, "A "+strconv.Itoa(sig.KeyBits)+"-bit RSA key is too short to be safe"))
+	}
+	if !sig.KeyExpires.IsZero() && sig.KeyExpires.Before(time.Now()) {
+		rows = append(rows, iconLine(style.IconWarning, "The key expired on "+day(sig.KeyExpires)))
+	}
+	if sig.Issuer != "" {
+		cert := "Certificate from " + certName(sig.Issuer)
+		if !sig.NotBefore.IsZero() && !sig.NotAfter.IsZero() {
+			cert += ", valid " + day(sig.NotBefore) + " to " + day(sig.NotAfter)
+		}
+		rows = append(rows, iconLine(style.IconInfo, cert))
+		if !sig.NotAfter.IsZero() && sig.NotAfter.Before(time.Now()) {
+			rows = append(rows, iconLine(style.IconWarning, "The certificate expired on "+day(sig.NotAfter)))
+		}
+	}
+	if len(sig.Chain) > 0 {
+		var names []string
+		for _, c := range sig.Chain {
+			names = append(names, certName(c))
+		}
+		rows = append(rows, iconLine(style.IconInfo, "Chain: "+strings.Join(names, " → ")))
+	}
+	return rows
+}
+
+// encryptionRows are whom an encrypted layer is encrypted to — and which
+// of them opened it — and with what.
+func encryptionRows(enc mailcore.EncryptionCheck) []widget.Component {
+	var rows []widget.Component
+	if n := len(enc.Recipients); n > 0 {
+		var who []string
+		for _, r := range enc.Recipients {
+			var s string
+			switch {
+			case r.Passphrase:
+				s = "a passphrase"
+			case r.KeyID == "hidden":
+				s = "a key it does not name"
+			case r.Fingerprint != "":
+				s = groupFingerprint(r.Fingerprint)
+			case r.KeyID != "":
+				s = groupFingerprint(r.KeyID)
+			case r.Serial != "":
+				s = "certificate " + r.Serial
+				if r.Issuer != "" {
+					s += " from " + certName(r.Issuer)
+				}
+			case r.SubjectKeyID != "":
+				s = "certificate key " + groupFingerprint(r.SubjectKeyID)
+			default:
+				s = "a key"
+			}
+			if r.Algorithm != "" {
+				s += " (" + r.Algorithm + ")"
+			}
+			if r.Opened {
+				s += ", which opened it"
+			}
+			who = append(who, s)
+		}
+		rows = append(rows, iconLine(style.IconLock, "Encrypted to "+pluralize(n, "key")+": "+strings.Join(who, "; ")))
+	}
+	switch enc.Integrity {
+	case "aead":
+		cipher := enc.Cipher
+		if cipher == "" {
+			cipher = "Its cipher"
+		}
+		rows = append(rows, iconLine(style.IconCheck, cipher+", with authenticated encryption: any change on the way would show"))
+	case "mdc":
+		rows = append(rows, iconLine(style.IconInfo, strings.TrimSpace(enc.Cipher+" with the older integrity check (MDC): a change would show, but AEAD is the newer way")))
+	case "none":
+		rows = append(rows, iconLine(style.IconWarning, "Nothing keeps it from being changed on the way: it has no integrity check"))
+	default:
+		if enc.Cipher != "" {
+			rows = append(rows, iconLine(style.IconInfo, "Cipher: "+enc.Cipher))
+		}
 	}
 	return rows
 }

@@ -136,6 +136,28 @@ func TestOwnOpenPGPEncrypts(t *testing.T) {
 		len(sec.Signatures) != 1 || sec.Signatures[0].Status != "valid" {
 		t.Fatalf("Ada reads: %+v", sec)
 	}
+	// Whom it is encrypted to — Bob and Ada — the key that opened it, and
+	// with what; when the signature was made, with what, by which key.
+	if len(sec.Encryptions) != 1 {
+		t.Fatalf("encryptions %+v", sec.Encryptions)
+	}
+	enc := sec.Encryptions[0]
+	opened := 0
+	for _, r := range enc.Recipients {
+		if r.KeyID == "" && r.Fingerprint == "" || r.Algorithm == "" {
+			t.Errorf("recipient %+v", r)
+		}
+		if r.Opened {
+			opened++
+		}
+	}
+	if len(enc.Recipients) != 2 || opened != 1 || enc.OpenedWith == "" || enc.Integrity == "" {
+		t.Fatalf("encryption %+v", enc)
+	}
+	sig := sec.Signatures[0]
+	if sig.SignedAt.IsZero() || sig.Hash == "" || sig.Algorithm == "" || sig.KeyBits == 0 || sig.KeyCreated.IsZero() {
+		t.Fatalf("signature details %+v", sig)
+	}
 }
 
 // A key that comes in an Autocrypt header is recorded as first seen in

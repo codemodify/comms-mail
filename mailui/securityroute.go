@@ -19,16 +19,45 @@ import (
 // did not say — and by it the protocol, the TLS and cipher, and when, how
 // long after the hop before (mailcore.RouteHop).
 
-// routeView is the drawing.
+// routeView is the drawing: the hops the headers say, and the last, from
+// your mailbox to you, as comms-mail fetches it (fetch, nil for none).
 type routeView struct {
 	widget.Base
-	hops []mailcore.RouteHop
+	hops  []mailcore.RouteHop
+	fetch *mailcore.ConnectionInfo
 }
 
-func newRouteView(hops []mailcore.RouteHop) *routeView {
-	v := &routeView{hops: hops}
+func newRouteView(hops []mailcore.RouteHop, fetch *mailcore.ConnectionInfo) *routeView {
+	v := &routeView{hops: hops, fetch: fetch}
 	v.Init(v)
 	return v
+}
+
+// edges are the arrows: the hops, then the fetch as one more.
+func (v *routeView) edges() []mailcore.RouteHop {
+	out := append([]mailcore.RouteHop(nil), v.hops...)
+	if f := v.fetch; f != nil && len(v.hops) > 0 {
+		h := mailcore.RouteHop{With: f.Protocol, Version: f.Version, Cipher: f.Cipher, TLS: mailcore.HopTLS}
+		if f.Mode == string(mailcore.TLSPlain) {
+			h.TLS = mailcore.HopClear
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+// fetchWhen is the line under the fetch's arrow: the server, and the
+// certificate it showed.
+func (v *routeView) fetchWhen() string {
+	f := v.fetch
+	s := "comms-mail fetches it from " + f.Server
+	switch {
+	case f.Live && f.Issuer != "":
+		s += ", certified by " + f.Issuer
+	case !f.Live && f.Mode == string(mailcore.TLSStartTLS):
+		s += " (STARTTLS)"
+	}
+	return s
 }
 
 // The drawing's measures, 1x: a disc's side, the room beside it, and an
@@ -76,6 +105,9 @@ func (v *routeView) nodes() []routeNode {
 			n.note = "your provider's"
 		}
 		out = append(out, n)
+	}
+	if v.fetch != nil {
+		out = append(out, routeNode{name: "you, in comms-mail", person: true})
 	}
 	return out
 }
@@ -208,7 +240,7 @@ func (v *routeView) Paint(ctx *paintengine2d.Context) {
 		if i == len(nodes)-1 {
 			break
 		}
-		h := v.hops[i]
+		h := v.edges()[i]
 		ink := hopInk(lk, h)
 		a, z := paintengine2d.Pt(cx, y+style.Dip(lk, 2)), paintengine2d.Pt(cx, y+v.edgeH()-style.Dip(lk, 2))
 		if h.Inside && h.TLS != mailcore.HopTLS {
@@ -224,6 +256,9 @@ func (v *routeView) Paint(ctx *paintengine2d.Context) {
 			before = v.hops[i-1].At
 		}
 		how, when := hopWords(h, before)
+		if i == len(v.hops) {
+			when = v.fetchWhen()
+		}
 		ly := y + (v.edgeH()-2*f.Height())/2
 		howInk := in.text
 		if ink == in.bad {
@@ -241,10 +276,11 @@ func (v *routeView) Describe(n *a11y.Node) {
 	n.Role = a11y.RoleLabel
 	var parts []string
 	nodes := v.nodes()
+	edges := v.edges()
 	for i, nd := range nodes {
 		parts = append(parts, nd.name)
-		if i < len(v.hops) {
-			how, _ := hopWords(v.hops[i], time.Time{})
+		if i < len(edges) {
+			how, _ := hopWords(edges[i], time.Time{})
 			parts = append(parts, "then, "+how+", to")
 		}
 	}
@@ -284,7 +320,7 @@ func routeRows(r mailcore.SecurityReport) []widget.Component {
 	if len(r.Route) == 0 {
 		return []widget.Component{iconLine(style.IconInfo, "No server wrote down how it took it")}
 	}
-	rows := []widget.Component{newRouteView(r.Route)}
+	rows := []widget.Component{newRouteView(r.Route, r.Fetched)}
 	theirs := 0
 	known := false
 	for _, h := range r.Route {
@@ -305,6 +341,9 @@ func routeRows(r mailcore.SecurityReport) []widget.Component {
 		if h.TLS == mailcore.HopTLS && (strings.HasPrefix(h.Version, "TLS 1.0") || strings.HasPrefix(h.Version, "TLS 1.1") || strings.HasPrefix(h.Version, "SSL")) {
 			rows = append(rows, iconLine(style.IconWarning, h.By+" took it over "+h.Version+", which is broken and retired"))
 		}
+	}
+	if f := r.Fetched; f != nil && f.Mode == string(mailcore.TLSPlain) {
+		rows = append(rows, iconLine(style.IconError, "comms-mail fetches this account's mail in the clear: anyone on the network can read it, and your password — Settings › Accounts"))
 	}
 	rows = append(rows, iconLine(style.IconInfo, "TLS hides a hop from the network, not from the servers: each one reads the message unless it is encrypted end to end"))
 	return rows
