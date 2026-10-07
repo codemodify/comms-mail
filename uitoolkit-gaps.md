@@ -13,8 +13,9 @@ rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
 next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
-#50, #51, #53 and #54. Open: #2 and #52 (declined and settled), #29 (a
-design change), and #55 (found 2026-10-06 in 0.23.5). What comms-mail
+#50, #51, #53 and #54. Open: #2 and #52 (declined and settled), #55
+(found 2026-10-06 in 0.23.5), and #56 (#29, a design change open since
+2026-09-28, filed again on 2026-10-06 so it is not lost). What comms-mail
 uses for each closed item is under **Resolved**, with the report and the
 toolkit's answer.
 
@@ -99,6 +100,9 @@ still the open design change.
 
 **Unchanged in 0.23.4 and 0.23.5** (widgets/button.go is the same file).
 
+**Filed again as #56** (2026-10-06), so it is read as a current request
+and not as history. This entry keeps the history.
+
 ### 52. No way to print
 The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
 print dialog, no page setup, no way to lay a document out on pages or
@@ -149,6 +153,37 @@ box can be handed — `floor(c.MaxW)` — in `Label.Measure` and
 before it measures.
 
 Found 2026-10-06 against 0.23.5.
+
+### 56. A button with an icon is 64 px wider than one without
+*First filed as #29 (2026-09-28). Answered in 0.22.4 with documentation,
+left open as a design change, and unchanged since. Filed again because it
+is still the gap comms-mail hits most often.*
+
+`Button.Icon` keeps the engine's label centred by reserving a strip at
+*each* end: `Button.Measure` adds `(side + gap) * 2`
+(widgets/button.go:166–171 in 0.23.5), where a leading icon needs one
+strip. Measured on 0.23.5 at 1x, the same in the light and the dark
+look: "No" is 59 px wide plain and 123 with an icon, "Maybe" 86 and 150,
+"Accept" 85 and 149, "Remove" 95 and 159. That is +64 px on every
+button, half of it an empty strip after the label.
+
+In a mail client buttons come in rows, so a few icons push a row past a
+narrow window. comms-mail's invitation answers (Accept / Maybe / No),
+Settings' account and filter rows, the Add account sign-in row, the
+remote-images bar and the Passwords page's Unlock each fold onto a
+second line instead (`foldRow`, a `widgets.Wrap`, 21 rows in
+mailui/), and the rule editor's Remove is an icon-only tool button to
+save the room. The alternatives the docs name (`NewToolButton`,
+`ToolIconBtn`, `NewIconButton`, `NewWrap`) do save room, but by giving up
+the push-button look or the word, or by folding the row.
+**Fix asked for:** a leading-icon layout that moves the label over by one
+strip rather than reserving two: an opt-in `Button.IconLeading`, with
+the toolkit drawing the label after the mark itself, and the engine
+drawing the face (the trade-off 0.22.4 named), or a label box that
+`DrawButton` draws the text into, so every engine's own label treatment
+stays.
+
+Found again 2026-10-06 against 0.23.5.
 
 ## Resolved
 
