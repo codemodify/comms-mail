@@ -565,7 +565,7 @@ func educateSection() widget.Component {
 		wrong.Add(problemList(problems(l)))
 		wrong.RequestLayout()
 		for i, st := range scenarioSteps(l) {
-			about := widgets.NewColumn(newStrong(st.title)).WithGap(6)
+			about := widgets.NewColumn(strong(st.title)).WithGap(6)
 			if len(st.tags) > 0 {
 				about.Add(altRow(st.tags))
 			}
@@ -1183,39 +1183,10 @@ func (it *symbolItem) Paint(ctx *paintengine2d.Context) {
 	f.Draw(ctx, it.sy.says, paintengine2d.Pt(b.Min.X+iw+style.Dip(it.Look(), 6), b.Min.Y+(b.Dy()-f.Height())/2), it.Look().Palette().Text)
 }
 
-// strong is a line of bold text that wraps: a step's name over its words.
-// (A Label is plain or a Title, which is the page title's size;
-// uitoolkit-gaps.md #50.)
-type strong struct {
-	widget.Base
-	text  string
-	lines []string
-}
-
-func newStrong(text string) *strong {
-	s := &strong{text: text}
-	s.Init(s)
-	return s
-}
-
-func (s *strong) Measure(c layout.Constraints) paintengine2d.Point {
-	f := s.Look().BoldFont()
-	w := f.Advance(s.text)
-	if c.HasMaxW() {
-		w = min(w, c.MaxW)
-	}
-	return c.Constrain(paintengine2d.Pt(w, float32(len(wrapWords(f, s.text, w, 4)))*f.Height()))
-}
-
-func (s *strong) Arrange(r paintengine2d.Rect) {
-	s.SetBounds(r)
-	s.lines = wrapWords(s.Look().BoldFont(), s.text, r.Dx(), 4)
-}
-
-func (s *strong) Paint(ctx *paintengine2d.Context) {
-	b := s.LocalBounds()
-	f := s.Look().BoldFont()
-	for i, l := range s.lines {
-		f.Draw(ctx, l, paintengine2d.Pt(b.Min.X, b.Min.Y+float32(i)*f.Height()), s.Look().Palette().Text)
-	}
+// strong is a line of bold text, at the body's size, that wraps: a step's
+// name over its words.
+func strong(text string) *widgets.Label {
+	l := widgets.NewLabel(text)
+	l.Bold, l.Wrap = true, true
+	return l
 }

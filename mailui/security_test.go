@@ -185,8 +185,8 @@ func securityTab(r *reader) string {
 	return strings.Join(out, "\n")
 }
 
-// iconLines are root's lines of text, each with the mark before it (an
-// iconLine: a mark alone, then its text), IconNone for a line with none.
+// iconLines are root's lines of text, each with its mark (an iconLine's
+// own, or a mark alone before the text), IconNone for a line with none.
 func iconLines(root widget.Component) (icons []style.ToolIcon, texts []string) {
 	mark := style.IconNone
 	widget.Walk(root, func(c widget.Component) {
@@ -197,6 +197,9 @@ func iconLines(root widget.Component) (icons []style.ToolIcon, texts []string) {
 		if l.Text == "" && l.Icon != style.IconNone {
 			mark = l.Icon
 			return
+		}
+		if l.Icon != style.IconNone {
+			mark = l.Icon
 		}
 		icons, texts = append(icons, mark), append(texts, l.Text)
 		mark = style.IconNone

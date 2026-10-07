@@ -208,7 +208,7 @@ func TestFormatNewMailNoticeUsesSender(t *testing.T) {
 
 // New mail puts the logo in a seal in the tray until the window is looked
 // at: it takes the focus, or is opened from the tray or the notification.
-// Painted without the focus, it has not been seen.
+// A repaint without the focus is not looking at it.
 func TestTrayShowsNewMailUntilSeen(t *testing.T) {
 	t.Setenv("UITK_TRAY", "fake")
 	item, err := platform.NewStatusItem(platform.StatusItemOptions{Icon: trayIcon(false)})
@@ -224,8 +224,8 @@ func TestTrayShowsNewMailUntilSeen(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &session{app: a, win: w, tray: tray, notes: &recNotifier{}}
+	s.watchFocus(w)
 	root := wrapShortcutsReady(widgets.NewColumn(), nil, nil)
-	root.painted = s.mailSeen
 	w.SetContent(root)
 	a.PumpOnce()
 
@@ -253,11 +253,10 @@ func TestTrayShowsNewMailUntilSeen(t *testing.T) {
 	a.PumpOnce()
 	a.DrainPosted()
 	if !sealed() {
-		t.Fatal("a paint without the focus counted as seeing the mail")
+		t.Fatal("a repaint without the focus counted as seeing the mail")
 	}
 	w.Inject(platform.Event{Kind: platform.EventFocusIn})
 	a.PumpOnce()
-	a.DrainPosted() // what the paint posted, as the run loop's next turn would
 	if sealed() || s.newMailWaiting() {
 		t.Fatal("the window took the focus: the tray still shows new mail")
 	}

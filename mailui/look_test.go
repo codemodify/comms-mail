@@ -136,3 +136,16 @@ func openMailFramedSession(t *testing.T, look style.LookAndFeel, watch bool, opt
 		stopDemo()
 	}
 }
+
+// comms-mail's captions have no window-menu button, whatever look.json's
+// "hideWindowMenu" says each time the file is applied again.
+func TestNoWindowMenuOutlastsLookJSON(t *testing.T) {
+	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	noWindowMenu(a)
+	ap := style.Appearance{Theme: style.ThemeDark}
+	ap.HideWindowMenu = false
+	a.ApplyAppearance(ap)
+	if !a.HideWindowMenu() || !a.HideWindowMenuPinned() {
+		t.Fatalf("after look.json: hidden %v, pinned %v", a.HideWindowMenu(), a.HideWindowMenuPinned())
+	}
+}

@@ -59,7 +59,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 			steps := scenarioSteps(les)
 			var scenes []*routeScene
 			var numbers []int
-			var titles []*strong
+			var titles []*widgets.Label
 			var keys []*symbolItem
 			var letters []string
 			var stepTabs *widgets.TabView
@@ -86,9 +86,10 @@ func TestEducateIsOnePicture(t *testing.T) {
 					switch v := c.(type) {
 					case *numberMark:
 						numbers = append(numbers, v.n)
-					case *strong:
-						titles = append(titles, v)
 					case *widgets.Label:
+						if v.Bold {
+							titles = append(titles, v)
+						}
 						if v.Text == "or" {
 							ors++
 						}
@@ -123,9 +124,13 @@ func TestEducateIsOnePicture(t *testing.T) {
 			if ors != wantOrs {
 				t.Errorf("at %d: %d alternatives joined by \"or\", want %d", width, ors, wantOrs)
 			}
+			if len(titles) != 8 {
+				t.Errorf("at %d: %d steps named in bold, want 8", width, len(titles))
+			}
 			for _, s := range titles {
-				if strings.Join(s.lines, " ") != s.text {
-					t.Errorf("at %d: a title is cut: %q", width, s.lines)
+				b := s.Bounds()
+				if need := s.Measure(layout.Constraints{MaxW: b.Dx(), MaxH: -1}); !s.Wrap || need.Y > b.Dy()+0.5 {
+					t.Errorf("at %d: the title %q needs %v and has %v", width, s.Text, need, b)
 				}
 			}
 			sc := scenes[0]

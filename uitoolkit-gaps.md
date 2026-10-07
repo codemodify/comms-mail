@@ -6,21 +6,17 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.3** (2026-10-02), from scratch:
-every open item re-read against the code, every closed one re-checked by
-comms-mail's tests, and the release's fixes rendered on the packs they
-name and the owner's own. 0.22 closed sixteen of the first seventeen;
-0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30,
-#31 and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40;
-0.23.1 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46. Open:
-#2 (declined and settled), #29 (a design change), #47, #48, #49 and #50
-(found 2026-10-04), #51 (found 2026-10-05), and #52, #53 and #54
-(found 2026-10-06). What comms-mail uses for each closed item is under
-**Resolved**, with the report and the toolkit's answer.
-
-**v0.23.4** (2026-10-04) closes none of them: every open item was
-re-read against it on 2026-10-06. comms-mail stays on v0.23.3 and moves
-to the next release after 0.23.4.
+Last checked against **uitoolkit v0.23.5** (2026-10-06), which comms-mail
+now builds with: every open item re-read against the code, every closed
+one re-checked by comms-mail's tests, and the release's fixes taken up and
+rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
+next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
+0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
+0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
+#50, #51, #53 and #54. Open: #2 and #52 (declined and settled), #29 (a
+design change), and #55 (found 2026-10-06 in 0.23.5). What comms-mail
+uses for each closed item is under **Resolved**, with the report and the
+toolkit's answer.
 
 ## Open
 
@@ -101,7 +97,85 @@ still the open design change.
 
 **Unchanged in 0.23.3.**
 
-### 47. An app cannot turn the window-menu button off for itself
+**Unchanged in 0.23.4 and 0.23.5** (widgets/button.go is the same file).
+
+### 52. No way to print
+The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
+print dialog, no page setup, no way to lay a document out on pages or
+render one to PDF, and no use of the desktop's print service (the
+`org.freedesktop.portal.Print` portal, which takes a PDF; `PrintDlgEx`
+on Windows; `NSPrintOperation` on macOS). Searched in 0.23.4: platform/,
+app/, widgets/, richtext/ and docs/ have no print path, and the only PDF
+in the repository is test data.
+comms-mail's Print writes the message as an HTML page, with a
+Content-Security-Policy that blocks every request so a remote image
+cannot tell the sender it was printed, and opens it in the browser to
+print or save as PDF (mailui/print.go, `printMessage`). The user leaves
+the app to print, in a window that is not the app's.
+**Fix asked for:** a print path — `richtext` (or a painted component) laid
+out on pages and rendered to PDF, and the platform's print dialog for
+that PDF (the portal's `PreparePrint` and `Print` on Linux).
+
+Found 2026-10-06 against 0.23.4.
+
+**Declined, and settled** (0.23.5). "No printing" is one of the toolkit
+author's standing decisions (RESUME.md: "Decisions standing … no
+printing"), and the README's list of gaps says of it "There is none".
+0.23.5's notes call it the one item left open across the four
+applications that report against the toolkit, pinned. comms-mail keeps
+printing through the browser.
+
+### 55. A wrapping label, or a `FitRows` view, loses a line at a fractional width
+0.23.5 rounds a wrapping `Label`'s measured *width* up to a whole pixel
+(widgets/label.go:187), so a label sized to its own text keeps its last
+line. A label *stretched* to its parent's width is still caught: it is
+measured at the width it is offered (:163, `wrapW` from `c.MaxW`), and
+layout then rounds each edge of its box to the nearest pixel
+(`widget.PixelRect`, widget/base.go:242–249), which can hand it up to a
+pixel less. At a fractional scale a column's inner width is fractional —
+at 1.25, a window 213 wide with 7 dp of padding is 248.5 px inside — the
+text is measured at 248.5 (6 lines), laid out at 248 (7), and the lines,
+centred, lose their first and last: #49's symptom, back at that width.
+`TextArea.FitRows` is caught the same way (widgets/textarea.go:191–198,
+`rowsFor(w)` at `c.MaxW`): a path measured at 282.5 px as two lines is
+laid out at 282, wraps to three, and the third is behind a scroll bar.
+Found by laying out comms-mail's warning lines and its path view at
+widths 120–420 and scales 1, 1.25, 1.5, 1.75 and 2: 24 cut labels and
+one hidden line in about 13,500 layouts, all at 1.25. comms-mail does
+not work round it.
+**Fix asked for:** measure wrapped text at the narrowest whole width the
+box can be handed — `floor(c.MaxW)` — in `Label.Measure` and
+`TextArea.rowsFor`, or have layout round a child's offered width down
+before it measures.
+
+Found 2026-10-06 against 0.23.5.
+
+## Resolved
+
+### Closed in 0.23.5
+
+| # | Gap | 0.23.5 | In comms-mail |
+| --- | --- | --- | --- |
+| 47 | An app could not keep the window-menu button off for itself | `Application.SetHideWindowMenu` pins the choice against look.json's `hideWindowMenu` (`HideWindowMenuPinned`) | `noWindowMenu` calls it once; the `OnLookChange` re-apply is gone. Tested by applying a look.json that shows the button |
+| 48 | No read-only text that can be selected and fits its text | `TextField.ReadOnly`; `TextArea.FitRows` and `MaxRows` | The Passwords page's paths are `NewTextView` with `FitRows`; `fitText` is gone. The toolkit's tests cover Backspace, Delete and an IME's delete-surrounding on a read-only field. A stretched view can still lose a line at a fractional width (#55) |
+| 49 | A wrapping `Label` with an `Icon` cut off its first and last lines | Measured at the width its text gets; a wrapping label's width rounded up to a whole pixel | `iconLine` is a wrapping `Label` with its `Icon` again (sender warnings, signed/encrypted lines, the Security tab, Settings' "Not available"); its row of a mark and a label is gone. Rendered: nothing cut. Stretched to a fractional width it still can be (#55) |
+| 50 | A `Label` was plain or a `Title`: no bold at the body's size | `Label.Bold` | Educate's step names are bold labels; the `strong` component that drew them is gone |
+| 51 | Measuring a `ScrollView` changed what it scrolled | `Measure` writes nothing down; `Arrange` decides | The Security tab is its scroll view again (`stillScroll` is gone) and the Message tab's header box measures its scroll view (`reserveBox`'s own measuring is gone). The tests that caught it, and the Security tab's speed test, pass |
+| 53 | An app could not add an icon of its own | `style.RegisterIcon`, `IconDrawer`, `RegisteredIcon`; `IconByStem` answers registered stems | The mail server in the Security tab's route and Educate's picture is registered under "server" and drawn by `DrawToolIcon` in every set. Compact Folder, Body as plain text and Turn Off can now have icons; drawing them is comms-mail's (BACKLOG.md) |
+| 54 | A window told no one when it took or lost the focus | `Window.OnActiveChange` | The tray's new-mail logo goes back when the window takes the focus; the root's check on every paint is gone. Tested by focusing a headless window out and in |
+
+Also from 0.23.5, nothing for comms-mail to change: a tray icon's own
+picture is no longer offered beside a theme name hosts would prefer
+(comms-mail gives a picture alone), a re-made X11 window keeps the windows
+it owns, keyboard focus in a menu scrolls its row into view, and lists,
+tables and trees act on the row under the pointer and only on a real
+double click. paintengine2d moves to v0.12.0. comms-mail's screenshots
+render as before, except that the message text no longer runs under its
+scroll bar (0.23.4).
+
+The reports and the toolkit's answers, as they were:
+
+#### 47. An app cannot turn the window-menu button off for itself
 comms-mail wants no window-menu button (KWin's **M** at the left end of
 its captions) on any of its windows. There are two switches, and neither
 is the app's:
@@ -126,7 +200,7 @@ from the app pinning it as `SetTitleBarPrefs` pins the layout.
 
 Found checking 0.23.3; the same in 0.23.4.
 
-### 48. No read-only text that can be selected and fits its text
+#### 48. No read-only text that can be selected and fits its text
 Settings › Security › Passwords shows the encrypted and plain files'
 paths as text to select and copy, not edit. None of the three candidates
 does it alone:
@@ -152,7 +226,7 @@ after the layout (mailui/vault.go, `fitText`).
 
 Found 2026-10-04 against 0.23.3; the same in 0.23.4.
 
-### 49. A wrapping `Label` with an `Icon` cuts off its first and last lines
+#### 49. A wrapping `Label` with an `Icon` cuts off its first and last lines
 `Label.Measure` wraps the text at the whole width offered
 (widgets/label.go:144, `wrapW = c.MaxW - 2`) and adds the mark's width
 afterwards; `Paint` takes the mark's room off first and wraps at what is
@@ -168,7 +242,7 @@ wrapping label of its own in a row (mailui/icons.go, `iconLine`).
 Found 2026-10-04; the same in 0.23.3 and 0.23.4 (measure :140–156, paint
 :205–214).
 
-### 50. A `Label` is plain or a `Title`: no bold at the text's own size
+#### 50. A `Label` is plain or a `Title`: no bold at the text's own size
 Settings › Security › Educate names each hop ("From your mail server to
 theirs") over the words about it: a run-in heading, bold at the body's
 size, as GTK's `heading` class, Qt's `QFont::setBold` and HTML's
@@ -183,7 +257,7 @@ as a plain label does.
 
 Found 2026-10-04 against 0.23.3; the same in 0.23.4.
 
-### 51. Measuring a `ScrollView` changes what it scrolls
+#### 51. Measuring a `ScrollView` changes what it scrolls
 `ScrollView.Measure` keeps the size its child measured as the size it
 scrolls (`s.content = s.child.Measure(…)`, widgets/scroll.go:130 in
 0.23.3), and `Arrange` does too (:174). The scroll range, the clamp and
@@ -207,26 +281,7 @@ from `Arrange` alone.
 Found 2026-10-05 against 0.23.3; the same in 0.23.4 (widgets/scroll.go
 is unchanged).
 
-### 52. No way to print
-The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
-print dialog, no page setup, no way to lay a document out on pages or
-render one to PDF, and no use of the desktop's print service (the
-`org.freedesktop.portal.Print` portal, which takes a PDF; `PrintDlgEx`
-on Windows; `NSPrintOperation` on macOS). Searched in 0.23.4: platform/,
-app/, widgets/, richtext/ and docs/ have no print path, and the only PDF
-in the repository is test data.
-comms-mail's Print writes the message as an HTML page, with a
-Content-Security-Policy that blocks every request so a remote image
-cannot tell the sender it was printed, and opens it in the browser to
-print or save as PDF (mailui/print.go, `printMessage`). The user leaves
-the app to print, in a window that is not the app's.
-**Fix asked for:** a print path — `richtext` (or a painted component) laid
-out on pages and rendered to PDF, and the platform's print dialog for
-that PDF (the portal's `PreparePrint` and `Print` on Linux).
-
-Found 2026-10-06 against 0.23.4.
-
-### 53. An app cannot add an icon of its own
+#### 53. An app cannot add an icon of its own
 Some of comms-mail's marks are in neither the 56 typed ids nor the 80
 shipped stems (docs/widgets.md:282 and :317): a mail server, in the
 Security tab's route and the Educate page's three hops; Compact Folder;
@@ -248,7 +303,7 @@ that the user's file sets can still replace by stem.
 
 Found 2026-10-06 against 0.23.4.
 
-### 54. A window tells no one when it takes or loses the focus
+#### 54. A window tells no one when it takes or loses the focus
 comms-mail's tray shows the logo in a seal while new mail waits to be
 seen, and puts the plain logo back when the window takes the focus.
 `Window.Active` says whether it has the focus (app/window.go:520 in
@@ -267,8 +322,6 @@ from `setActive` when the state changes (Qt's `QEvent::WindowActivate`,
 GTK's `notify::is-active`, Win32's `WM_ACTIVATE`).
 
 Found 2026-10-06 against 0.23.3 and 0.23.4.
-
-## Resolved
 
 ### Closed in 0.23.3
 

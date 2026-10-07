@@ -193,6 +193,7 @@ func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		app: a, win: win, cli: cli, opts: opts,
 		sortCol: colWhen, sortAsc: false, online: true,
 	}
+	s.watchFocus(win)
 	// Pages printed and attachments dragged out by an earlier run, once
 	// old (mailcore.RemoveOld).
 	go func() {
@@ -438,12 +439,10 @@ func (s *session) build() widget.Component {
 	s.refreshAll()
 	// Once laid out (the look known), the window's minimum width follows
 	// what the panes need, then a first run offers to add an account.
-	r := wrapShortcutsReady(root, s.handleKey, func(c widget.Component) {
+	return wrapShortcutsReady(root, s.handleKey, func(c widget.Component) {
 		fitMinWidth(s.win, c)
 		s.maybeAskAddAccount(c)
 	})
-	r.painted = s.mailSeen
-	return r
 }
 
 // appMenuItems is the app menu: View, Notify, Settings, Quit. Its button

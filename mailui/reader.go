@@ -145,7 +145,7 @@ func newReader(s *session) *reader {
 	message.AddFlex(widgets.NewPad(8, r.text), 1)
 	r.tabs = widgets.NewTabView(
 		widgets.Tab{Title: "Message", Content: message},
-		widgets.Tab{Title: "Security", Content: r.secView.tab},
+		widgets.Tab{Title: "Security", Content: r.secView.scroll},
 		widgets.Tab{Title: "Source", Content: widgets.NewPad(8, r.source)},
 		widgets.Tab{Title: "Markdown", Content: widgets.NewPad(4, r.md.view)},
 	)

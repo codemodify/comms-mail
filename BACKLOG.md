@@ -53,8 +53,10 @@ new ones turn up.
 ## Icons
 - **A few rows still without an icon** — Compact Folder, Select All,
   Body as plain text and a filter's Turn Off: no toolkit icon means what
-  they do, and an app cannot add its own (uitoolkit-gaps.md #53) (Run Now, Unlock and an invitation's More / Less got theirs
-  from uitoolkit 0.23). Buttons with icons are wide (uitoolkit-gaps.md
+  they do (Run Now, Unlock and an invitation's More / Less got theirs
+  from uitoolkit 0.23). Since uitoolkit 0.23.5 comms-mail can register
+  icons of its own (`style.RegisterIcon`, as the mail server is), so
+  these need drawing. Buttons with icons are wide (uitoolkit-gaps.md
   #29), so their rows fold in narrow windows.
 
 ## Layout

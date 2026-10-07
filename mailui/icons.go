@@ -3,7 +3,6 @@ package mailui
 import (
 	"strings"
 
-	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/style"
 	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
@@ -98,12 +97,10 @@ func iconOnly(icon style.ToolIcon, what string) *widgets.ToolButton {
 	return b
 }
 
-// iconLine is a mark and its text, the text wrapping beside it. A
-// wrapping Label with an Icon cannot be one: it is measured as if the mark
-// took no room, and wraps to more lines than it was given, the first and
-// last cut off (uitoolkit-gaps.md #49).
-func iconLine(icon style.ToolIcon, text string) *widgets.FlexBox {
-	row := widgets.NewRow(widgets.NewIconLabel(icon, "")).WithGap(2).WithAlign(layout.AlignStart)
-	row.AddFlex(wrapLabel(text), 1)
-	return row
+// iconLine is a mark and its text, the text wrapping beside it, the mark
+// by its first line.
+func iconLine(icon style.ToolIcon, text string) *widgets.Label {
+	l := widgets.NewIconLabel(icon, text)
+	l.Wrap = true
+	return l
 }

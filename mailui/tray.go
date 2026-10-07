@@ -7,7 +7,6 @@ import (
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/platform"
 	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
@@ -126,13 +125,17 @@ func (s *session) newMailWaiting() bool {
 	return s.newMail
 }
 
-// mailSeen is called whenever the window paints: uitoolkit repaints all of
-// it when it takes the focus, and tells nothing else that it did
-// (uitoolkit-gaps.md #54). Painted with the focus, new mail has been seen.
-func (s *session) mailSeen(root widget.Component) {
-	if s.newMailWaiting() && widget.WindowActive(root) {
-		s.post(func() { s.setNewMail(false) })
+// watchFocus puts the plain logo back in the tray when win takes the
+// focus: new mail has been seen.
+func (s *session) watchFocus(win *app.Window) {
+	if win == nil {
+		return
 	}
+	win.OnActiveChange(func(active bool) {
+		if active {
+			s.setNewMail(false)
+		}
+	})
 }
 
 // windowInFront reports whether the window is open and has the focus, so
@@ -184,6 +187,7 @@ func (s *session) showMain() {
 			return
 		}
 		s.win = win
+		s.watchFocus(win)
 		win.SetContent(s.build())
 		if it := s.statusItem(); it != nil && it.Shown() {
 			win.SetCloseHides(true)

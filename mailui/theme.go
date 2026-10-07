@@ -73,13 +73,12 @@ func keepOwnTheme(a *app.Application) {
 
 // noWindowMenu leaves the window-menu button out of the caption of every
 // comms-mail window the toolkit draws a frame for. The menu itself is still
-// a right click on the caption. The toolkit takes the button's state from
-// look.json each time it applies that file (a theme changed in uitoolkit's
-// Settings), so it is dropped again after every change of look.
+// a right click on the caption. The choice is comms-mail's own: look.json's
+// "hideWindowMenu", applied again whenever the file changes, does not undo
+// it.
 func noWindowMenu(a *app.Application) {
 	if a == nil {
 		return
 	}
 	a.SetHideWindowMenu(true)
-	a.OnLookChange(func() { a.SetHideWindowMenu(true) })
 }

@@ -4,8 +4,8 @@ go 1.26.0
 
 require (
 	github.com/ProtonMail/go-crypto v1.5.2
-	github.com/codemodify/paintengine2d v0.11.0
-	github.com/codemodify/uitoolkit v0.23.3
+	github.com/codemodify/paintengine2d v0.12.0
+	github.com/codemodify/uitoolkit v0.23.5
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/godbus/dbus/v5 v5.1.0
 	golang.org/x/crypto v0.57.0
@@ -13,6 +13,7 @@ require (
 	golang.org/x/net v0.59.0
 	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.59.0
+	software.sslmate.com/src/go-pkcs12 v0.7.3
 )
 
 require (
@@ -27,5 +28,4 @@ require (
 	modernc.org/libc v1.75.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	software.sslmate.com/src/go-pkcs12 v0.7.3 // indirect
 )

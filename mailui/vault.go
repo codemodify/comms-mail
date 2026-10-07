@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
 	"github.com/codemodify/uitoolkit/app"
 	"github.com/codemodify/uitoolkit/layout"
 	"github.com/codemodify/uitoolkit/platform"
@@ -80,44 +79,11 @@ func storeOptions(st mailcore.SecretsStatus) []storeOption {
 }
 
 // pathView is a file's path as text that can be selected and copied, not
-// edited, all of it in view.
-func pathView(path string) widget.Component { return newFitText(path) }
-
-// fitText is a read-only text view as tall as its text wrapped to the width
-// it is given: a TextArea is MinRows tall whatever it holds, and scrolls
-// the rest.
-type fitText struct {
-	widget.Base
-	view *widgets.TextArea
-}
-
-func newFitText(text string) *fitText {
-	f := &fitText{view: widgets.NewTextView(text, "")}
-	f.view.MinRows = 1
-	f.Init(f)
-	f.Add(f.view)
-	return f
-}
-
-func (f *fitText) Measure(c layout.Constraints) paintengine2d.Point {
-	// The view wraps at the width it is laid out at: laid out at this one,
-	// with room for every line, it says how many there are. With no width
-	// to keep to, the text is one line.
-	f.view.MinRows = 1
-	if c.HasMaxW() {
-		f.view.Arrange(paintengine2d.XYWH(0, 0, c.MaxW, 1<<14))
-		f.view.MinRows = max(1, len(f.view.Lines()))
-		// A measure can come after the layout (a parent probing how
-		// narrow it can go): the view goes back to the box it was given.
-		b := f.Bounds()
-		f.view.Arrange(paintengine2d.XYWH(0, 0, b.Dx(), b.Dy()))
-	}
-	return f.view.Measure(c)
-}
-
-func (f *fitText) Arrange(r paintengine2d.Rect) {
-	f.SetBounds(r)
-	f.view.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+// edited, all of it in view: as many lines as it wraps to.
+func pathView(path string) widget.Component {
+	v := widgets.NewTextView(path, "")
+	v.MinRows, v.FitRows = 1, true
+	return v
 }
 
 // storeChoices is the choice of where secrets are kept — the passwords',

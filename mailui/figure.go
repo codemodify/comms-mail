@@ -42,13 +42,27 @@ func drawPict(ctx *paintengine2d.Context, lk style.LookAndFeel, p pict, box pain
 	case pictPerson:
 		style.DrawToolIcon(ctx, box, style.IconUser, ink, style.IconSetOf(lk))
 	case pictServer:
-		drawServer(ctx, box, ink)
+		style.DrawToolIcon(ctx, box, iconServer, ink, style.IconSetOf(lk))
 	}
 }
 
-// drawServer draws a server, which the toolkit has no icon for, in a
-// 24-unit box, as the icons are drawn: strokes of one weight. A rack of
-// two: a post office for mail.
+// iconServer is a mail server, an icon the toolkit does not ship:
+// comms-mail's drawing, registered under the stem "server", so an icon set
+// with a server of its own draws that one instead.
+var iconServer = registerIcon("server", drawServer)
+
+// registerIcon registers draw under stem, or answers the toolkit's own icon
+// once it ships one by that name.
+func registerIcon(stem string, draw style.IconDrawer) style.ToolIcon {
+	icon, err := style.RegisterIcon(stem, draw)
+	if err != nil {
+		icon, _ = style.IconByStem(stem)
+	}
+	return icon
+}
+
+// drawServer draws a server (iconServer) in a 24-unit box, as the icons
+// are drawn: strokes of one weight. A rack of two: a post office for mail.
 func drawServer(ctx *paintengine2d.Context, box paintengine2d.Rect, ink paintengine2d.Color) {
 	u := box.Dx() / 24
 	at := func(x, y float32) paintengine2d.Point { return paintengine2d.Pt(box.Min.X+x*u, box.Min.Y+y*u) }
