@@ -224,8 +224,7 @@ func (r *reader) showBody(m mailcore.Message) {
 		// Already decrypted: the text stays what secretvault opened.
 		r.showContent(*r.sec.content)
 	default:
-		r.text.Placeholder = "This message has no text"
-		r.text.SetText(mailcore.DisplayBody(m))
+		r.setBody("This message has no text", mailcore.DisplayBody(m))
 		md := m
 		md.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(m))
 		r.md.show(md)
@@ -246,9 +245,22 @@ func (r *reader) showBody(m mailcore.Message) {
 // showPlain puts text in the Message tab and empties the rendering: for
 // loading and errors, neither of which is the message.
 func (r *reader) showPlain(placeholder, text string) {
-	r.text.Placeholder = placeholder
-	r.text.SetText(text)
+	r.setBody(placeholder, text)
 	r.md.clear()
+}
+
+// setBody puts text in the Message tab, from its top when it is new text.
+// A text view given its text before it is first laid out — the message
+// showing at start — opens a few pixels down, its first line cut
+// (uitoolkit-gaps.md #57). The same text again, a refresh, keeps the
+// reader's place.
+func (r *reader) setBody(placeholder, text string) {
+	r.text.Placeholder = placeholder
+	if r.text.Text == text {
+		return
+	}
+	r.text.SetText(text)
+	r.text.ScrollTo(0)
 }
 
 // clear shows no message.

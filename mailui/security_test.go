@@ -930,3 +930,29 @@ func TestTheHeaderScrollsItsContent(t *testing.T) {
 		t.Fatalf("measuring the pane changed how far the header scrolls: %v, then %v", want, got)
 	}
 }
+
+// The message showing at start opens at the top of its text, though it
+// was given its text before the pane was laid out (uitoolkit-gaps.md
+// #57); the same message shown again keeps the reader's place, and
+// another starts at its top.
+func TestTheMessageTextStartsAtItsTop(t *testing.T) {
+	s, a, w, done := openMailFramedSession(t, style.LightLook(), false, AppOptions{}, platform.DecorationsClient)
+	defer done()
+	w.SetSize(1100, 640)
+	for i := 0; i < 3; i++ {
+		a.PumpOnce()
+	}
+	v := s.rd.text
+	if v.OffsetY() != 0 || v.MaxOffset() <= 0 {
+		t.Fatalf("the first message opens %v down (of %v)", v.OffsetY(), v.MaxOffset())
+	}
+	v.ScrollTo(100)
+	s.showBody(s.rd.msg)
+	if v.OffsetY() != 100 {
+		t.Fatalf("shown again, the text moved from 100 to %v", v.OffsetY())
+	}
+	open(s, a, s.rows[4].ID)
+	if v.OffsetY() != 0 {
+		t.Fatalf("another message opens %v down", v.OffsetY())
+	}
+}

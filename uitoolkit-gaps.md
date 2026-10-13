@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.6** (2026-10-12), which comms-mail
+Last checked against **uitoolkit v0.23.7** (2026-10-13), which comms-mail
 now builds with: every open item re-read against the code, every closed
 one re-checked by comms-mail's tests, and the release's fixes taken up and
 rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
@@ -14,29 +14,12 @@ next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
 #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so #29, which #56 filed
-again). Open: #2 and #52, both declined and settled. Nothing new was
-found in 0.23.6. What comms-mail uses for each closed item is under
+again); 0.23.7 #2 for every script but emoji, which #58 carries on. Open:
+#52 (declined and settled), and #57 and #58 (found 2026-10-13 in
+0.23.7). What comms-mail uses for each closed item is under
 **Resolved**, with the report and the toolkit's answer.
 
 ## Open
-
-### 2. No font fallback: emoji, and whole scripts, are boxes
-Mail arrives in every script. Titillium Web (the interface face, 456
-glyphs) has Latin only — no Greek, no Cyrillic, no CJK — and nothing
-falls back to another face for a rune it lacks, so a subject in Russian,
-Greek or Japanese is a row of boxes in the message list, and so are the
-emoji that marketing mail and people alike put in subjects ("👀", "🥳").
-comms-mail keeps to its side of the rule (marks are icons, never
-characters), but a mail client shows other people's text, which it cannot
-choose.
-**Fix asked for:** a fallback for *text content* to installed faces that
-have the rune.
-
-**Declined, and settled** (2026-09-29, second time of asking). One face
-draws everything; a rune it lacks is a box. docs/contracts.md states it
-at length and names the answer for a product that cannot live with it —
-Qt or GTK, which have shaping engines. This will not be reopened, so
-comms-mail should plan around it rather than around its arriving.
 
 ### 52. No way to print
 The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
@@ -64,7 +47,104 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
+### 57. A text view given its text before it is laid out opens scrolled down
+The message comms-mail shows at start opens a few pixels down its text,
+the top of its first line cut off by the view's edge; every message
+opened after it starts at the top. The view is given the text before the
+window's first layout, while it is still 0 px tall.
+
+`TextArea.SetText` keeps the caret in view (`ensureCaretVisible`,
+widgets/textarea.go:122 and :690–703 in 0.23.7). Its guard against a box
+with no room, `inner.Dy() <= 0` (:693), never fires for a box shorter
+than its padding: `inner()` (:244–248) is `XYWH(pad, pad, w-2·pad, h-2·pad)`,
+and `paintengine2d.XYWH` canonicalises the negative height
+(paintengine2d geom.go:66–68), so a 0 px view's inner box is 20 px tall
+(2 × the 10 px pad). The caret's line, 26.3 px, does not fit in 20, so
+the view scrolls by the difference (:703), and once it grows that 6.3 px
+is a legal offset and stays. Given the text at 0, 5, 10 and 15 px tall, a
+view opens 6.3, 11.3, 16.3 and 21.3 px down once it is 260 tall; at 25
+and 30 px, 21.3 and 16.3. Traced with a print in `ensureCaretVisible`:
+bounds 280 × 0, inner height 20, caret on line 0, line 26.3.
+comms-mail scrolls the Message tab's text to the top whenever it is given
+new text (`reader.setBody`, mailui/reader.go), with a test.
+**Fix asked for:** an inner box that does not go below zero —
+`Rect{Min: (pad, pad), Max: (pad + max(w−2·pad, 0), pad + max(h−2·pad, 0))}`
+rather than `XYWH` — so the guard fires; and where the caret's line is
+taller than the box, keep the line's top in view (`scrollY = y`) rather
+than its bottom.
+
+Found 2026-10-13 against 0.23.7 (the same in 0.23.6).
+
+### 58. Emoji stay boxes with `font_fallback`
+0.23.7's fallback draws Cyrillic, Greek, Chinese, Japanese and Korean in
+comms-mail's message list and reading pane from the machine's own faces
+(Noto Sans CJK here), and ✓ and → as well. Emoji — "👀 Big sale 🥳",
+in subjects every day — are still boxes, for two reasons:
+
+- **A fallback face must draw Latin.** `bakeFallbackFace`
+  (style/fontfallback_on.go:98) bakes through `bakeFaceAscent`
+  (style/font.go:863), which refuses any face
+  without an 'A' — "cannot draw Latin" (style/font.go:878–881). That rule
+  is right for the face that draws the interface and wrong for one that
+  lends a single glyph: Noto Color Emoji, Noto Emoji or a symbols face
+  can never lend. Added to `SetFallbackFamilies`, Noto Color Emoji
+  changes nothing; the default list (style/fontfallback.go:36–44) names
+  no emoji family at all.
+- **Colour glyphs are not drawn.** Glyphs come from
+  `golang.org/x/image/font/sfnt` (v0.18.0), whose `LoadGlyph` answers
+  "sfnt: colored glyph" for 👀 and 🥳 in NotoColorEmoji.ttf (CBDT
+  bitmaps), with no outline. Noto Color Emoji is the only face on this
+  machine with emoji, and the usual one on Linux.
+
+**Fix asked for:** skip the Latin check for a face baked to lend a glyph
+(it only has to cover the rune), add the common emoji families to the
+default list (Noto Color Emoji, Noto Emoji, Apple Color Emoji, Segoe UI
+Emoji, Twemoji), and draw colour bitmap glyphs (CBDT/CBLC, sbix: PNG
+strikes, scaled to the line), or at least an outline emoji face where
+one is installed.
+
+Found 2026-10-13 against 0.23.7.
+
 ## Resolved
+
+### Closed in 0.23.7
+
+| # | Gap | 0.23.7 | In comms-mail |
+| --- | --- | --- | --- |
+| 2 | No font fallback: emoji, and whole scripts, were boxes | `-tags font_fallback`: a rune the face lacks is borrowed from the first of `style.FallbackFamilies()` that has it, baked to the borrowing face's baseline; the faces are the machine's own | The Makefile builds the window with `font_fallback`. Imported mail with subjects and senders in Russian, Greek, Chinese, Japanese and Korean draws them in the list and the reading pane (from Noto Sans CJK), and ✓ and → too; without the tag every one was a row of boxes. Emoji are still boxes: #58 |
+
+Also from 0.23.7, nothing for comms-mail to change: a window keeps its
+look's outline when its own bar is the caption (comms-mail's tabs are:
+Hangar keeps its cut corners and Deck its silhouette, rendered), words
+fitted to the width they were measured at are not cut short, a button's
+mark strip is the same in logical pixels at every scale, a panel's floor
+holds its chrome (the invitation card and the search dialog are panels;
+their tests pass), and two ways a passphrase was left on the clipboard
+are closed. `style.Motion` lets a window say its motion is the thing
+itself; comms-mail has none such. The screenshots render as before, but
+for the message text starting at its top (#57).
+
+The reports and the toolkit's answers, as they were:
+
+#### 2. No font fallback: emoji, and whole scripts, are boxes
+Mail arrives in every script. Titillium Web (the interface face, 456
+glyphs) has Latin only — no Greek, no Cyrillic, no CJK — and nothing
+falls back to another face for a rune it lacks, so a subject in Russian,
+Greek or Japanese is a row of boxes in the message list, and so are the
+emoji that marketing mail and people alike put in subjects ("👀", "🥳").
+comms-mail keeps to its side of the rule (marks are icons, never
+characters), but a mail client shows other people's text, which it cannot
+choose.
+**Fix asked for:** a fallback for *text content* to installed faces that
+have the rune.
+
+**Declined, and settled** (2026-09-29, second time of asking). One face
+draws everything; a rune it lacks is a box. docs/contracts.md states it
+at length and names the answer for a product that cannot live with it —
+Qt or GTK, which have shaping engines. This will not be reopened, so
+comms-mail should plan around it rather than around its arriving.
+
+**Closed in 0.23.7** for every script but emoji, which #58 carries on.
 
 ### Closed in 0.23.6
 

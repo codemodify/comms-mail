@@ -211,8 +211,7 @@ func (r *reader) loadSecurity(m mailcore.Message) {
 // showContent puts what secretvault decrypted in the Message and
 // Markdown tabs. The message the window acts on stays the one received.
 func (r *reader) showContent(c mailcore.Message) {
-	r.text.Placeholder = "The decrypted message has no text"
-	r.text.SetText(mailcore.DisplayBody(c))
+	r.setBody("The decrypted message has no text", mailcore.DisplayBody(c))
 	md := c
 	md.HTML = mailcore.MarkdownToHTML(mailcore.BodyMarkdown(c))
 	r.md.show(md)

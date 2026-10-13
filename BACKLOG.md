@@ -8,9 +8,11 @@ new ones turn up.
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
-- **Emoji, Greek, Cyrillic and CJK show as ▯** — the toolkit has no font
-  fallback and has declined it for good (uitoolkit-gaps.md #2): comms-mail
-  has to plan around it. Very visible in subjects and bodies.
+- **Emoji show as ▯** — Greek, Cyrillic and CJK draw since uitoolkit
+  0.23.7, borrowed from the machine's own faces (`font_fallback`, which
+  the Makefile builds with), but emoji do not: a fallback face must draw
+  Latin, and colour glyphs are not drawn (uitoolkit-gaps.md #58). Very
+  visible in subjects.
 - **Tables whose cells wrap can overlap** in the Markdown view — at some
   pane widths the next row is drawn over a wrapped row's second line
   (uitoolkit-gaps.md #32).
