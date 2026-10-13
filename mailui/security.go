@@ -36,7 +36,6 @@ func newSecurityPart() *securityPart {
 	p.unlock = newButton("Unlock secretvault…", nil)
 	p.unlock.SetVisible(false)
 	p.unlockKeys = newButton("Unlock your keys…", nil)
-	p.unlockKeys.Icon = style.IconLock
 	p.unlockKeys.SetVisible(false)
 	p.view = widgets.NewColumn(foldRow(p.unlock, p.unlockKeys)).WithGap(4)
 	p.view.SetVisible(false)

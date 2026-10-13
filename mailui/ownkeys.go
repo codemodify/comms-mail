@@ -295,7 +295,7 @@ func (k *keysPage) addressKeys(ak mailcore.AddressKeys) widget.Component {
 			if !key.Expires.IsZero() {
 				text += ", until " + key.Expires.Format("2 Jan 2006")
 			}
-			line(style.IconLock, text)
+			line(style.IconKey, text)
 			if key.PublicKey != "" {
 				cp := newButton("Copy public key", nil)
 				cp.Icon = style.IconCopy
@@ -332,7 +332,7 @@ func (k *keysPage) addressKeys(ak mailcore.AddressKeys) widget.Component {
 			if !c.NotAfter.IsZero() {
 				text += ", valid until " + c.NotAfter.Format("2 Jan 2006")
 			}
-			line(style.IconLock, text)
+			line(style.IconKey, text)
 			for _, w := range c.Warnings {
 				line(style.IconWarning, w)
 			}

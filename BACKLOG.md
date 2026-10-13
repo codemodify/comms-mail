@@ -56,14 +56,21 @@ new ones turn up.
   they do (Run Now, Unlock and an invitation's More / Less got theirs
   from uitoolkit 0.23). Since uitoolkit 0.23.5 comms-mail can register
   icons of its own (`style.RegisterIcon`, as the mail server is), so
-  these need drawing. Buttons with icons are wide (uitoolkit-gaps.md
-  #29), so their rows fold in narrow windows.
+  these need drawing. A button with an icon is 32 px wider than one
+  without (64 until uitoolkit 0.23.6, uitoolkit-gaps.md #56), so rows of
+  them still fold in the narrowest windows.
 
 ## Layout
 - **Invite card at the minimum window size** — the reading pane's header
   scrolls when it would leave the body under ~200 px, so at 860×560 the
   card's buttons are a scroll away (every control stays reachable; a
   test checks each window at its minimum size).
+- **Status lines go nowhere by default** — 110 `session.mark` calls
+  (errors, "Downloaded 3 messages", "Undone: …", "Opened in your
+  browser — print it…") write to the status bar, which is off unless
+  `ShowStatusBar`. uitoolkit 0.23.6 has `widgets.Toast` (a line that
+  appears and goes, kinds for errors, announced to screen readers):
+  decide which marks become toasts (asked 2026-10-12).
 
 ## Accounts / setup / trust
 - **OAuth (Gmail / Microsoft 365)** — decided 2026-09-28: the owner's own

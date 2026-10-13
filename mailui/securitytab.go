@@ -785,7 +785,7 @@ func signatureDetailRows(sig mailcore.SignatureCheck) []widget.Component {
 		if !sig.KeyExpires.IsZero() {
 			key += ", expires " + day(sig.KeyExpires)
 		}
-		rows = append(rows, iconLine(style.IconLock, key))
+		rows = append(rows, iconLine(style.IconKey, key))
 	}
 	if !sig.SignedAt.IsZero() || sig.Hash != "" {
 		made := "Signed"

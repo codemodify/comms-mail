@@ -149,3 +149,24 @@ func TestNoWindowMenuOutlastsLookJSON(t *testing.T) {
 		t.Fatalf("after look.json: hidden %v, pinned %v", a.HideWindowMenu(), a.HideWindowMenuPinned())
 	}
 }
+
+// The desktop's reduced-motion setting applies to comms-mail: uitoolkit
+// only records it unless the application asks.
+func TestFollowsTheDesktopsReducedMotion(t *testing.T) {
+	t.Setenv(style.AnimationsEnv, "")
+	defer style.SetFollowDesktopMotion(style.FollowsDesktopMotion())
+	defer style.SetDesktopReduceMotion(style.DesktopReducesMotion())
+	style.SetFollowDesktopMotion(false)
+	cli := demoClient(t)
+	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	w.SetContent(Open(a, w, cli, AppOptions{}))
+	style.SetDesktopReduceMotion(true)
+	if !style.FollowsDesktopMotion() || style.Animations() {
+		t.Fatalf("follows %v, animates %v with the desktop reducing motion", style.FollowsDesktopMotion(), style.Animations())
+	}
+}

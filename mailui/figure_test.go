@@ -16,12 +16,13 @@ func TestServerIsARegisteredIcon(t *testing.T) {
 	}
 	for _, set := range []style.IconSetName{style.IconSetClassic, style.IconSetSharp} {
 		img := paintengine2d.NewImage(48, 48)
-		ink := paintengine2d.RGBA(200, 30, 30, 255)
+		ink := paintengine2d.Bytes(200, 30, 30, 255)
 		style.DrawToolIcon(paintengine2d.NewContext(img), paintengine2d.XYWH(0, 0, 48, 48), iconServer, ink, set)
 		inked := 0
 		for y := 0; y < 48; y++ {
 			for x := 0; x < 48; x++ {
-				if r, _, _, a := img.PremulAt(x, y); a > 128 && r > 128 {
+				// The ink's red, and not white: green stays low.
+				if r, g, _, a := img.PremulAt(x, y); a > 128 && r > 128 && g < 80 {
 					inked++
 				}
 			}

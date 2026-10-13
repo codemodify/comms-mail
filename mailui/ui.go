@@ -72,6 +72,9 @@ func MailApp(a *app.Application, win *app.Window) widget.Component {
 // Open builds the Mail chrome against a comms-maild Client (no Store / IMAP).
 func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOptions) widget.Component {
 	noWindowMenu(a)
+	// The desktop's reduced motion applies: comms-mail has no setting of
+	// its own for it, and it is there for people whom movement makes ill.
+	style.SetFollowDesktopMotion(true)
 	s := newSession(a, win, cli, opts)
 	root := s.build()
 	s.attachTray()

@@ -6,18 +6,17 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.5** (2026-10-06), which comms-mail
+Last checked against **uitoolkit v0.23.6** (2026-10-12), which comms-mail
 now builds with: every open item re-read against the code, every closed
 one re-checked by comms-mail's tests, and the release's fixes taken up and
 rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
 next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
-#50, #51, #53 and #54. Open: #2 and #52 (declined and settled), #55
-(found 2026-10-06 in 0.23.5), and #56 (#29, a design change open since
-2026-09-28, filed again on 2026-10-06 so it is not lost). What comms-mail
-uses for each closed item is under **Resolved**, with the report and the
-toolkit's answer.
+#50, #51, #53 and #54; 0.23.6 #55 and #56 (and so #29, which #56 filed
+again). Open: #2 and #52, both declined and settled. Nothing new was
+found in 0.23.6. What comms-mail uses for each closed item is under
+**Resolved**, with the report and the toolkit's answer.
 
 ## Open
 
@@ -39,7 +38,121 @@ at length and names the answer for a product that cannot live with it —
 Qt or GTK, which have shaping engines. This will not be reopened, so
 comms-mail should plan around it rather than around its arriving.
 
-### 29. `Button.Icon` makes a button an icon-and-a-half wider
+### 52. No way to print
+The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
+print dialog, no page setup, no way to lay a document out on pages or
+render one to PDF, and no use of the desktop's print service (the
+`org.freedesktop.portal.Print` portal, which takes a PDF; `PrintDlgEx`
+on Windows; `NSPrintOperation` on macOS). Searched in 0.23.4: platform/,
+app/, widgets/, richtext/ and docs/ have no print path, and the only PDF
+in the repository is test data.
+comms-mail's Print writes the message as an HTML page, with a
+Content-Security-Policy that blocks every request so a remote image
+cannot tell the sender it was printed, and opens it in the browser to
+print or save as PDF (mailui/print.go, `printMessage`). The user leaves
+the app to print, in a window that is not the app's.
+**Fix asked for:** a print path — `richtext` (or a painted component) laid
+out on pages and rendered to PDF, and the platform's print dialog for
+that PDF (the portal's `PreparePrint` and `Print` on Linux).
+
+Found 2026-10-06 against 0.23.4.
+
+**Declined, and settled** (0.23.5). "No printing" is one of the toolkit
+author's standing decisions (RESUME.md: "Decisions standing … no
+printing"), and the README's list of gaps says of it "There is none".
+0.23.5's notes call it the one item left open across the four
+applications that report against the toolkit, pinned. comms-mail keeps
+printing through the browser.
+
+## Resolved
+
+### Closed in 0.23.6
+
+| # | Gap | 0.23.6 | In comms-mail |
+| --- | --- | --- | --- |
+| 55 | A wrapping label, or a `FitRows` view, lost a line at a fractional width | Wrapped text is measured at `floor` of the width offered, and every measured size is rounded up to whole pixels on both axes, so layout cannot hand back less | Nothing to change. The sweep that found it — warning lines, bold lines and the path view at widths 120–420 and scales 1 to 2, 13,545 layouts — finds nothing now (it found 25, all at 1.25), and the 1.25 / 213 px case renders whole |
+| 56 (29) | A button with an icon was 64 px wider than one without | **Breaking:** `Engine.DrawButton` is handed a `ButtonDraw`, the label and the mark, so a marked button is one strip wider (`style.ButtonLabelBox`, `ButtonIconBox`) | Nothing to change: comms-mail draws no engine of its own. Measured at 1x: "No" 59 px plain and 91 with an icon, "Maybe" 86 and 118 (+32 where it was +64). Rendered in twelve looks — wmaker-default, metal-ocean, dark, light, Clearlooks, Win95, Aqua, Breeze, Adwaita, BeOS, KDE 1, Hangar — the mark and the label never meet. Rows of buttons in Settings and the account window are narrower; `foldRow` stays, for windows narrower still |
+
+Also from 0.23.6:
+
+- **The desktop's reduced motion is recorded, not obeyed** (breaking).
+  comms-mail has no motion setting of its own, so it passes the
+  desktop's on (`style.SetFollowDesktopMotion(true)` in `Open`), as the
+  toolkit asks of such an application; tested.
+- **Seven icons a vault is made of.** Unlock buttons wear the open
+  padlock (`IconLockOpen`) where they wore the closed one, OpenPGP keys,
+  S/MIME certificates and a signature's key the key (`IconKey`), and
+  Change passphrase the masked password (`IconPassword`) where it wore
+  the pen.
+- **`widgets.Toast`**, a line that says something and goes. comms-mail
+  has 110 status lines (`session.mark`) — errors among them — that show
+  only in the status bar, which is off by default; whether they become
+  toasts is comms-mail's to decide (BACKLOG.md).
+- Nothing else for comms-mail to change: a key with no focus reaches the
+  content root, a scroll view leaves Ctrl+Page Up and Down to the tabs, a
+  popup is shown at its size in the look it is drawn in, and the fallback
+  file chooser takes every pattern of a filter. The screenshots render as
+  before but for the narrower buttons.
+
+The reports and the toolkit's answers, as they were:
+
+#### 55. A wrapping label, or a `FitRows` view, loses a line at a fractional width
+0.23.5 rounds a wrapping `Label`'s measured *width* up to a whole pixel
+(widgets/label.go:187), so a label sized to its own text keeps its last
+line. A label *stretched* to its parent's width is still caught: it is
+measured at the width it is offered (:163, `wrapW` from `c.MaxW`), and
+layout then rounds each edge of its box to the nearest pixel
+(`widget.PixelRect`, widget/base.go:242–249), which can hand it up to a
+pixel less. At a fractional scale a column's inner width is fractional —
+at 1.25, a window 213 wide with 7 dp of padding is 248.5 px inside — the
+text is measured at 248.5 (6 lines), laid out at 248 (7), and the lines,
+centred, lose their first and last: #49's symptom, back at that width.
+`TextArea.FitRows` is caught the same way (widgets/textarea.go:191–198,
+`rowsFor(w)` at `c.MaxW`): a path measured at 282.5 px as two lines is
+laid out at 282, wraps to three, and the third is behind a scroll bar.
+Found by laying out comms-mail's warning lines and its path view at
+widths 120–420 and scales 1, 1.25, 1.5, 1.75 and 2: 24 cut labels and
+one hidden line in about 13,500 layouts, all at 1.25. comms-mail does
+not work round it.
+**Fix asked for:** measure wrapped text at the narrowest whole width the
+box can be handed — `floor(c.MaxW)` — in `Label.Measure` and
+`TextArea.rowsFor`, or have layout round a child's offered width down
+before it measures.
+
+Found 2026-10-06 against 0.23.5.
+
+#### 56. A button with an icon is 64 px wider than one without
+*First filed as #29 (2026-09-28). Answered in 0.22.4 with documentation,
+left open as a design change, and unchanged since. Filed again because it
+is still the gap comms-mail hits most often.*
+
+`Button.Icon` keeps the engine's label centred by reserving a strip at
+*each* end: `Button.Measure` adds `(side + gap) * 2`
+(widgets/button.go:166–171 in 0.23.5), where a leading icon needs one
+strip. Measured on 0.23.5 at 1x, the same in the light and the dark
+look: "No" is 59 px wide plain and 123 with an icon, "Maybe" 86 and 150,
+"Accept" 85 and 149, "Remove" 95 and 159. That is +64 px on every
+button, half of it an empty strip after the label.
+
+In a mail client buttons come in rows, so a few icons push a row past a
+narrow window. comms-mail's invitation answers (Accept / Maybe / No),
+Settings' account and filter rows, the Add account sign-in row, the
+remote-images bar and the Passwords page's Unlock each fold onto a
+second line instead (`foldRow`, a `widgets.Wrap`, 21 rows in
+mailui/), and the rule editor's Remove is an icon-only tool button to
+save the room. The alternatives the docs name (`NewToolButton`,
+`ToolIconBtn`, `NewIconButton`, `NewWrap`) do save room, but by giving up
+the push-button look or the word, or by folding the row.
+**Fix asked for:** a leading-icon layout that moves the label over by one
+strip rather than reserving two: an opt-in `Button.IconLeading`, with
+the toolkit drawing the label after the mark itself, and the engine
+drawing the face (the trade-off 0.22.4 named), or a label box that
+`DrawButton` draws the text into, so every engine's own label treatment
+stays.
+
+Found again 2026-10-06 against 0.23.5.
+
+#### 29. `Button.Icon` makes a button an icon-and-a-half wider
 The documented trade-off (the label stays centred, so a strip is reserved
 at *both* ends) costs about 64 px at 1x per button: "No" is 124 px wide,
 "Maybe" 150. Rows that fitted the narrowest windows stopped fitting as
@@ -103,89 +216,7 @@ still the open design change.
 **Filed again as #56** (2026-10-06), so it is read as a current request
 and not as history. This entry keeps the history.
 
-### 52. No way to print
-The toolkit has a Print icon (`IconPrint`) but nothing that prints: no
-print dialog, no page setup, no way to lay a document out on pages or
-render one to PDF, and no use of the desktop's print service (the
-`org.freedesktop.portal.Print` portal, which takes a PDF; `PrintDlgEx`
-on Windows; `NSPrintOperation` on macOS). Searched in 0.23.4: platform/,
-app/, widgets/, richtext/ and docs/ have no print path, and the only PDF
-in the repository is test data.
-comms-mail's Print writes the message as an HTML page, with a
-Content-Security-Policy that blocks every request so a remote image
-cannot tell the sender it was printed, and opens it in the browser to
-print or save as PDF (mailui/print.go, `printMessage`). The user leaves
-the app to print, in a window that is not the app's.
-**Fix asked for:** a print path — `richtext` (or a painted component) laid
-out on pages and rendered to PDF, and the platform's print dialog for
-that PDF (the portal's `PreparePrint` and `Print` on Linux).
-
-Found 2026-10-06 against 0.23.4.
-
-**Declined, and settled** (0.23.5). "No printing" is one of the toolkit
-author's standing decisions (RESUME.md: "Decisions standing … no
-printing"), and the README's list of gaps says of it "There is none".
-0.23.5's notes call it the one item left open across the four
-applications that report against the toolkit, pinned. comms-mail keeps
-printing through the browser.
-
-### 55. A wrapping label, or a `FitRows` view, loses a line at a fractional width
-0.23.5 rounds a wrapping `Label`'s measured *width* up to a whole pixel
-(widgets/label.go:187), so a label sized to its own text keeps its last
-line. A label *stretched* to its parent's width is still caught: it is
-measured at the width it is offered (:163, `wrapW` from `c.MaxW`), and
-layout then rounds each edge of its box to the nearest pixel
-(`widget.PixelRect`, widget/base.go:242–249), which can hand it up to a
-pixel less. At a fractional scale a column's inner width is fractional —
-at 1.25, a window 213 wide with 7 dp of padding is 248.5 px inside — the
-text is measured at 248.5 (6 lines), laid out at 248 (7), and the lines,
-centred, lose their first and last: #49's symptom, back at that width.
-`TextArea.FitRows` is caught the same way (widgets/textarea.go:191–198,
-`rowsFor(w)` at `c.MaxW`): a path measured at 282.5 px as two lines is
-laid out at 282, wraps to three, and the third is behind a scroll bar.
-Found by laying out comms-mail's warning lines and its path view at
-widths 120–420 and scales 1, 1.25, 1.5, 1.75 and 2: 24 cut labels and
-one hidden line in about 13,500 layouts, all at 1.25. comms-mail does
-not work round it.
-**Fix asked for:** measure wrapped text at the narrowest whole width the
-box can be handed — `floor(c.MaxW)` — in `Label.Measure` and
-`TextArea.rowsFor`, or have layout round a child's offered width down
-before it measures.
-
-Found 2026-10-06 against 0.23.5.
-
-### 56. A button with an icon is 64 px wider than one without
-*First filed as #29 (2026-09-28). Answered in 0.22.4 with documentation,
-left open as a design change, and unchanged since. Filed again because it
-is still the gap comms-mail hits most often.*
-
-`Button.Icon` keeps the engine's label centred by reserving a strip at
-*each* end: `Button.Measure` adds `(side + gap) * 2`
-(widgets/button.go:166–171 in 0.23.5), where a leading icon needs one
-strip. Measured on 0.23.5 at 1x, the same in the light and the dark
-look: "No" is 59 px wide plain and 123 with an icon, "Maybe" 86 and 150,
-"Accept" 85 and 149, "Remove" 95 and 159. That is +64 px on every
-button, half of it an empty strip after the label.
-
-In a mail client buttons come in rows, so a few icons push a row past a
-narrow window. comms-mail's invitation answers (Accept / Maybe / No),
-Settings' account and filter rows, the Add account sign-in row, the
-remote-images bar and the Passwords page's Unlock each fold onto a
-second line instead (`foldRow`, a `widgets.Wrap`, 21 rows in
-mailui/), and the rule editor's Remove is an icon-only tool button to
-save the room. The alternatives the docs name (`NewToolButton`,
-`ToolIconBtn`, `NewIconButton`, `NewWrap`) do save room, but by giving up
-the push-button look or the word, or by folding the row.
-**Fix asked for:** a leading-icon layout that moves the label over by one
-strip rather than reserving two: an opt-in `Button.IconLeading`, with
-the toolkit drawing the label after the mark itself, and the engine
-drawing the face (the trade-off 0.22.4 named), or a label box that
-`DrawButton` draws the text into, so every engine's own label treatment
-stays.
-
-Found again 2026-10-06 against 0.23.5.
-
-## Resolved
+**Closed in 0.23.6** with #56.
 
 ### Closed in 0.23.5
 
