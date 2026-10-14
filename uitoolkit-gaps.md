@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.8** (2026-10-13), which comms-mail
+Last checked against **uitoolkit v0.23.9** (2026-10-13), which comms-mail
 now builds with: every open item re-read against the code, every closed
 one re-checked by comms-mail's tests, and the release's fixes taken up and
 rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
@@ -14,10 +14,10 @@ next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
 #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so #29, which #56 filed
-again); 0.23.7 #2 for every script but emoji; 0.23.8 #57 and #58. Open:
-#52 (declined and settled), and #59, #60 and #61 (found 2026-10-13 in
-0.23.8 — what keeps emoji, Arabic and Hebrew from showing). What
-comms-mail uses for each closed item is under **Resolved**, with the
+again); 0.23.7 #2 for every script but emoji; 0.23.8 #57 and #58; 0.23.9
+#59, #60 and #61 (its default-list half carried on as #63). Open: #52
+(declined and settled), and #62 and #63 (found 2026-10-13 in 0.23.9).
+What comms-mail uses for each closed item is under **Resolved**, with the
 report and the toolkit's answer.
 
 ## Open
@@ -48,7 +48,71 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
-### 59. `font_emoji` draws each emoji above its line, where it is clipped away
+### 62. A space after an emoji is as wide as an emoji
+Under `font_emoji` every emoji draws, in colour and on its line — but a
+space that follows one is about three spaces wide. "👀 Big sale 🥳
+today" reads "👀   Big sale 🥳   today" in comms-mail's list, headers
+and text; "🇷🇴 🇺🇸" has a gap of three letters between the flags.
+Measured with `Font.Draw` at 16 px (Titillium): a space alone advances
+3.5; in "H👀 H" the gap after the emoji is 22 px where "H👀H" has 3, and
+in "H 👀H" the space *before* it is the ordinary 6.
+
+The run splitter go-text's `Segmenter` uses never changes face on a
+space — `ignoreFaceChange` counts every space separator as ignorable
+(github.com/go-text/typesetting v0.3.5, shaping/input.go:428 and
+:487–494, after Pango) — so a space that follows an emoji stays in the
+emoji face's run (uitoolkit calls it at style/shape_complex_layout.go:248)
+and is shaped with that face's own space. Noto Color Emoji's space is
+2550 units of 2048, 1.245 em — as wide as its emoji (sfnt
+`GlyphAdvance`) — so the space takes an emoji's width.
+**Fix asked for:** in a run shaped with a colour emoji face, give a
+space (and any `ignoreFaceChange` rune) the advance of the face the text
+is in, or split such runes out of the emoji run before shaping so they
+are shaped with the face around them.
+
+Found 2026-10-13 against 0.23.9.
+
+### 63. The default fallback list names no face for Arabic, Hebrew or the Indic scripts
+0.23.9 borrows those scripts in a shaping build (#61), and with "Noto Sans
+Arabic", "Noto Sans Hebrew" and "Noto Sans Devanagari" named they shape
+and run right to left correctly in comms-mail. Unnamed, they are boxes:
+the default list (style/fontfallback.go:38–54) has CJK families, Noto
+Sans, DejaVu Sans, FreeSans, Arial Unicode MS, Segoe UI Symbol and the
+outline emoji and symbol faces. DejaVu Sans covers Arabic and Hebrew
+where it is installed; on a machine with Noto and no DejaVu — as here —
+nothing in the list does, though Noto Sans Arabic, Noto Sans Hebrew and
+Noto Sans Devanagari are all installed. An application showing other
+people's text — a mail client, a chat, a file manager — cannot know
+which scripts will come.
+comms-mail names them itself, after the toolkit's own list
+(`useScriptFaces`, mailui/theme.go): the Noto Sans faces for Arabic,
+Hebrew, nine Indic and four South-East Asian scripts, Georgian, Armenian
+and Ethiopic, and Noto Naskh Arabic.
+**Fix asked for:** name those families in the default list, as the CJK
+ones are: they are skipped where they are not installed, and looked for
+only for a rune nothing before them has.
+
+Found 2026-10-13 against 0.23.9.
+
+## Resolved
+
+### Closed in 0.23.9
+
+| # | Gap | 0.23.9 | In comms-mail |
+| --- | --- | --- | --- |
+| 59 | `font_emoji` drew each emoji above its line | The colour cell's bearing is measured from the top of the line, as an outline's is | The Makefile builds with `font_emoji`. Measured at 16 px: 👀 inked at y 43–55 in a line box 40–64.3 (baseline 58.1), 3 px from the letters either side. In comms-mail's list, headers and text 👀 🥳 👨‍👩‍👧 🇷🇴 🇺🇸 draw in colour on their line |
+| 60 | An outline face won over the colour one | A character to be drawn as emoji (the pictographic planes, a variation selector, a joiner between emoji) goes to a colour face first; a modifier stays with its base | 👍🏽 and ❤️ draw in colour beside 👀, 👍🏽 as one picture, though Noto Sans Symbols 2 is installed. The family emoji draws as one picture (Noto's neutral grey figures) |
+| 61 | `font_complex` never borrowed Arabic, Hebrew or Indic letters | `borrowable` asks whether the build shapes | With the faces named, Arabic joins and runs right to left, Hebrew runs right to left and wraps, Devanagari's conjuncts form — in the list and in the reading pane's bold title. The default list still names none of those faces: #63, which comms-mail works round |
+
+Also from 0.23.9, nothing for comms-mail to change: the caret, `Prefix`
+and wrapping measure right-to-left text as widths (four Hebrew words no
+longer go on one line four times the box), and growing the emoji sheet
+no longer turns the emoji already drawn back into masks — several emoji
+in one list keep their colours.
+
+The reports and the toolkit's answers, as they were:
+
+#### 59. `font_emoji` draws each emoji above its line, where it is clipped away
 Built with `font_emoji`, comms-mail's subjects, headers and message text
 keep the room for each emoji and show nothing in it — a few coloured
 specks above the line at most. "👀 Big sale 🥳" reads "  Big sale
@@ -82,7 +146,7 @@ text — and a test that the emoji's ink lies inside the line box.
 
 Found 2026-10-13 against 0.23.8.
 
-### 60. An outline face wins over the colour one, so emoji come out half in colour
+#### 60. An outline face wins over the colour one, so emoji come out half in colour
 Under `font_emoji` a rune goes to the interface face, then to the outline
 fallbacks, and to a colour emoji face only when none of those has it
 (`uitkFontmap.ResolveFace`, style/shape_complex_layout.go:99–121, the
@@ -104,7 +168,7 @@ face's GSUB composes it.
 
 Found 2026-10-13 against 0.23.8 (outline face: Noto Sans Symbols 2).
 
-### 61. `font_complex` never borrows Arabic, Hebrew or Indic letters
+#### 61. `font_complex` never borrows Arabic, Hebrew or Indic letters
 Built with `font_complex`, Arabic, Hebrew and Hindi in comms-mail's
 subjects and text are boxes, now in right-to-left order. Adding "Noto
 Sans Arabic", "Noto Sans Hebrew" and "Noto Sans Devanagari" — all
@@ -131,8 +195,6 @@ the default list (Noto Sans Arabic, Noto Naskh Arabic, Noto Sans Hebrew,
 Noto Sans Devanagari, Noto Sans Thai, DejaVu Sans).
 
 Found 2026-10-13 against 0.23.8.
-
-## Resolved
 
 ### Closed in 0.23.8
 

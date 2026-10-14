@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/codemodify/uitoolkit/app"
@@ -81,4 +82,32 @@ func noWindowMenu(a *app.Application) {
 		return
 	}
 	a.SetHideWindowMenu(true)
+}
+
+// scriptFaces draw the scripts uitoolkit's default fallback list names no
+// face for (uitoolkit-gaps.md #63): mail comes in every script, and a
+// shaping build (font_complex, font_emoji) borrows Arabic, Hebrew and the
+// Indic scripts only from a family it is told of. Families that are not
+// installed are skipped.
+var scriptFaces = []string{
+	"Noto Sans Arabic", "Noto Naskh Arabic", "Noto Sans Hebrew",
+	"Noto Sans Devanagari", "Noto Sans Bengali", "Noto Sans Gurmukhi",
+	"Noto Sans Gujarati", "Noto Sans Tamil", "Noto Sans Telugu",
+	"Noto Sans Kannada", "Noto Sans Malayalam", "Noto Sans Sinhala",
+	"Noto Sans Thai", "Noto Sans Lao", "Noto Sans Khmer", "Noto Sans Myanmar",
+	"Noto Sans Georgian", "Noto Sans Armenian", "Noto Sans Ethiopic",
+}
+
+// useScriptFaces adds scriptFaces after the fallback families in force.
+func useScriptFaces() {
+	have := style.FallbackFamilies()
+	list := append([]string(nil), have...)
+	for _, f := range scriptFaces {
+		if !slices.Contains(have, f) {
+			list = append(list, f)
+		}
+	}
+	if len(list) != len(have) {
+		style.SetFallbackFamilies(list...)
+	}
 }

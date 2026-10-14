@@ -4,14 +4,14 @@
 # engine is in the build (its docs/engines.md). The daemon has no window
 # and needs none.
 #
-# It builds with font_complex too (which implies font_fallback): mail comes
-# in every script, and a rune the interface face lacks (Cyrillic, Greek,
-# CJK) is borrowed from an installed face that has it instead of drawn as a
-# box, and lines break where Unicode allows (uitoolkit's docs/fonts.md,
+# It builds with font_emoji too, which implies font_complex and
+# font_fallback: mail comes in every script, so a rune the interface face
+# lacks is borrowed from an installed face that has it instead of drawn as
+# a box, Arabic, Hebrew and the Indic scripts are shaped and laid out right
+# to left, lines break where Unicode allows, and emoji are drawn in colour
+# from the machine's emoji face (uitoolkit's docs/fonts.md,
 # docs/complex-text.md). Text is then measured with the machine's own
-# faces. Not font_emoji yet: in uitoolkit 0.23.8 it draws each emoji above
-# its line, where it is clipped away (uitoolkit-gaps.md #59), so emoji
-# would vanish where they are now boxes.
+# faces.
 #
 # The icon packs come from the uitoolkit the window app is built with and go
 # beside the binaries, in $(BIN)/../share/comms-mail/icons/<set>/, where
@@ -20,7 +20,7 @@
 # is the user's.
 
 GO        ?= go
-UI_TAGS   ?= theme_engine_all font_complex
+UI_TAGS   ?= theme_engine_all font_emoji
 BIN       ?= bin
 SHARE     ?= $(BIN)/../share/comms-mail
 ICON_SETS ?= heroicons lucide material-symbols phosphor tabler

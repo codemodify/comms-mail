@@ -8,14 +8,11 @@ new ones turn up.
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
-- **Emoji, Arabic and Hebrew show as ▯** — Greek, Cyrillic and CJK draw,
-  borrowed from the machine's own faces (`font_complex`, which the
-  Makefile builds with). uitoolkit 0.23.8's `font_emoji` draws colour
-  emoji, but above their line, where they are clipped away
-  (uitoolkit-gaps.md #59), and an outline face wins over the colour one
-  for some (#60); switch the Makefile to `font_emoji` once #59 is fixed.
-  Arabic, Hebrew and Indic letters are never borrowed, even with their
-  faces installed (#61). Very visible in subjects.
+- **A space after an emoji is as wide as an emoji** — every script and
+  colour emoji draw since uitoolkit 0.23.9 (`font_emoji`, which the
+  Makefile builds with), but a space that follows an emoji is shaped in
+  the emoji font, whose space is 1.245 em wide (uitoolkit-gaps.md #62).
+  Very visible in subjects ("👀   Big sale").
 - **Tables whose cells wrap can overlap** in the Markdown view — at some
   pane widths the next row is drawn over a wrapped row's second line
   (uitoolkit-gaps.md #32).
