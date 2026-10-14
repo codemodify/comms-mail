@@ -8,10 +8,6 @@ new ones turn up.
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
-- **A keycap is a digit beside a box** — every script and colour emoji
-  draw (`font_emoji`, which the Makefile builds with), families and flags
-  as one picture again since uitoolkit 0.23.11, but 1️⃣ and #️⃣ come apart
-  where Noto Sans Symbols is installed (uitoolkit-gaps.md #65).
 - **Tables whose cells wrap can overlap** in the Markdown view — at some
   pane widths the next row is drawn over a wrapped row's second line
   (uitoolkit-gaps.md #32).

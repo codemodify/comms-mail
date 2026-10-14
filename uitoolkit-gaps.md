@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.11** (2026-10-14), which
+Last checked against **uitoolkit v0.23.12** (2026-10-14), which
 comms-mail now builds with: every open item re-read against the code,
 every closed one re-checked by comms-mail's tests, and the release's
 fixes taken up and rendered. 0.22 closed sixteen of the first seventeen;
@@ -15,10 +15,10 @@ and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1
 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none;
 0.23.5 #47, #48, #49, #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so
 #29, which #56 filed again); 0.23.7 #2 for every script but emoji; 0.23.8
-#57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63; 0.23.11 #64.
-Open: #52 (declined and settled), and #65 (found 2026-10-14 in 0.23.11).
-What comms-mail uses for each closed item is under **Resolved**, with the
-report and the toolkit's answer.
+#57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63; 0.23.11 #64;
+0.23.12 #65. Open: #52 alone, declined and settled. Nothing new was found
+in 0.23.12. What comms-mail uses for each closed item is under
+**Resolved**, with the report and the toolkit's answer.
 
 ## Open
 
@@ -48,7 +48,24 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
-### 65. A keycap is a digit beside a box where a symbols face is installed
+## Resolved
+
+### Closed in 0.23.12
+
+| # | Gap | 0.23.12 | In comms-mail |
+| --- | --- | --- | --- |
+| 65 | A keycap was a digit beside a box where a symbols face is installed | U+20E3 after a keycap base is marked as part of the picture again; the emoji sequences are tested against the machine's own fonts (`realFonts`) and by glyph count | With this machine's fonts (Noto Sans Symbols and Symbols 2 installed), 1️⃣ and #️⃣ are one colour picture each, 19.9 px wide at 16 px, where 0.23.11 drew a digit and a grey box (36.3). In comms-mail's title and message text they are keycaps |
+
+Also from 0.23.12: a couple with a heart (👩‍❤️‍👩) and a kiss (👩‍❤️‍💋‍👨),
+which 0.23.11 drew as three and four pictures, are one picture each —
+comms-mail had not reported them. Every sequence measured before is as it
+was: the family, the rainbow flag, a skin tone, ❤️, the text form ❤︎ (a
+grey outline, as asked for), and the space after an emoji. The
+screenshots render as 0.23.11's but for the version string.
+
+The reports and the toolkit's answers, as they were:
+
+#### 65. A keycap is a digit beside a box where a symbols face is installed
 0.23.11 says keycaps compose, and its own test passes here — with a font
 index holding nothing but Noto Color Emoji (`fakeFonts`,
 style/emoji_test.go:463 and :476). With the faces a Noto machine also
@@ -83,8 +100,6 @@ plain 1 beside a box.
 test an outline face that covers U+20E3, as a real machine has.
 
 Found 2026-10-14 against 0.23.11.
-
-## Resolved
 
 ### Closed in 0.23.11
 
