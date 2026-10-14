@@ -250,7 +250,7 @@ func TestHTMLToTextDecodesEntitiesAndKeepsBareLessThan(t *testing.T) {
 		"&euro;5 &amp; &pound;3":               "€5 & £3",
 		"1 < 2 and 3 > 2":                      "1 < 2 and 3 > 2",
 		"<p>one</p><p>two</p>":                 "one\n\ntwo",
-		"<div>a</div><div>b</div><div>c</div>": "a\n\nb\n\nc",
+		"<div>a</div><div>b</div><div>c</div>": "a\nb\nc", // a block is a line; a paragraph is set apart
 		"&#x20AC;uro":                          "€uro",
 		"a&nbsp;b":                             "a b",
 		"<script>evil()</script>safe":          "safe",

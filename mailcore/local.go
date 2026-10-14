@@ -689,6 +689,9 @@ func (s *LocalStore) GetMessage(id MessageID) (Message, bool) {
 			}
 		}
 	}
+	if s.refreshHTMLTextLocked(i) {
+		m = s.Messages[i].Clone()
+	}
 	if m.Body != "" || m.HTML != "" || m.Encrypted {
 		// Cached before the server's verdict on the sender was read: read
 		// it from the raw message's header, once (the cache keeps it).
@@ -801,6 +804,45 @@ func (s *LocalStore) GetRaw(id MessageID) ([]byte, error) {
 	}
 	s.mu.Unlock()
 	return append([]byte(nil), raw...), nil
+}
+
+// refreshHTMLTextLocked makes message i's text again, once, when it came
+// with no plain-text part and its text was made from the HTML by an older
+// HTMLToText — or before the version was kept: from the raw message where
+// the cache has it, else from the HTML kept. It reports whether it did.
+func (s *LocalStore) refreshHTMLTextLocked(i int) bool {
+	m := &s.Messages[i]
+	if m.HTMLText == htmlTextVersion || m.HTML == "" || m.Encrypted || !htmlOnly(*m) {
+		return false
+	}
+	body := ""
+	if raw := s.readRawLocked(*m); len(raw) > 0 {
+		if parsed, err := ParseRFC822(raw, m.Folder, m.AccountID); err == nil && parsed.HTMLText == htmlTextVersion {
+			body = parsed.Body
+		}
+	}
+	if body == "" {
+		body = HTMLToText(m.HTML)
+	}
+	m.Body, m.HTMLText, m.Snippet = body, htmlTextVersion, SnippetOf(body)
+	return true
+}
+
+// htmlOnly reports whether m came with an HTML part and no plain-text one.
+func htmlOnly(m Message) bool {
+	html := false
+	for _, p := range m.Parts {
+		if p.Filename != "" {
+			continue
+		}
+		switch strings.ToLower(p.MIMEType) {
+		case "text/plain":
+			return false
+		case "text/html":
+			html = true
+		}
+	}
+	return html
 }
 
 // hydrateFromDiskLocked fills m from the cached blob. Disk only — the

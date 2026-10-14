@@ -459,6 +459,7 @@ func messageStamp(m *Message) uint64 {
 	str(m.Category)
 	strs(h, m.Attachments)
 	flag(m.SignatureInBody)
+	num(uint64(m.HTMLText))
 	strs(h, m.Keywords)
 	flag(m.Answered)
 	flag(m.Forwarded)

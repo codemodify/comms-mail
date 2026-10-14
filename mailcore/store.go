@@ -231,6 +231,10 @@ type Message struct {
 	// SignatureInBody says the writer already put (or deliberately took
 	// out) the identity's signature, so sending must not append it again.
 	SignatureInBody bool `json:"signatureInBody,omitempty"`
+	// HTMLText is the version of HTMLToText that made Body from the HTML
+	// part, for a message that came with no plain-text part; 0 when the
+	// sender wrote Body.
+	HTMLText int `json:"htmlText,omitempty"`
 	// Keywords are the tags the server last had on the message. A sync
 	// compares them with what it has now and applies only that change, so
 	// tags added or removed in another client arrive without undoing tags

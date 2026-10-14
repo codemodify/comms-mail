@@ -296,12 +296,13 @@ func applyTextPart(out *Message, media string, data []byte, filename string, att
 			out.HTML = SanitizeHTML(text)
 		}
 		if out.Body == "" {
-			out.Body = HTMLToText(text)
+			out.Body, out.HTMLText = HTMLToText(text), htmlTextVersion
 		}
 		return
 	}
-	if out.Body == "" {
-		out.Body = text
+	if out.Body == "" || out.HTMLText != 0 {
+		// The sender's own text, over what was made of the HTML before it.
+		out.Body, out.HTMLText = text, 0
 	}
 }
 
@@ -433,122 +434,6 @@ func fullMessage(m Message) Message {
 	return m
 }
 
-// HTMLToText is a conservative tag stripper (no JS execution).
-// HTMLToText is a conservative tag stripper (no JS execution, no engine).
-func HTMLToText(html string) string {
-	html = stripBlocks(html, "script")
-	html = stripBlocks(html, "style")
-	var b strings.Builder
-	inTag := false
-	for i := 0; i < len(html); i++ {
-		c := html[i]
-		if c == '<' {
-			if !looksLikeTagStart(html[i:]) {
-				// A bare "1 < 2" is text, not markup: emitting it as a tag
-				// used to swallow the rest of the line.
-				b.WriteByte(c)
-				continue
-			}
-			inTag = true
-			switch tagName(html[i:]) {
-			case "br", "p", "div", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote":
-				b.WriteByte('\n')
-			}
-			continue
-		}
-		if inTag {
-			if c == '>' {
-				inTag = false
-			}
-			continue
-		}
-		b.WriteByte(c)
-	}
-	out := decodeHTMLEntities(b.String())
-	// Block-level open and close tags each emit a newline; collapse the
-	// resulting runs so a paragraph break is one blank line, not five.
-	for strings.Contains(out, "\n\n\n") {
-		out = strings.ReplaceAll(out, "\n\n\n", "\n\n")
-	}
-	return strings.TrimSpace(out)
-}
-
-// looksLikeTagStart is true for "<tag", "</tag", "<!" and "<?".
-func looksLikeTagStart(s string) bool {
-	if len(s) < 2 {
-		return false
-	}
-	c := s[1]
-	if c == '!' || c == '?' || c == '/' {
-		return true
-	}
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-// decodeHTMLEntities resolves the named entities that actually turn up in
-// mail plus every numeric reference (&#39;, &#x20AC;).
-func decodeHTMLEntities(s string) string {
-	if !strings.Contains(s, "&") {
-		return s
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); {
-		if s[i] != '&' {
-			b.WriteByte(s[i])
-			i++
-			continue
-		}
-		end := strings.IndexByte(s[i:], ';')
-		if end < 0 || end > 12 {
-			b.WriteByte('&')
-			i++
-			continue
-		}
-		ent := s[i+1 : i+end]
-		if r, ok := entityRune(ent); ok {
-			b.WriteRune(r)
-			i += end + 1
-			continue
-		}
-		b.WriteByte('&')
-		i++
-	}
-	return b.String()
-}
-
-func entityRune(ent string) (rune, bool) {
-	if ent == "" {
-		return 0, false
-	}
-	if ent[0] == '#' {
-		num := ent[1:]
-		base := 10
-		if len(num) > 1 && (num[0] == 'x' || num[0] == 'X') {
-			base, num = 16, num[1:]
-		}
-		n, err := strconv.ParseInt(num, base, 32)
-		if err != nil || n <= 0 || n > 0x10FFFF {
-			return 0, false
-		}
-		return rune(n), true
-	}
-	if r, ok := namedEntities[strings.ToLower(ent)]; ok {
-		return r, true
-	}
-	return 0, false
-}
-
-var namedEntities = map[string]rune{
-	"amp": '&', "lt": '<', "gt": '>', "quot": '"', "apos": '\'',
-	"nbsp": ' ', "copy": '©', "reg": '®', "trade": '™', "hellip": '…',
-	"mdash": '—', "ndash": '–', "lsquo": '\u2018', "rsquo": '\u2019',
-	"ldquo": '\u201c', "rdquo": '\u201d', "bull": '•', "middot": '·',
-	"euro": '€', "pound": '£', "yen": '¥', "cent": '¢', "sect": '§',
-	"deg": '°', "plusmn": '±', "times": '×', "divide": '÷', "laquo": '«',
-	"raquo": '»', "dagger": '†', "permil": '‰', "ne": '≠', "le": '≤', "ge": '≥',
-}
-
 func SanitizeHTML(html string) string {
 	html = stripBlocks(html, "script")
 	html = stripBlocks(html, "style")
@@ -602,21 +487,6 @@ func stripBlocks(s, tag string) string {
 		s = s[i+skip:]
 		low = low[i+skip:]
 	}
-}
-
-func tagName(s string) string {
-	if len(s) < 2 || s[0] != '<' {
-		return ""
-	}
-	i := 1
-	if i < len(s) && s[i] == '/' {
-		i++
-	}
-	start := i
-	for i < len(s) && ((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= '0' && s[i] <= '9')) {
-		i++
-	}
-	return strings.ToLower(s[start:i])
 }
 
 func stripEventAttrs(tag string) string {
