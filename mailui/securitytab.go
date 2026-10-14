@@ -58,7 +58,7 @@ const (
 	secSectionCrypto  = "crypto"
 )
 
-// secChip is one chip: a mark and a few words in a capsule of its tone; a
+// secChip is one chip: a mark and a few words in a box of its tone; a
 // click, or Return or Space, opens its section.
 type secChip struct {
 	widget.Base
@@ -81,6 +81,12 @@ func newSecChip(tone secTone, icon style.ToolIcon, text, section string) *secChi
 
 func (c *secChip) pad() float32 { return style.Dip(c.Look(), 6) }
 
+// chipRadius is the corners of a chip or a tag: square where the look's
+// corners are square, else slightly rounded — never a capsule.
+func chipRadius(lk style.LookAndFeel) float32 {
+	return min(lk.Metrics().RadiusSmall, style.Dip(lk, 3))
+}
+
 // iconSize is the mark's side: a little under the text's height.
 func (c *secChip) iconSize() float32 { return c.Look().Font().Height() * 0.85 }
 
@@ -101,7 +107,7 @@ func (c *secChip) Paint(ctx *paintengine2d.Context) {
 	if c.Hovered() || c.down {
 		alpha = 0.22
 	}
-	rad := b.Dy() / 2
+	rad := chipRadius(lk)
 	ctx.DrawRoundRect(b, rad, rad, paintengine2d.Fill(ink.WithAlpha(alpha)))
 	ctx.DrawRoundRect(b.Inset(0.5), rad, rad, paintengine2d.StrokePaint(ink.WithAlpha(0.7), 1))
 	f := lk.Font()

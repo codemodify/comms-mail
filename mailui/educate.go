@@ -930,7 +930,7 @@ func chipSize(lk style.LookAndFeel, name string) (w, h float32) {
 func drawChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r paintengine2d.Rect) {
 	p := lk.Palette()
 	ink := p.Ink(p.Accent)
-	rad := r.Dy() / 2
+	rad := chipRadius(lk)
 	ctx.DrawRoundRect(r, rad, rad, paintengine2d.Fill(p.Field))
 	ctx.DrawRoundRect(r, rad, rad, paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
 	f := lk.Font()
@@ -942,7 +942,7 @@ func drawChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r p
 func drawMissingChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r paintengine2d.Rect) {
 	p := lk.Palette()
 	ink := p.Ink(p.Danger)
-	rad := r.Dy() / 2
+	rad := chipRadius(lk)
 	pen := paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25))
 	pen.Stroke.Dash = []float32{style.Dip(lk, 3), style.Dip(lk, 2)}
 	ctx.DrawRoundRect(r, rad, rad, paintengine2d.Fill(p.Field))

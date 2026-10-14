@@ -198,3 +198,17 @@ func TestOpenNamesTheScriptFaces(t *testing.T) {
 		}
 	}
 }
+
+// Chips and tags are square where the look's corners are, and slightly
+// rounded where it rounds them — never a capsule.
+func TestChipsAreBoxesNotCapsules(t *testing.T) {
+	sq := style.WithCorners(style.LightLook(), style.CornersSquare)
+	if r := chipRadius(sq); r != 0 {
+		t.Fatalf("square corners: radius %v", r)
+	}
+	lk := style.LightLook()
+	h := lk.Font().Height() + style.Dip(lk, 8)
+	if r := chipRadius(lk); r <= 0 || r > style.Dip(lk, 3) || r >= h/4 {
+		t.Fatalf("rounded corners: radius %v for a chip %v tall", r, h)
+	}
+}
