@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.12** (2026-10-14), which
+Last checked against **uitoolkit v0.23.13** (2026-10-14), which
 comms-mail now builds with: every open item re-read against the code,
 every closed one re-checked by comms-mail's tests, and the release's
 fixes taken up and rendered. 0.22 closed sixteen of the first seventeen;
@@ -16,9 +16,10 @@ and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1
 0.23.5 #47, #48, #49, #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so
 #29, which #56 filed again); 0.23.7 #2 for every script but emoji; 0.23.8
 #57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63; 0.23.11 #64;
-0.23.12 #65. Open: #52 alone, declined and settled. Nothing new was found
-in 0.23.12. What comms-mail uses for each closed item is under
-**Resolved**, with the report and the toolkit's answer.
+0.23.12 #65; 0.23.13 none, there being none open. Open: #52 alone,
+declined and settled. Nothing new was found in 0.23.12 or 0.23.13. What
+comms-mail uses for each closed item is under **Resolved**, with the
+report and the toolkit's answer.
 
 ## Open
 
@@ -49,6 +50,19 @@ applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
 ## Resolved
+
+### From 0.23.13
+
+Nothing of comms-mail's was open, and nothing new turned up. Two data
+races in the text path are fixed — a glyph's outline read from a buffer
+another goroutine was reloading, and the shape cache's groups rewritten
+while shared, the second in every build — and comms-mail's whole UI and
+core suites pass under `-race` with `font_emoji` (they had been run that
+way only in part). An unqualified keycap (`1⃣`, no selector) is one
+picture, where 0.23.12 drew a digit beside a box; every sequence measured
+before is as it was, and a plain 1 stays a digit. A rack's wake-up rides
+on the anchor window, which comms-mail does not use. The screenshots
+render as 0.23.12's but for the version string.
 
 ### Closed in 0.23.12
 
