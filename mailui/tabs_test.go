@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -153,5 +154,42 @@ func TestMessageTabShowsHTMLAndMarkdown(t *testing.T) {
 	}
 	if !r.bar.Visible() || r.rich.ResolveImageKind("cid:logo@news.example", richtext.ImageInline) == nil {
 		t.Fatal("the tab should draw the inline logo and offer the remote banner")
+	}
+}
+
+// The message tabs open when comms-mail closes come back when it starts
+// again, in their order, with the one that was showing in front; a tab
+// closed is forgotten, and one whose message has gone is not reopened.
+func TestTabsComeBackAfterARestart(t *testing.T) {
+	mailcore.IsolateTestEnvTB(t)
+	s, _, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
+	defer done()
+	s.restoreTabs() // as Open does: nothing to bring back yet
+	a, b, c := s.rows[1], s.rows[2], s.rows[3]
+	for _, m := range []mailcore.Message{a, b, c} {
+		s.tabs.Select(s.addMessageTab(m))
+	}
+	s.tabs.Select(s.tabIndex(b.ID))
+	s.closeTab(s.tabIndex(c.ID))
+	p := loadChromePrefs()
+	if !slices.Equal(p.Tabs, []mailcore.MessageID{a.ID, b.ID}) || p.TabShowing != b.ID {
+		t.Fatalf("kept %v, showing %q", p.Tabs, p.TabShowing)
+	}
+
+	// Start again, with a message that is no longer there among them.
+	p.Tabs = append([]mailcore.MessageID{"nowhere/inbox:1"}, p.Tabs...)
+	saveChromePrefs(p)
+	s2 := newSession(s.app, w, s.cli, AppOptions{})
+	w.SetContent(s2.build())
+	s2.restoreTabs()
+	if s2.tabs.Len() != 3 || s2.tabIndex(a.ID) != 1 || s2.tabIndex(b.ID) != 2 || s2.tabs.Selected() != 2 {
+		t.Fatalf("after the restart: %d tabs, %s at %d, %s at %d, showing %d",
+			s2.tabs.Len(), a.ID, s2.tabIndex(a.ID), b.ID, s2.tabIndex(b.ID), s2.tabs.Selected())
+	}
+	if mt, ok := s2.activeTab(); !ok || mt.msg.ID != b.ID || mt.rd.text.Text == "" {
+		t.Fatal("the tab that was showing is not in front with its message")
+	}
+	if p := loadChromePrefs(); !slices.Equal(p.Tabs, []mailcore.MessageID{a.ID, b.ID}) {
+		t.Fatalf("after the restart kept %v", p.Tabs)
 	}
 }

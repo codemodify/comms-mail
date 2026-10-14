@@ -1,6 +1,7 @@
 package mailui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
@@ -80,6 +81,76 @@ func (s *session) showTab(i int) {
 		c.SetVisible(c == show)
 	}
 	s.pages.Invalidate()
+	s.rememberTabs()
+}
+
+// rememberTabs keeps which messages are open in tabs, and which shows, in
+// mailui.json, as they change, so the next start reopens them — whether
+// comms-mail quits or is stopped. Nothing is kept until the last run's tabs
+// are back (restoreTabs), so a start does not forget them.
+func (s *session) rememberTabs() {
+	if !s.tabsKept || s.tabs == nil {
+		return
+	}
+	var ids []mailcore.MessageID
+	var showing mailcore.MessageID
+	for i := 1; i < s.tabs.Len(); i++ {
+		if mt, ok := s.tabs.Tab(i).Data.(*messageTab); ok {
+			ids = append(ids, mt.msg.ID)
+			if i == s.tabs.Selected() {
+				showing = mt.msg.ID
+			}
+		}
+	}
+	if slices.Equal(ids, s.chromePrefs.Tabs) && showing == s.chromePrefs.TabShowing {
+		return
+	}
+	s.chromePrefs.Tabs, s.chromePrefs.TabShowing = ids, showing
+	s.persistChrome()
+}
+
+// restoreTabs reopens the message tabs open when comms-mail last closed —
+// those whose message is still there — in their order, and shows the one
+// that was showing. The messages load off the UI goroutine.
+func (s *session) restoreTabs() {
+	ids, showing := s.chromePrefs.Tabs, s.chromePrefs.TabShowing
+	if len(ids) == 0 || s.tabs == nil || s.cli == nil {
+		s.tabsKept = true
+		return
+	}
+	s.async(func() (any, error) {
+		var found []mailcore.Message
+		for _, id := range ids {
+			if m, err := s.getMessage(id); err == nil {
+				found = append(found, m)
+			}
+		}
+		return found, nil
+	}, func(v any, _ error) {
+		found, _ := v.([]mailcore.Message)
+		for _, m := range found {
+			if s.tabIndex(m.ID) < 0 {
+				s.addMessageTab(m)
+			}
+		}
+		s.tabsKept = true
+		if i := s.tabIndex(showing); showing != "" && i > 0 {
+			s.tabs.Select(i)
+			s.showTab(i)
+		} else {
+			s.rememberTabs()
+		}
+	})
+}
+
+// tabIndex is the index of the tab showing message id, or -1.
+func (s *session) tabIndex(id mailcore.MessageID) int {
+	for i := 1; i < s.tabs.Len(); i++ {
+		if mt, ok := s.tabs.Tab(i).Data.(*messageTab); ok && mt.msg.ID == id {
+			return i
+		}
+	}
+	return -1
 }
 
 func (s *session) closeTab(i int) {

@@ -24,6 +24,10 @@ type ChromePrefs struct {
 	// Theme is comms-mail's own theme (Settings › Appearance), over the
 	// one every uitoolkit app shares in look.json; "" follows look.json.
 	Theme string `json:"theme,omitempty"`
+	// Tabs are the messages open in tabs, in order, and TabShowing the
+	// one showing ("" the Mail tab): the next start reopens them.
+	Tabs       []mailcore.MessageID `json:"tabs,omitempty"`
+	TabShowing mailcore.MessageID   `json:"tabShowing,omitempty"`
 }
 
 // chromePrefsPath is mailui.json, beside mail.json in ConfigDir, so the

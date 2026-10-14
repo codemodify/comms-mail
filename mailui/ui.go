@@ -78,6 +78,7 @@ func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOpt
 	useScriptFaces()
 	s := newSession(a, win, cli, opts)
 	root := s.build()
+	s.restoreTabs()
 	s.attachTray()
 	s.checkVault()
 	if a.WatchingLook() {
@@ -129,6 +130,9 @@ type session struct {
 	tray       platform.StatusItem
 	notes      mailNotifier
 	newMail    bool // the tray shows the new-mail logo (trayMu)
+	// tabsKept: the open message tabs are kept in mailui.json as they
+	// change; set once the last run's tabs are back (restoreTabs).
+	tabsKept bool
 	// The title bar (titlebar.go): empty over the folder pane (its
 	// StartWidth, from where the pages land), then the app menu's button
 	// and Fetch / Write / Search, then the tabs.
