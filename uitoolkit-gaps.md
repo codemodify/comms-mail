@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.10** (2026-10-14), which
+Last checked against **uitoolkit v0.23.11** (2026-10-14), which
 comms-mail now builds with: every open item re-read against the code,
 every closed one re-checked by comms-mail's tests, and the release's
 fixes taken up and rendered. 0.22 closed sixteen of the first seventeen;
@@ -15,9 +15,9 @@ and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1
 #37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none;
 0.23.5 #47, #48, #49, #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so
 #29, which #56 filed again); 0.23.7 #2 for every script but emoji; 0.23.8
-#57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63. Open: #52
-(declined and settled), and #64 (found 2026-10-14 in 0.23.10). What
-comms-mail uses for each closed item is under **Resolved**, with the
+#57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63; 0.23.11 #64.
+Open: #52 (declined and settled), and #65 (found 2026-10-14 in 0.23.11).
+What comms-mail uses for each closed item is under **Resolved**, with the
 report and the toolkit's answer.
 
 ## Open
@@ -48,7 +48,60 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
-### 64. An emoji joined by a zero-width joiner is drawn in pieces
+### 65. A keycap is a digit beside a box where a symbols face is installed
+0.23.11 says keycaps compose, and its own test passes here — with a font
+index holding nothing but Noto Color Emoji (`fakeFonts`,
+style/emoji_test.go:463 and :476). With the faces a Noto machine also
+has, `1️⃣` and `#️⃣` come apart: the digit from the emoji face and the
+enclosing keycap, U+20E3, as an outline box from Noto Sans Symbols 2.
+The same test with "Noto Sans Symbols 2" added to the fake index (a
+scratch copy, not committed):
+
+| | advance at 16 px | pictures |
+| --- | --- | --- |
+| 👩 | 19.92 | 1 |
+| 👨‍👩‍👧 | 19.92 | 1.0 |
+| 👍🏽 | 19.92 | 1.0 |
+| **1️⃣** | **36.28** | **1.8** |
+| **#️⃣** | **36.28** | **1.8** |
+
+`faceRuns` keeps a position in a colour run only when
+`emojiPresentation` marked it (style/shape_complex_layout.go:209), and
+`emojiPresentation` (:249) has no arm for U+20E3 — on purpose, says its
+comment (:256–262): "a font that composes the sequence has the character
+in its cmap, so the general rule keeps it with the picture". It does
+not: an unmarked U+20E3 goes to `faceAt`, which asks the outline
+fallbacks before any colour face, and "Noto Sans Symbols 2" and "Noto
+Sans Symbols" — both in the default list (style/fontfallback.go:50),
+both on most machines with Noto — have an outline glyph for it
+(`fc-list ':charset=20e3'`: Noto Color Emoji, Noto Sans Symbols, Noto
+Sans Symbols 2). The run is cut before the keycap, and the emoji face's
+GSUB never sees the sequence. In comms-mail's reading pane `1️⃣` is a
+plain 1 beside a box.
+**Fix asked for:** mark U+20E3 as emoji when it follows a keycap base —
+0–9, # or *, with or without U+FE0F (UTS #51) — and give the sequence
+test an outline face that covers U+20E3, as a real machine has.
+
+Found 2026-10-14 against 0.23.11.
+
+## Resolved
+
+### Closed in 0.23.11
+
+| # | Gap | 0.23.11 | In comms-mail |
+| --- | --- | --- | --- |
+| 64 | An emoji joined by a zero-width joiner was drawn in pieces | A position marked as part of an emoji sequence stays in the colour run, whether or not the colour face has a glyph of its own for it | 👨‍👩‍👧, 👨‍💻 and 🏳️‍🌈 are one picture each again — 19.9 px wide at 16 px, where 0.23.10 made them 39.8–59.8 — in comms-mail's list and reading pane. 👍🏽, 🇷🇴, ❤️ and the space after 👀 are as 0.23.10 left them. Keycaps, which the release says compose, do not on a machine with Noto Sans Symbols: #65 |
+
+Also from 0.23.11, nothing for comms-mail to change: `Prefix` returns
+the longest prefix that fits, a rack's wake-up outlives the window that
+asked for it, and the tray's contract says a `StatusIcon`'s Name is sent
+beside its picture — comms-mail gives the picture alone, which is what
+the toolkit says to do. The screenshots render as 0.23.10's but for the
+version string.
+
+The reports and the toolkit's answers, as they were:
+
+#### 64. An emoji joined by a zero-width joiner is drawn in pieces
 0.23.10 draws a family, a profession and every other sequence joined by
 U+200D as its separate pictures: 👨‍👩‍👧 is a man, a woman and a girl side
 by side, 👨‍💻 a man and a laptop. In 0.23.9 each was one picture. Measured
@@ -81,8 +134,6 @@ tests Default_Ignorable_Code_Point (`harfbuzz.IsDefaultIgnorable`), so
 only whitespace leaves a colour run.
 
 Found 2026-10-14 against 0.23.10.
-
-## Resolved
 
 ### Closed in 0.23.10
 
