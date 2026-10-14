@@ -75,7 +75,6 @@ func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOpt
 	// The desktop's reduced motion applies: comms-mail has no setting of
 	// its own for it, and it is there for people whom movement makes ill.
 	style.SetFollowDesktopMotion(true)
-	useScriptFaces()
 	s := newSession(a, win, cli, opts)
 	root := s.build()
 	s.restoreTabs()

@@ -8,11 +8,11 @@ new ones turn up.
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
-- **A space after an emoji is as wide as an emoji** — every script and
-  colour emoji draw since uitoolkit 0.23.9 (`font_emoji`, which the
-  Makefile builds with), but a space that follows an emoji is shaped in
-  the emoji font, whose space is 1.245 em wide (uitoolkit-gaps.md #62).
-  Very visible in subjects ("👀   Big sale").
+- **An emoji joined by a zero-width joiner is drawn in pieces** — every
+  script and colour emoji draw (`font_emoji`, which the Makefile builds
+  with), but since uitoolkit 0.23.10 a family or a profession is its
+  separate pictures: the joiner falls out of the emoji's run
+  (uitoolkit-gaps.md #64).
 - **Tables whose cells wrap can overlap** in the Markdown view — at some
   pane widths the next row is drawn over a wrapped row's second line
   (uitoolkit-gaps.md #32).

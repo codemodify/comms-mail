@@ -2,7 +2,6 @@ package mailui
 
 import (
 	"context"
-	"slices"
 	"testing"
 	"time"
 
@@ -169,33 +168,6 @@ func TestFollowsTheDesktopsReducedMotion(t *testing.T) {
 	style.SetDesktopReduceMotion(true)
 	if !style.FollowsDesktopMotion() || style.Animations() {
 		t.Fatalf("follows %v, animates %v with the desktop reducing motion", style.FollowsDesktopMotion(), style.Animations())
-	}
-}
-
-// comms-mail names the faces for the scripts uitoolkit's fallback list has
-// none for, after the toolkit's own, once however often a window opens.
-func TestOpenNamesTheScriptFaces(t *testing.T) {
-	defer style.SetFallbackFamilies()
-	style.SetFallbackFamilies()
-	defaults := style.FallbackFamilies()
-	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
-	for range 2 {
-		w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
-		if err != nil {
-			t.Fatal(err)
-		}
-		w.SetContent(Open(a, w, cli, AppOptions{}))
-		w.Close()
-	}
-	got := style.FallbackFamilies()
-	if len(got) != len(defaults)+len(scriptFaces) || !slices.Equal(got[:len(defaults)], defaults) {
-		t.Fatalf("fallback families %q", got)
-	}
-	for _, f := range []string{"Noto Sans Arabic", "Noto Sans Hebrew", "Noto Sans Devanagari"} {
-		if !slices.Contains(got, f) {
-			t.Errorf("%s is not among the fallback families", f)
-		}
 	}
 }
 

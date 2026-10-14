@@ -6,18 +6,18 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.9** (2026-10-13), which comms-mail
-now builds with: every open item re-read against the code, every closed
-one re-checked by comms-mail's tests, and the release's fixes taken up and
-rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
-next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
-0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
-0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
-#50, #51, #53 and #54; 0.23.6 #55 and #56 (and so #29, which #56 filed
-again); 0.23.7 #2 for every script but emoji; 0.23.8 #57 and #58; 0.23.9
-#59, #60 and #61 (its default-list half carried on as #63). Open: #52
-(declined and settled), and #62 and #63 (found 2026-10-13 in 0.23.9).
-What comms-mail uses for each closed item is under **Resolved**, with the
+Last checked against **uitoolkit v0.23.10** (2026-10-14), which
+comms-mail now builds with: every open item re-read against the code,
+every closed one re-checked by comms-mail's tests, and the release's
+fixes taken up and rendered. 0.22 closed sixteen of the first seventeen;
+0.22.2 eight of the next ten; 0.22.3 the rest of #19 and #24, and #30, #31
+and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1
+#37, #41 and #42; 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none;
+0.23.5 #47, #48, #49, #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so
+#29, which #56 filed again); 0.23.7 #2 for every script but emoji; 0.23.8
+#57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63. Open: #52
+(declined and settled), and #64 (found 2026-10-14 in 0.23.10). What
+comms-mail uses for each closed item is under **Resolved**, with the
 report and the toolkit's answer.
 
 ## Open
@@ -48,7 +48,58 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
-### 62. A space after an emoji is as wide as an emoji
+### 64. An emoji joined by a zero-width joiner is drawn in pieces
+0.23.10 draws a family, a profession and every other sequence joined by
+U+200D as its separate pictures: 👨‍👩‍👧 is a man, a woman and a girl side
+by side, 👨‍💻 a man and a laptop. In 0.23.9 each was one picture. Measured
+with `Font.Draw` at 16 px between two H's under `font_emoji`:
+
+| | 0.23.9 | 0.23.10 |
+| --- | --- | --- |
+| 👨‍👩‍👧 | advance 41.5, one picture | **81.4, three pictures** |
+| 👨‍💻 | 41.5, one picture | **61.4, two pictures** |
+| 👍🏽 | 41.5, one picture | 41.5, one picture |
+| 🇷🇴 | 41.5, one picture | 41.5, one picture |
+| ❤️ | 41.5, one picture | 41.5, one picture |
+
+0.23.10 picks the face per position (`uitkFontmap.faceAt`,
+style/shape_complex_layout.go:115–151). `emojiPresentation` rightly
+marks a joiner between emoji as emoji (:234–265, the joiner at :258), so
+`faceAt` asks `m.colour` for it (:123–124) — but `emojiSheetFor` takes a
+colour face only where it has a *picture* for the rune
+(style/emoji_on.go:127), and the joiner, an invisible format character,
+has none. So the joiner falls through to the interface face, `faceRuns`
+(:187) cuts the run there, and the colour face never sees the whole
+sequence its GSUB would join. `keepsItsRun` (:166–177) would have kept
+the joiner in its run, but it tests `Other_Default_Ignorable_Code_Point`,
+which U+200D is not in: the joiner is default-ignorable as a format
+character (Cf). The rule it replaced, go-text's `ignoreFaceChange`, used
+the whole Default_Ignorable_Code_Point set.
+**Fix asked for:** a joiner or a variation selector marked as emoji goes
+to the face of the emoji before it, picture or not; and `keepsItsRun`
+tests Default_Ignorable_Code_Point (`harfbuzz.IsDefaultIgnorable`), so
+only whitespace leaves a colour run.
+
+Found 2026-10-14 against 0.23.10.
+
+## Resolved
+
+### Closed in 0.23.10
+
+| # | Gap | 0.23.10 | In comms-mail |
+| --- | --- | --- | --- |
+| 62 | A space after an emoji was as wide as an emoji | The toolkit splits its face runs itself, by position; whitespace leaves a colour run | "👀 Big sale 🥳 today only" has ordinary spaces in comms-mail's list and headers |
+| 63 | The default fallback list named no Arabic, Hebrew or Indic face | The list names each script's Noto face, then the face a platform covers many with: Arabic, Hebrew, the Indic scripts, Thai, Lao, Khmer, Myanmar, Ethiopic, Armenian, Georgian | `useScriptFaces` and its list are gone; Arabic, Hebrew, Devanagari, Thai and Japanese subjects draw in the list and the reading pane with nothing named by comms-mail |
+
+Also from 0.23.10, nothing for comms-mail to change: `Prefix` and `Fit`
+measure the piece they return, a parsed face is no longer shared between
+goroutines unguarded, every digit is a key (`Key3` keeps its name,
+comms-mail's # still deletes), and `IconCloud` and icon badges are new.
+The screenshots render as 0.23.9's but for the version string.
+
+The reports and the toolkit's answers, as they were:
+
+#### 62. A space after an emoji is as wide as an emoji
 Under `font_emoji` every emoji draws, in colour and on its line — but a
 space that follows one is about three spaces wide. "👀 Big sale 🥳
 today" reads "👀   Big sale 🥳   today" in comms-mail's list, headers
@@ -72,7 +123,7 @@ are shaped with the face around them.
 
 Found 2026-10-13 against 0.23.9.
 
-### 63. The default fallback list names no face for Arabic, Hebrew or the Indic scripts
+#### 63. The default fallback list names no face for Arabic, Hebrew or the Indic scripts
 0.23.9 borrows those scripts in a shaping build (#61), and with "Noto Sans
 Arabic", "Noto Sans Hebrew" and "Noto Sans Devanagari" named they shape
 and run right to left correctly in comms-mail. Unnamed, they are boxes:
@@ -93,8 +144,6 @@ ones are: they are skipped where they are not installed, and looked for
 only for a rune nothing before them has.
 
 Found 2026-10-13 against 0.23.9.
-
-## Resolved
 
 ### Closed in 0.23.9
 
