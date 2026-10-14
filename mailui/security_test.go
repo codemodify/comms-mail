@@ -933,8 +933,8 @@ func TestTheHeaderScrollsItsContent(t *testing.T) {
 
 // The message showing at start opens at the top of its text, though it
 // was given its text before the pane was laid out (uitoolkit-gaps.md
-// #57); the same message shown again keeps the reader's place, and
-// another starts at its top.
+// #57, fixed in 0.23.8); the same message shown again keeps the reader's
+// place, and another starts at its top.
 func TestTheMessageTextStartsAtItsTop(t *testing.T) {
 	s, a, w, done := openMailFramedSession(t, style.LightLook(), false, AppOptions{}, platform.DecorationsClient)
 	defer done()

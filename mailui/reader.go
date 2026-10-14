@@ -249,18 +249,11 @@ func (r *reader) showPlain(placeholder, text string) {
 	r.md.clear()
 }
 
-// setBody puts text in the Message tab, from its top when it is new text.
-// A text view given its text before it is first laid out — the message
-// showing at start — opens a few pixels down, its first line cut
-// (uitoolkit-gaps.md #57). The same text again, a refresh, keeps the
-// reader's place.
+// setBody puts text in the Message tab. New text starts at its top; the
+// same text again, a refresh, keeps the reader's place.
 func (r *reader) setBody(placeholder, text string) {
 	r.text.Placeholder = placeholder
-	if r.text.Text == text {
-		return
-	}
 	r.text.SetText(text)
-	r.text.ScrollTo(0)
 }
 
 // clear shows no message.

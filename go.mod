@@ -5,11 +5,11 @@ go 1.26.0
 require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/codemodify/paintengine2d v0.12.2
-	github.com/codemodify/uitoolkit v0.23.7
+	github.com/codemodify/uitoolkit v0.23.8
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/godbus/dbus/v5 v5.1.0
 	golang.org/x/crypto v0.57.0
-	golang.org/x/image v0.18.0
+	golang.org/x/image v0.23.0
 	golang.org/x/net v0.59.0
 	golang.org/x/text v0.42.0
 	modernc.org/sqlite v1.59.0
@@ -20,6 +20,7 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect

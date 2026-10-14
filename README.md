@@ -49,10 +49,11 @@ make            # bin/comms-maild, bin/comms-mail, bin/comms-mail-demo
 ```
 
 `make` builds the window with every uitoolkit theme engine
-(`-tags theme_engine_all`) and with font fallback (`font_fallback`): a
-character the interface face lacks — Cyrillic, Greek, CJK — is borrowed
-from a font installed on the machine instead of drawn as a box (emoji are
-still boxes). uitoolkit only draws a theme whose engine is in
+(`-tags theme_engine_all`) and with uitoolkit's text support
+(`font_complex`): a character the interface face lacks — Cyrillic, Greek,
+CJK — is borrowed from a font installed on the machine instead of drawn as
+a box, and lines break where Unicode allows. Emoji, Arabic and Hebrew are
+still boxes. uitoolkit only draws a theme whose engine is in
 the build ([its docs/engines.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/engines.md)),
 and comms-mail shows whichever theme you chose for all uitoolkit apps
 (`~/.config/uitoolkit/look.json`) or its own (Settings › Appearance). A
@@ -95,7 +96,7 @@ To install the binaries:
 make install    # into $GOBIN, the icon packs into $GOBIN/../share/comms-mail
 # or, without a checkout:
 go install github.com/codemodify/comms-mail/cmd/comms-maild@latest
-go install -tags 'theme_engine_all font_fallback' github.com/codemodify/comms-mail/cmd/comms-mail@latest
+go install -tags 'theme_engine_all font_complex' github.com/codemodify/comms-mail/cmd/comms-mail@latest
 ```
 
 ### Useful flags and variables

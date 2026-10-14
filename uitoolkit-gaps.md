@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.7** (2026-10-13), which comms-mail
+Last checked against **uitoolkit v0.23.8** (2026-10-13), which comms-mail
 now builds with: every open item re-read against the code, every closed
 one re-checked by comms-mail's tests, and the release's fixes taken up and
 rendered. 0.22 closed sixteen of the first seventeen; 0.22.2 eight of the
@@ -14,10 +14,11 @@ next ten; 0.22.3 the rest of #19 and #24, and #30, #31 and #34; 0.22.4 and
 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1 #37, #41 and #42;
 0.23.2 #43 and #44; 0.23.3 #45 and #46; 0.23.4 none; 0.23.5 #47, #48, #49,
 #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so #29, which #56 filed
-again); 0.23.7 #2 for every script but emoji, which #58 carries on. Open:
-#52 (declined and settled), and #57 and #58 (found 2026-10-13 in
-0.23.7). What comms-mail uses for each closed item is under
-**Resolved**, with the report and the toolkit's answer.
+again); 0.23.7 #2 for every script but emoji; 0.23.8 #57 and #58. Open:
+#52 (declined and settled), and #59, #60 and #61 (found 2026-10-13 in
+0.23.8 — what keeps emoji, Arabic and Hebrew from showing). What
+comms-mail uses for each closed item is under **Resolved**, with the
+report and the toolkit's answer.
 
 ## Open
 
@@ -47,7 +48,120 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
-### 57. A text view given its text before it is laid out opens scrolled down
+### 59. `font_emoji` draws each emoji above its line, where it is clipped away
+Built with `font_emoji`, comms-mail's subjects, headers and message text
+keep the room for each emoji and show nothing in it — a few coloured
+specks above the line at most. "👀 Big sale 🥳" reads "  Big sale
+today". With `font_complex` alone they are boxes, which at least say
+something is there.
+
+The picture is drawn above the line box. Drawing "H", "g" and "👀" with
+`Font.Draw` at a line box whose top is y 100 (Titillium, `BakeFamily`):
+
+| size | line box | H | g | 👀 |
+| --- | --- | --- | --- | --- |
+| 14 | 100–121.3 | 106–115 | 109–119 | **87–97** |
+| 16 | 100–124.3 | 107–117 | 110–121 | **85–97** |
+| 24 | 100–136.5 | 111–127 | 115–132 | **77–96** |
+
+The emoji's bottom is above the line's top at every size, so in a window,
+where every component is clipped to its box, it is cut away whole. Every
+other glyph's vertical bearing is measured from the top of the line box
+— `ascent + ymin` (style/opentype.go:678), applied at style/font.go:752 —
+and the emoji cell's is `Bearing: Pt(0, -h)` with `h` the line's ascent
+(style/emoji_on.go:262 and :281), as if measured up from the baseline: the
+picture's top is put `h` above the line's top. The toolkit's own test
+draws 👀 at (4, 4) in a 40 px image and asks only that coloured pixels
+appear (style/emoji_test.go:44 and :68–77), which a picture drawn 18 px
+too high still leaves.
+comms-mail builds with `font_complex`, not `font_emoji`, until this is
+fixed (Makefile).
+**Fix asked for:** `Bearing: Pt(0, a.ascent-h)` — 0 while `h` is the
+ascent, so the picture stands on the baseline and reaches the top of the
+text — and a test that the emoji's ink lies inside the line box.
+
+Found 2026-10-13 against 0.23.8.
+
+### 60. An outline face wins over the colour one, so emoji come out half in colour
+Under `font_emoji` a rune goes to the interface face, then to the outline
+fallbacks, and to a colour emoji face only when none of those has it
+(`uitkFontmap.ResolveFace`, style/shape_complex_layout.go:99–121, the
+colour face at :114). 0.23.8 also added outline symbol faces to the
+default fallback list — "Noto Emoji", "Symbola", "Noto Sans Symbols 2",
+"Noto Sans Symbols" (style/fontfallback.go:53) — and Noto Sans Symbols 2
+is on most Linux machines with Noto installed, as it is here. It has 👍
+and ❤, so in "👀 🥳 👨‍👩‍👧 🇷🇴 👍🏽 ❤️" the first four go to Noto Color Emoji
+and 👍 and ❤️ are drawn in black outline beside them. A sequence is split
+across the two: 👍🏽 is an outline thumb from one face and a skin-tone
+swatch from the other, where Noto Color Emoji's own GSUB makes it one
+picture; and ❤️'s U+FE0F, which asks for the emoji presentation, is not
+heeded.
+**Fix asked for:** in a `font_emoji` build, send a rune whose default
+presentation is emoji (Emoji_Presentation), one followed by U+FE0F, a
+modifier sequence and a ZWJ sequence to the colour face before the
+outline fallbacks (UTS #51), and keep the run together so the colour
+face's GSUB composes it.
+
+Found 2026-10-13 against 0.23.8 (outline face: Noto Sans Symbols 2).
+
+### 61. `font_complex` never borrows Arabic, Hebrew or Indic letters
+Built with `font_complex`, Arabic, Hebrew and Hindi in comms-mail's
+subjects and text are boxes, now in right-to-left order. Adding "Noto
+Sans Arabic", "Noto Sans Hebrew" and "Noto Sans Devanagari" — all
+installed here, plain TTF files — to `SetFallbackFamilies` changes only
+the Arabic comma and question mark, which are now drawn; every letter
+stays a box.
+
+`borrowable` refuses the scripts that need shaping — Arabic, Hebrew,
+Syriac, Devanagari and the other Indic scripts, Thai, Khmer, Myanmar and
+more (style/fontfallback.go:121–142) — which is right for a
+`font_fallback` build that cannot shape them. But the shaping path asks
+the same question before it borrows (`if borrowable(r)`,
+style/shape_complex_layout.go:103), so in a `font_complex` build those
+letters can only be shaped by the interface face itself, and no
+interface face here has them. The comma and the question mark got
+through because Unicode gives them no script. The default list
+(style/fontfallback.go:38–54) names no Arabic, Hebrew or Indic family
+either, so even once borrowing is allowed a machine with Noto Sans
+Arabic would not use it unless the application names it.
+**Fix asked for:** borrow every script in a build that shapes
+(`font_complex`, `font_emoji`), keeping `borrowable` for the
+glyph-at-a-time build; and name the common faces for those scripts in
+the default list (Noto Sans Arabic, Noto Naskh Arabic, Noto Sans Hebrew,
+Noto Sans Devanagari, Noto Sans Thai, DejaVu Sans).
+
+Found 2026-10-13 against 0.23.8.
+
+## Resolved
+
+### Closed in 0.23.8
+
+| # | Gap | 0.23.8 | In comms-mail |
+| --- | --- | --- | --- |
+| 57 | A text view given its text before it was laid out opened scrolled down | The inner box is clamped at zero, and a line taller than the box keeps its top in view | `reader.setBody`'s scroll to the top is gone; `TestTheMessageTextStartsAtItsTop` passes on the toolkit's fix alone, in the plain build and with `font_complex` |
+| 58 | Emoji stayed boxes with `font_fallback` | A lender need not draw Latin; outline emoji and symbol faces join the default list; `-tags font_emoji` draws colour bitmap emoji (CBDT, sbix), untinted | Answered as asked, and not yet usable: under `font_emoji` the emoji are drawn above their line and clipped away (#59), and an outline face wins over the colour one for some (#60). comms-mail builds with `font_complex` meanwhile, where emoji are boxes and 👍 ❤ draw in outline |
+
+Also from 0.23.8:
+
+- **`-tags font_complex`** — shaping, bidirectional layout and Unicode
+  line breaking (+2.16 MB, no font data). The Makefile builds with it:
+  Japanese text now wraps without starting a line with 。, and borrowing
+  still draws Cyrillic, Greek and CJK. Arabic, Hebrew and Indic are
+  still boxes: #61.
+- **A scroll bar keeps the presses that start on it** — in the list, the
+  table, the tree and the card list, a drag on the bar no longer drags
+  the row beside it, and a press in the gutter no longer moves the
+  selection. comms-mail's message list and folder tree are those views;
+  nothing to change.
+- **The fallback list takes effect at once** when an application changes
+  it.
+- comms-mail's screenshots differ from 0.23.7's only by a pixel here and
+  there inside words: `font_complex` takes kerning from the face's own
+  `GPOS`. Nothing moves.
+
+The reports and the toolkit's answers, as they were:
+
+#### 57. A text view given its text before it is laid out opens scrolled down
 The message comms-mail shows at start opens a few pixels down its text,
 the top of its first line cut off by the view's edge; every message
 opened after it starts at the top. The view is given the text before the
@@ -75,7 +189,7 @@ than its bottom.
 
 Found 2026-10-13 against 0.23.7 (the same in 0.23.6).
 
-### 58. Emoji stay boxes with `font_fallback`
+#### 58. Emoji stay boxes with `font_fallback`
 0.23.7's fallback draws Cyrillic, Greek, Chinese, Japanese and Korean in
 comms-mail's message list and reading pane from the machine's own faces
 (Noto Sans CJK here), and ✓ and → as well. Emoji — "👀 Big sale 🥳",
@@ -104,8 +218,6 @@ strikes, scaled to the line), or at least an outline emoji face where
 one is installed.
 
 Found 2026-10-13 against 0.23.7.
-
-## Resolved
 
 ### Closed in 0.23.7
 
