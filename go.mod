@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/codemodify/paintengine2d v0.12.2
-	github.com/codemodify/uitoolkit v0.23.13
+	github.com/codemodify/uitoolkit v0.23.14
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/godbus/dbus/v5 v5.1.0
 	golang.org/x/crypto v0.57.0
