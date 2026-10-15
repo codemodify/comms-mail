@@ -8,9 +8,6 @@ new ones turn up.
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).
-- **⚡, ⭐ and ⌚ are black outlines** — emoji by default, but drawn as
-  emoji only when U+FE0F follows, which mail rarely writes; an outline
-  face (Noto Sans Symbols 2) answers instead (uitoolkit-gaps.md #66).
 - **Tables whose cells wrap can overlap** in the Markdown view — at some
   pane widths the next row is drawn over a wrapped row's second line
   (uitoolkit-gaps.md #32).

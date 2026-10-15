@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.14** (2026-10-14), which
+Last checked against **uitoolkit v0.23.15** (2026-10-14), which
 comms-mail now builds with: every open item re-read against the code,
 every closed one re-checked by comms-mail's tests, and the release's
 fixes taken up and rendered. 0.22 closed sixteen of the first seventeen;
@@ -16,10 +16,10 @@ and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1
 0.23.5 #47, #48, #49, #50, #51, #53 and #54; 0.23.6 #55 and #56 (and so
 #29, which #56 filed again); 0.23.7 #2 for every script but emoji; 0.23.8
 #57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63; 0.23.11 #64;
-0.23.12 #65; 0.23.13 and 0.23.14 none, there being none open. Open: #52
-(declined and settled), and #66 (filed 2026-10-14 against 0.23.14, a
-limit the toolkit documents). What comms-mail uses for each closed item
-is under **Resolved**, with the report and the toolkit's answer.
+0.23.12 #65; 0.23.13 and 0.23.14 none, there being none open; 0.23.15
+#66. Open: #52 alone, declined and settled. Nothing new was found in
+0.23.15. What comms-mail uses for each closed item is under
+**Resolved**, with the report and the toolkit's answer.
 
 ## Open
 
@@ -49,7 +49,21 @@ printing"), and the README's list of gaps says of it "There is none".
 applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
-### 66. ⚡, ⭐ and ⌚ are black outlines where mail means them as emoji
+## Resolved
+
+### Closed in 0.23.15
+
+| # | Gap | 0.23.15 | In comms-mail |
+| --- | --- | --- | --- |
+| 66 | ⚡, ⭐ and ⌚ were black outlines where mail means them as emoji | Unicode's `Emoji_Presentation` and `Extended_Pictographic` (emoji-data.txt 18.0.0, generated into style/emojidata.go, 236 ranges) decide what is a picture, in place of a range | Measured with this machine's fonts at 16 px: bare ⚡, ⭐ and ⌚ are colour pictures, 41.5 between two H's where 0.23.14 drew outlines (32.0–34.4); ⚡︎ asks for text and is an outline; ❤ (text by default) and 🜁 stay text. Every sequence measured before is unchanged. A bare 🏳 is an outline now, as Unicode says (it is not emoji by default); 🏳️‍🌈 is still one picture |
+
+Also from 0.23.15, nothing for comms-mail to change: a framed window's
+turn takes its flip panel's clock, which comms-mail does not use. The
+screenshots render as 0.23.14's but for the version string.
+
+The reports and the toolkit's answers, as they were:
+
+#### 66. ⚡, ⭐ and ⌚ are black outlines where mail means them as emoji
 Characters that are emoji by default (Unicode's `Emoji_Presentation`)
 but sit below the pictographic planes are drawn as emoji only when
 U+FE0F follows them. Mail writes them bare: "⚡ Flash sale", "⭐ Rate
@@ -82,8 +96,6 @@ U+1F000 (the few dozen the docs mention), and treat them as the range
 is treated — a colour face first, U+FE0E still asking for the outline.
 
 Filed 2026-10-14 against 0.23.14.
-
-## Resolved
 
 ### From 0.23.14
 
