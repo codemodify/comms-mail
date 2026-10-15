@@ -6,7 +6,7 @@ entry says where it was verified and what would fix it. New findings are
 appended under **Open** as they turn up; numbers are never reused, so a
 number always means the same gap.
 
-Last checked against **uitoolkit v0.23.15** (2026-10-14), which
+Last checked against **uitoolkit v0.23.16** (2026-10-14), which
 comms-mail now builds with: every open item re-read against the code,
 every closed one re-checked by comms-mail's tests, and the release's
 fixes taken up and rendered. 0.22 closed sixteen of the first seventeen;
@@ -17,9 +17,10 @@ and #34; 0.22.4 and 0.22.5 #32, #33, #35, #36, #38, #39 and #40; 0.23.1
 #29, which #56 filed again); 0.23.7 #2 for every script but emoji; 0.23.8
 #57 and #58; 0.23.9 #59, #60 and #61; 0.23.10 #62 and #63; 0.23.11 #64;
 0.23.12 #65; 0.23.13 and 0.23.14 none, there being none open; 0.23.15
-#66. Open: #52 alone, declined and settled. Nothing new was found in
-0.23.15. What comms-mail uses for each closed item is under
-**Resolved**, with the report and the toolkit's answer.
+#66; 0.23.16 none, there being none open. Open: #52 alone, declined and
+settled. Nothing new was found in 0.23.16. What comms-mail uses for each
+closed item is under **Resolved**, with the report and the toolkit's
+answer.
 
 ## Open
 
@@ -50,6 +51,17 @@ applications that report against the toolkit, pinned. comms-mail keeps
 printing through the browser.
 
 ## Resolved
+
+### From 0.23.16
+
+Nothing of comms-mail's was open, and nothing new turned up. The
+subdivision flags are their own pictures again: England, Scotland and
+Wales (a black flag, tag characters and U+E007F) drew pixel for pixel as
+the bare black flag 🏴 from 0.23.14 to 0.23.15 — same width, same cell, so
+only a picture comparison could tell — and each is a distinct colour
+picture now. 🏳️‍🌈, 1️⃣ and ⚡ are pixel-identical to 0.23.15's. A window
+turn's test holds its clock instead of skipping, which comms-mail does
+not use. The screenshots render as 0.23.15's but for the version string.
 
 ### Closed in 0.23.15
 
