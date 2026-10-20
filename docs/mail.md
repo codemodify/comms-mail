@@ -81,7 +81,7 @@ Convenience (same architecture, one process: daemon goroutine + UI client on a t
 
 ```bash
 UITK_SCENE=auto go run ./cmd/comms-mail-demo
-go run ./cmd/comms-mail-demo -screenshot docs/screenshots
+go run -tags 'theme_engine_all font_emoji' ./cmd/comms-mail-demo -screenshot docs/screenshots
 ```
 
 ## Tray and new-mail toasts (0.16.0, 0.16.1)
@@ -1238,7 +1238,7 @@ UITK_SCENE=auto go run ./cmd/comms-mail
 ## Screenshots
 
 ```bash
-go run ./cmd/comms-mail-demo -screenshot docs/screenshots
+go run -tags 'theme_engine_all font_emoji' ./cmd/comms-mail-demo -screenshot docs/screenshots
 ```
 
-Writes `mail-dark.png`, `mail-light.png`, `mail-classic.png`, `mail-compose.png`, `mail-prefs.png`, `mail-cards.png`, `mail-compact.png`, `mail-filters.png`, `mail-empty.png` (first-run dialog), `mail-account.png` (Add Account), `mail-smart.png` (daemon saved-search view; not a tree section), `mail-invite.png` (a meeting invitation's card). The README shows `docs/screenshots/mail.png`, which is `mail-dark.png` from that set: copy it over to refresh it.
+Writes `mail-dark.png`, `mail-light.png`, `mail-classic.png`, `mail-compose.png`, `mail-prefs.png`, `mail-cards.png`, `mail-compact.png`, `mail-filters.png`, `mail-empty.png` (first-run dialog), `mail-account.png` (Add Account), `mail-smart.png` (daemon saved-search view; not a tree section), `mail-invite.png` (a meeting invitation's card), and `mail.png`, the README's picture: the window in Aqua with the reading pane on the Security tab. Aqua's engine is only in a build with `theme_engine_all`, so a build without it skips `mail.png` (and says so) rather than drawing it in another look. The repository keeps `mail.png` alone.

@@ -313,7 +313,13 @@ func TestWriteScreenshotsDistinct(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := map[int64]string{}
-	for _, name := range ScreenshotNames {
+	names := ScreenshotNames
+	if _, aqua := style.LoadTheme("aqua"); aqua {
+		names = append(names, "mail.png") // the README's, in Aqua
+	} else if _, err := os.Stat(filepath.Join(dir, "mail.png")); err == nil {
+		t.Fatal("mail.png written without the Aqua theme in the build")
+	}
+	for _, name := range names {
 		st, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatal(err)

@@ -15,12 +15,14 @@ import (
 	"github.com/codemodify/uitoolkit/widgets"
 )
 
-// ScreenshotNames are the Mail PNGs written by WriteScreenshots.
+// ScreenshotNames are the Mail PNGs written by WriteScreenshots, and the
+// README's mail.png beside them where the build has the Aqua theme.
 var ScreenshotNames = []string{
 	"mail-dark.png", "mail-light.png", "mail-classic.png",
 	"mail-compose.png", "mail-prefs.png",
 	"mail-cards.png", "mail-compact.png", "mail-filters.png",
 	"mail-empty.png", "mail-account.png", "mail-smart.png",
+	"mail-invite.png",
 }
 
 // WriteScreenshots paints the Mail dogfood frames into dir.
@@ -39,6 +41,9 @@ func WriteScreenshots(dir string) error {
 	}
 	defer cli.Close()
 
+	if err := writeReadmeShot(cli, filepath.Join(dir, "mail.png")); err != nil {
+		return err
+	}
 	if err := writeMailShot(cli, filepath.Join(dir, "mail-dark.png"), false, LayoutVertical, false, style.DensityDefault, -1); err != nil {
 		return err
 	}
@@ -73,6 +78,39 @@ func WriteScreenshots(dir string) error {
 		return err
 	}
 	return writeAccountShot(filepath.Join(dir, "mail-account.png"))
+}
+
+// writeReadmeShot is the README's picture (docs/screenshots/mail.png): the
+// window in Aqua, the reading pane on the Security tab. Aqua's engine is
+// only in a build with -tags theme_engine_all; without it the picture is
+// skipped, not drawn in another look.
+func writeReadmeShot(cli *mailcore.Client, path string) error {
+	pack, ok := style.LoadTheme("aqua")
+	if !ok {
+		fmt.Println("skipped", path+": the Aqua theme is not in this build (-tags theme_engine_all)")
+		return nil
+	}
+	a := uitoolkit.New(uitoolkit.Options{Look: pack.Look(), Headless: true})
+	w, err := a.NewWindow(platform.WindowOptions{
+		Title: "Mail", Width: 1280, Height: 800, Headless: true,
+	})
+	if err != nil {
+		return err
+	}
+	s := newSession(a, w, cli, AppOptions{})
+	w.SetContent(s.build())
+	a.PumpOnce()
+	s.rd.tabs.Select(readerTabSecurity)
+	for i := 0; i < 3; i++ {
+		s.waitIdle()
+		a.PumpOnce()
+	}
+	if err := w.WritePNG(path); err != nil {
+		return err
+	}
+	fmt.Println("wrote", path)
+	w.Close()
+	return nil
 }
 
 func writeMailFolderShot(cli *mailcore.Client, path string, folder mailcore.FolderID) error {
