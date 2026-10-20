@@ -1241,4 +1241,4 @@ UITK_SCENE=auto go run ./cmd/comms-mail
 go run ./cmd/comms-mail-demo -screenshot docs/screenshots
 ```
 
-Writes `mail-dark.png`, `mail-light.png`, `mail-classic.png`, `mail-compose.png`, `mail-prefs.png`, `mail-cards.png`, `mail-compact.png`, `mail-filters.png`, `mail-empty.png` (first-run dialog), `mail-account.png` (Add Account), `mail-smart.png` (daemon saved-search view; not a tree section), `mail-invite.png` (a meeting invitation's card).
+Writes `mail-dark.png`, `mail-light.png`, `mail-classic.png`, `mail-compose.png`, `mail-prefs.png`, `mail-cards.png`, `mail-compact.png`, `mail-filters.png`, `mail-empty.png` (first-run dialog), `mail-account.png` (Add Account), `mail-smart.png` (daemon saved-search view; not a tree section), `mail-invite.png` (a meeting invitation's card). The README shows `docs/screenshots/mail.png`, which is `mail-dark.png` from that set: copy it over to refresh it.
