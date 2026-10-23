@@ -11,11 +11,13 @@ v0.23.21 with nothing open but #52 (no printing, declined and settled).
 That file is in git history (last at f8f7cdc); comments and BACKLOG.md
 entries that cite "uitoolkit-gaps.md #N" mean that file.
 
-Last checked against the **goframework.io workspace at 3248771**
-(2026-10-23), unpublished: comms-mail builds against a checkout at
+Last checked against the **goframework.io workspace at 85a3be7**
+(2026-10-23 18:53), unpublished. comms-mail builds against a checkout at
 ~/go/src/goframework.io, offline (`GOPROXY=off`), through go.mod replace
-lines that `make replace` writes. On that checkout comms-mail builds,
-vets and passes all its tests. Its thirteen screenshots match the ones
+lines that `make replace` writes (244 modules, unchanged at 85a3be7). It
+was ported against 3248771. The commits since then change only documents
+and the site's tools, no module's Go code or go.mod. On 85a3be7
+comms-mail builds, vets and passes all its tests (run uncached). Its thirteen screenshots match the ones
 uitoolkit v0.23.21 drew pixel for pixel, except where the demo's own text
 changed and where the version reads "(devel)". On the KDE Plasma desktop
 it runs, and its tray item and menu register.
@@ -33,7 +35,8 @@ names (searched the .md, .py, .sh and .go files outside old-*).
 **Fix asked for:** the two rows and the sentence name `COMMS_MAIL_*` for
 comms-mail, or drop it from the example.
 
-Found 2026-10-23 against 3248771.
+Found 2026-10-23 against 3248771. Still as described at 85a3be7, whose
+todo.md lists it as being fixed in the guide.
 
 ## Not gaps
 
@@ -42,10 +45,10 @@ Looked into while porting; working as documented.
 - **The guide's go.work and an application with modules from outside
   goframework.** An early, partial go.work failed with
   `goframework.io/app-spec@v0.0.3: module lookup disabled by GOPROXY=off`.
-  The guide's whole recipe, including its third line, which copies the
-  workspace's replacements (desktop-ui-porting.md, "setting up"), builds
-  a module that imports desktop-ui and golang.org/x/text. comms-mail uses
-  go.mod replace lines instead, at the owner's choice. That route needs
+  The guide's whole recipe, including the `go work edit` step, which
+  copies the workspace's replacements (desktop-ui-porting.md:47, "setting
+  up"), builds a module that imports desktop-ui and golang.org/x/text.
+  comms-mail uses go.mod replace lines instead, by choice. That route needs
   every module of the workspace replaced, 244 of them, not only the six
   comms-mail imports: the modules require one another at v1.0.0 (58
   go.mod files) and v0.0.3 (151).
