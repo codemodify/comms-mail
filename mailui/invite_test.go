@@ -133,7 +133,7 @@ func TestInviteWhenAndState(t *testing.T) {
 // Less / More folds the guest list and options on every card; a note goes
 // to the organizer, and with Tell the organizer off nothing is mailed.
 func TestInviteCardOptions(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	s, _, _, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
 	s.rd.invite.now = func() time.Time { return mailcore.DemoNow }

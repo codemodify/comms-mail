@@ -16,7 +16,7 @@ import (
 // ticks in view, what goes wrong beside it and the ports beside the steps
 // — as first shown, and with everything turned on.
 func TestEducateFitsSettings(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	cli := demoClient(t)
 	for _, sz := range []struct {
 		w, h   int

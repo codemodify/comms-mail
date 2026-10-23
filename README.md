@@ -120,13 +120,13 @@ go run ./cmd/comms-mail -classic          # preview below the thread list
 go run ./cmd/comms-mail -headless         # render once to mail.png and exit
 go run ./cmd/comms-mail -socket /tmp/x    # a daemon somewhere else
 
-UITK_MAIL=memory  go run ./cmd/comms-maild   # seeded in-memory store
-UITK_MAIL_SOCK=/tmp/mail.sock                # where the socket lives
-UITK_MAIL_PASS=secret                        # password out of the environment
-UITK_MAIL_NO_NOTIFY=1                        # no daemon-side desktop toast
+COMMS_MAIL=memory  go run ./cmd/comms-maild   # seeded in-memory store
+COMMS_MAIL_SOCK=/tmp/mail.sock                # where the socket lives
+COMMS_MAIL_PASS=secret                        # password out of the environment
+COMMS_MAIL_NO_NOTIFY=1                        # no daemon-side desktop toast
 ```
 
-The socket defaults to `$UITK_MAIL_SOCK`, else
+The socket defaults to `$COMMS_MAIL_SOCK`, else
 `$XDG_RUNTIME_DIR/comms-maild.sock`, else `/tmp/comms-maild-<uid>.sock`.
 
 ## Tests

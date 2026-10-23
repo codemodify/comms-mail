@@ -14,7 +14,7 @@ import (
 // password left empty, and saving a change keeps the saved password and
 // what the form does not show.
 func TestAccountsTabEditsAnAccount(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	cli, _ := vaultDaemon(t)
 	if err := cli.UseStore(mailcore.StoreEncrypted, "correct horse battery"); err != nil {
 		t.Fatal(err)

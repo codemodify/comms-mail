@@ -30,7 +30,7 @@ and tray live in [`mailui`](../mailui).
 
 Default socket:
 
-- `$UITK_MAIL_SOCK` if set
+- `$COMMS_MAIL_SOCK` if set
 - else `$XDG_RUNTIME_DIR/comms-maild.sock`
 - else `/tmp/comms-maild-<uid>.sock`
 
@@ -74,7 +74,7 @@ go run ./cmd/comms-mail -classic -light
 go run ./cmd/comms-mail -headless    # writes mail.png
 
 # Seeded MemoryStore dogfood / screenshots only:
-UITK_MAIL=memory go run ./cmd/comms-maild
+COMMS_MAIL=memory go run ./cmd/comms-maild
 ```
 
 Convenience (same architecture, one process: daemon goroutine + UI client on a temp socket):
@@ -136,7 +136,7 @@ var DesktopNotifier func(title, body string)
 
 ## Real IMAP or POP3 + SMTP (primary path)
 
-`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept where you chose — the desktop keyring, secretvault, an encrypted file, or `mail.json` (see [Where passwords are kept](#where-passwords-are-kept)). OAuth sign-ins are kept there too. Optional `passEnv` / `UITK_MAIL_PASS` still work when no password is saved.
+`comms-maild` is meant to be pointed at a real account. **Add Account** takes a typed (masked) password; it is kept where you chose — the desktop keyring, secretvault, an encrypted file, or `mail.json` (see [Where passwords are kept](#where-passwords-are-kept)). OAuth sign-ins are kept there too. Optional `passEnv` / `COMMS_MAIL_PASS` still work when no password is saved.
 
 ### Connection security (`tlsMode`)
 
@@ -164,13 +164,13 @@ the port decides; an unrecognised port defaults to `ssl` for IMAP/POP3 and
 
 Config directory (`mail.json`, `mailui.json`):
 
-- `$UITK_MAIL_CONFIG` overrides the account file path directly
+- `$COMMS_MAIL_CONFIG` overrides the account file path directly
 - else `$XDG_CONFIG_HOME/comms-mail`
 - else `~/.config/comms-mail`
 
 Cache / offline store:
 
-- `$UITK_MAIL_DATA`
+- `$COMMS_MAIL_DATA`
 - else `~/.data/comms-mail`
 
 The cache is deliberately not under the XDG `~/.local/share` default:
@@ -224,7 +224,7 @@ go run ./cmd/comms-maild
 go run ./cmd/comms-mail
 ```
 
-Optional env fallback when `password` is omitted: `"passEnv": "UITK_MAIL_PASS"` and `export UITK_MAIL_PASS='…'`.
+Optional env fallback when `password` is omitted: `"passEnv": "COMMS_MAIL_PASS"` and `export COMMS_MAIL_PASS='…'`.
 
 Saving an account without its password (`accounts.put`, Settings) keeps the saved one only for the same server and user — the port may change. Pointing a server at another host, or another user, needs that server's password again; the save is refused until it is given, so no request can send a saved password to a host of its choosing.
 
@@ -233,12 +233,12 @@ Mail written here gets a Message-ID like other clients' — `<32 random hex digi
 Single-account env (no file) still works:
 
 ```bash
-export UITK_MAIL=imap
-export UITK_MAIL_HOST=imap.example.com:993
-export UITK_MAIL_USER=you@example.com
-export UITK_MAIL_PASS=secret
-export UITK_MAIL_SMTP=smtp.example.com:587   # optional; guessed from IMAP host
-export UITK_MAIL_NAME='Ada Lovelace'
+export COMMS_MAIL=imap
+export COMMS_MAIL_HOST=imap.example.com:993
+export COMMS_MAIL_USER=you@example.com
+export COMMS_MAIL_PASS=secret
+export COMMS_MAIL_SMTP=smtp.example.com:587   # optional; guessed from IMAP host
+export COMMS_MAIL_NAME='Ada Lovelace'
 go run ./cmd/comms-maild
 ```
 
@@ -265,9 +265,9 @@ POP3 account (inbox retrieve; SMTP still used to send):
 }
 ```
 
-Default when **no** config and `UITK_MAIL` is unset: **empty** LocalStore (no demo accounts). The UI asks *There are no accounts, want to add one?* Yes opens File → Add Account. No leaves empty chrome. Password / `mail.json` mode `0600` notes live on the Add Account form, not that Yes/No dialog.
+Default when **no** config and `COMMS_MAIL` is unset: **empty** LocalStore (no demo accounts). The UI asks *There are no accounts, want to add one?* Yes opens File → Add Account. No leaves empty chrome. Password / `mail.json` mode `0600` notes live on the Add Account form, not that Yes/No dialog.
 
-`UITK_MAIL=memory` is the **only** way to load the seeded MemoryStore demo (and `comms-mail-demo` and the screenshots still use that on purpose).
+`COMMS_MAIL=memory` is the **only** way to load the seeded MemoryStore demo (and `comms-mail-demo` and the screenshots still use that on purpose).
 
 ### Add Account polish
 
@@ -380,7 +380,7 @@ login) is reported and nothing is queued.
 
 ## OAuth (Google + Microsoft)
 
-Real **authorization-code + PKCE loopback** (`http://127.0.0.1:<port>/oauth/callback`) or **device code** flow. IMAP/SMTP then use **AUTH XOAUTH2**. The `UITK_MAIL_XOAUTH2` bearer passthrough, inline `password`, and `passEnv` / `UITK_MAIL_PASS` still work.
+Real **authorization-code + PKCE loopback** (`http://127.0.0.1:<port>/oauth/callback`) or **device code** flow. IMAP/SMTP then use **AUTH XOAUTH2**. The `COMMS_MAIL_XOAUTH2` bearer passthrough, inline `password`, and `passEnv` / `COMMS_MAIL_PASS` still work.
 
 The loopback callback carries an unguessable **`state`** nonce and only the
 matching callback is accepted (and only once). Any local process — or a web
@@ -393,12 +393,12 @@ HTML-escaped and served as `text/plain`.
 
 | Provider | Register | Env (or wizard fields) |
 | --- | --- | --- |
-| Google | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) — OAuth client (Desktop or Web). Redirect: `http://127.0.0.1:<port>/oauth/callback`. Scope: `https://mail.google.com/` | `UITK_MAIL_OAUTH_GOOGLE_CLIENT_ID`, `UITK_MAIL_OAUTH_GOOGLE_CLIENT_SECRET` |
-| Microsoft | [Azure AD app registration](https://portal.azure.com/) — public client is fine. Redirect same loopback URL, or device code (no redirect). Scopes: `offline_access`, `https://outlook.office.com/IMAP.AccessAsUser.All`, `https://outlook.office.com/SMTP.Send` | `UITK_MAIL_OAUTH_MS_CLIENT_ID`, `UITK_MAIL_OAUTH_MS_CLIENT_SECRET` (secret optional for public clients) |
+| Google | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) — OAuth client (Desktop or Web). Redirect: `http://127.0.0.1:<port>/oauth/callback`. Scope: `https://mail.google.com/` | `COMMS_MAIL_OAUTH_GOOGLE_CLIENT_ID`, `COMMS_MAIL_OAUTH_GOOGLE_CLIENT_SECRET` |
+| Microsoft | [Azure AD app registration](https://portal.azure.com/) — public client is fine. Redirect same loopback URL, or device code (no redirect). Scopes: `offline_access`, `https://outlook.office.com/IMAP.AccessAsUser.All`, `https://outlook.office.com/SMTP.Send` | `COMMS_MAIL_OAUTH_MS_CLIENT_ID`, `COMMS_MAIL_OAUTH_MS_CLIENT_SECRET` (secret optional for public clients) |
 
 ```bash
-export UITK_MAIL_OAUTH_GOOGLE_CLIENT_ID='….apps.googleusercontent.com'
-export UITK_MAIL_OAUTH_GOOGLE_CLIENT_SECRET='…'   # if the client is confidential
+export COMMS_MAIL_OAUTH_GOOGLE_CLIENT_ID='….apps.googleusercontent.com'
+export COMMS_MAIL_OAUTH_GOOGLE_CLIENT_SECRET='…'   # if the client is confidential
 go run ./cmd/comms-maild
 # UI: File → Add Account → Sign in with Google
 ```
@@ -407,7 +407,7 @@ Device flow: **Device code…** on the same dialog (useful when loopback cannot 
 
 ### Token storage
 
-Refresh/access tokens are **never** written to `mail.json`. They are kept beside the passwords, in the store you chose ([Where passwords are kept](#where-passwords-are-kept)). The OAuth **client id** (and secret, when the app is confidential) is stored with the token, so refreshing an hour later works even if the `UITK_MAIL_OAUTH_*` variables are no longer exported.
+Refresh/access tokens are **never** written to `mail.json`. They are kept beside the passwords, in the store you chose ([Where passwords are kept](#where-passwords-are-kept)). The OAuth **client id** (and secret, when the app is confidential) is stored with the token, so refreshing an hour later works even if the `COMMS_MAIL_OAUTH_*` variables are no longer exported.
 
 Expired access tokens are refreshed with the stored refresh token.
 
@@ -711,7 +711,7 @@ its section. The tab has all there is (`messages.report`, and
   BIMI (a logo, and whether a mark certificate vouches for it), and
   whether the resolver checked the answers' signatures (DNSSEC). It asks
   the first nameserver of `/etc/resolv.conf` itself, with the DNSSEC flag
-  set, or the resolver `UITK_MAIL_DNS` names (`host:port`); tests never
+  set, or the resolver `COMMS_MAIL_DNS` names (`host:port`); tests never
   reach a real one.
 - **Signature and encryption** — the lines below (*Signed and encrypted
   mail*); each signature's key — fingerprint in groups of four, size, when
@@ -989,7 +989,7 @@ in the recipient's client too, and Reply honours the sender's `Reply-To`.
 
 ## Attachments
 
-Message view stays **text-only**. Each attachment row shows its name plus inline **Open** and **Save As** (toolkit `Button`). A single click on the name selects only; a double click — or that row’s **Open** — calls `messages.openPart`: comms-maild writes a cache file under the data dir (`open/` or a temp file for MemoryStore) and launches `xdg-open` (or `open` on macOS) when a display is available. `UITK_MAIL_NO_OPEN=1` skips the spawn (tests / headless). **Save As** uses the toolkit file dialog and writes `messages.part` bytes to the chosen path (mode `0600`). Attachment bytes are decoded from the cached `.eml`, so a row saves **its own** part (a `report.pdf` row no longer writes the text body under that name).
+Message view stays **text-only**. Each attachment row shows its name plus inline **Open** and **Save As** (toolkit `Button`). A single click on the name selects only; a double click — or that row’s **Open** — calls `messages.openPart`: comms-maild writes a cache file under the data dir (`open/` or a temp file for MemoryStore) and launches `xdg-open` (or `open` on macOS) when a display is available. `COMMS_MAIL_NO_OPEN=1` skips the spawn (tests / headless). **Save As** uses the toolkit file dialog and writes `messages.part` bytes to the chosen path (mode `0600`). Attachment bytes are decoded from the cached `.eml`, so a row saves **its own** part (a `report.pdf` row no longer writes the text body under that name).
 
 `messages.openPart` refuses to hand the desktop opener anything it would
 execute or render as markup (`.desktop`, `.sh`, `.js`, `.html`, `.svg`, …) —
@@ -1036,7 +1036,7 @@ account is reachable again.
 ## VIP, notifications, categories
 
 - **VIP** senders (Message → Add sender to VIP). The VIP smart folder is **not** shown in the sidebar; Settings still lists VIP contacts, and VIP-only notifications still work.
-- **Notification rules** (**Menu → Notify**): new mail, optional VIP-only, optional `notify-send` on Linux. No display / no `notify-send` → stub (RPC event `mail.notify` still fires). `UITK_MAIL_NO_NOTIFY=1` disables the desktop helper.
+- **Notification rules** (**Menu → Notify**): new mail, optional VIP-only, optional `notify-send` on Linux. No display / no `notify-send` → stub (RPC event `mail.notify` still fires). `COMMS_MAIL_NO_NOTIFY=1` disables the desktop helper.
 - **Categories** (Gmail-lite, local) still classify on the daemon; they are **not** a folder-tree section as of v0.10.4.
 
 Calendar / iTip is **not** in this release (Tier C later).
@@ -1146,7 +1146,7 @@ AND across conditions. Persist in MemoryStore or the disk cache. The sidebar Tag
 
 ## UI features (v0.10.13)
 
-- **Empty by default** — no demo accounts unless `UITK_MAIL=memory`. First-run Yes/No is only “There are no accounts, want to add one?” Password / `0600` notes are on the Add Account form.
+- **Empty by default** — no demo accounts unless `COMMS_MAIL=memory`. First-run Yes/No is only “There are no accounts, want to add one?” Password / `0600` notes are on the Add Account form.
 - **Import from other mail clients** — Settings → Accounts → Import scans every client it knows and lists each one it finds as its own section, with two checkboxes:
   - *Config* — the accounts it has set up (servers, ports, encryption, user names, identities, signatures), with a checkbox per account beneath. Accounts already set up here are left out. Passwords are never read; each imported account gets an empty password to fill in, or sign in with OAuth (a Gmail / Outlook account from Geary is marked for it).
   - *Contacts* — the people in its address book (Thunderbird's abook / collected addresses, Evolution's local books, KAddressBook vCards, Claws Mail's address books, mutt aliases, macOS Contacts), added to the address book the Write window completes from.
@@ -1227,7 +1227,7 @@ Documented in desktop-ui-widgets' readme and doc comments. When the thread list 
 ## How to try (dogfood)
 
 ```bash
-UITK_MAIL=memory go run ./cmd/comms-maild
+COMMS_MAIL=memory go run ./cmd/comms-maild
 GOFRAMEWORK_DESKTOP_UI_SCENE=auto go run ./cmd/comms-mail
 ```
 

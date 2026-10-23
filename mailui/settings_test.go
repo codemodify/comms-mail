@@ -16,7 +16,7 @@ import (
 // openSettings is Settings over the demo daemon, 700×560.
 func openSettings(t *testing.T) (*ui.Application, *ui.Window, *mailcore.Client, *widgets.TabView) {
 	t.Helper()
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	return openSettingsOn(t, demoClient(t))
 }
 

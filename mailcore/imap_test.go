@@ -52,10 +52,10 @@ func TestIMAPClientUIDFetch(t *testing.T) {
 
 	tlsOff := false
 	c := newIMAPClient(ServerConfig{
-		Host: ln.Addr().String(), User: "ada@example.com", PassEnv: "UITK_MAIL_PASS",
+		Host: ln.Addr().String(), User: "ada@example.com", PassEnv: "COMMS_MAIL_PASS",
 		TLS: &tlsOff,
 	}, "ada@example.com")
-	t.Setenv("UITK_MAIL_PASS", "secret")
+	t.Setenv("COMMS_MAIL_PASS", "secret")
 	if err := c.connect(); err != nil {
 		t.Fatal(err)
 	}

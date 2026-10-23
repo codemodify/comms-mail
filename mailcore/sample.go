@@ -330,7 +330,7 @@ What is real in v0.10
   • Offline outbox, IDLE/QRESYNC push, text-only Message tab
 
 What is demo
-  • This welcome lives in MemoryStore (UITK_MAIL=memory). Point a config
+  • This welcome lives in MemoryStore (COMMS_MAIL=memory). Point a config
     file at a real IMAP/SMTP account — see docs/mail.md.
 
 — Mail on goframework.io desktop-ui

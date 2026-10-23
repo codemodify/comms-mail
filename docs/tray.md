@@ -43,7 +43,7 @@ and already links the UI, sets it to `mailui.DesktopNotify`, so a
 one-process run still toasts for mail that arrives with no window open.
 Anything embedding `mailcore` can fill it the same way.
 
-`UITK_MAIL_NO_NOTIFY` suppresses the core's call into that seam, and the
+`COMMS_MAIL_NO_NOTIFY` suppresses the core's call into that seam, and the
 core skips it when neither `DISPLAY` nor `WAYLAND_DISPLAY` is set. It is a
 daemon-side guard: the UI's own toast, raised from the `mail.notify`
 event, is governed by Prefs -> Notify instead.

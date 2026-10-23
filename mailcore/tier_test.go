@@ -195,7 +195,7 @@ func TestClassifySender(t *testing.T) {
 }
 
 func TestOAuthLoopbackFakeProvider(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	dir := t.TempDir()
 	t.Setenv(EnvData, dir)
 	SetDefaultTokenStore(NewTokenStore(filepath.Join(dir, "secrets")))
@@ -327,7 +327,7 @@ func TestRPCTIERAB(t *testing.T) {
 }
 
 func TestOpenPartWritesCache(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	s := NewDemoStore()
 	list := s.ListMessages(FolderAdaInbox)
 	var withAtt Message

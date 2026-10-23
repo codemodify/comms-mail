@@ -162,7 +162,7 @@ func TestAttachPartIDMapsRowToItsOwnPart(t *testing.T) {
 }
 
 func TestOpenPartRefusesExecutableAttachments(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	raw := "From: a@b.c\r\nSubject: x\r\nMIME-Version: 1.0\r\n" +
 		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
 		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +
@@ -200,7 +200,7 @@ func TestOpenPartRefusesExecutableAttachments(t *testing.T) {
 }
 
 func TestOpenPartStaysInsideTheCacheDir(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	raw := "From: a@b.c\r\nSubject: x\r\nMIME-Version: 1.0\r\n" +
 		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
 		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +

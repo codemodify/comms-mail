@@ -23,16 +23,16 @@ import (
 // not ship Google/Microsoft app credentials — see docs/mail.md.
 
 const (
-	EnvOAuthGoogleClient = "UITK_MAIL_OAUTH_GOOGLE_CLIENT_ID"
-	EnvOAuthGoogleSecret = "UITK_MAIL_OAUTH_GOOGLE_CLIENT_SECRET"
-	EnvOAuthMSClient     = "UITK_MAIL_OAUTH_MS_CLIENT_ID"
-	EnvOAuthMSSecret     = "UITK_MAIL_OAUTH_MS_CLIENT_SECRET"
-	EnvOAuthGoogleAuth   = "UITK_MAIL_OAUTH_GOOGLE_AUTH_URL"
-	EnvOAuthGoogleToken  = "UITK_MAIL_OAUTH_GOOGLE_TOKEN_URL"
-	EnvOAuthGoogleDevice = "UITK_MAIL_OAUTH_GOOGLE_DEVICE_URL"
-	EnvOAuthMSAuth       = "UITK_MAIL_OAUTH_MS_AUTH_URL"
-	EnvOAuthMSToken      = "UITK_MAIL_OAUTH_MS_TOKEN_URL"
-	EnvOAuthMSDevice     = "UITK_MAIL_OAUTH_MS_DEVICE_URL"
+	EnvOAuthGoogleClient = "COMMS_MAIL_OAUTH_GOOGLE_CLIENT_ID"
+	EnvOAuthGoogleSecret = "COMMS_MAIL_OAUTH_GOOGLE_CLIENT_SECRET"
+	EnvOAuthMSClient     = "COMMS_MAIL_OAUTH_MS_CLIENT_ID"
+	EnvOAuthMSSecret     = "COMMS_MAIL_OAUTH_MS_CLIENT_SECRET"
+	EnvOAuthGoogleAuth   = "COMMS_MAIL_OAUTH_GOOGLE_AUTH_URL"
+	EnvOAuthGoogleToken  = "COMMS_MAIL_OAUTH_GOOGLE_TOKEN_URL"
+	EnvOAuthGoogleDevice = "COMMS_MAIL_OAUTH_GOOGLE_DEVICE_URL"
+	EnvOAuthMSAuth       = "COMMS_MAIL_OAUTH_MS_AUTH_URL"
+	EnvOAuthMSToken      = "COMMS_MAIL_OAUTH_MS_TOKEN_URL"
+	EnvOAuthMSDevice     = "COMMS_MAIL_OAUTH_MS_DEVICE_URL"
 )
 
 // OAuthStart is oauth.start result (browser or device flow).
@@ -103,7 +103,7 @@ func (h *oauthHub) start(req oauthReq) (OAuthStart, error) {
 	}
 	fillOAuthClient(&req)
 	if req.ClientID == "" {
-		return OAuthStart{}, fmt.Errorf("oauth: missing client id — set UITK_MAIL_OAUTH_%s_CLIENT_ID or pass clientId (register an app; see docs/mail.md)", strings.ToUpper(req.Provider))
+		return OAuthStart{}, fmt.Errorf("oauth: missing client id — set COMMS_MAIL_OAUTH_%s_CLIENT_ID or pass clientId (register an app; see docs/mail.md)", strings.ToUpper(req.Provider))
 	}
 	flow := strings.ToLower(strings.TrimSpace(req.Flow))
 	if flow == "" {
@@ -610,7 +610,7 @@ func randID(n int) string {
 }
 
 func openAuthURL(u string) {
-	if u == "" || os.Getenv("UITK_MAIL_NO_OPEN") != "" {
+	if u == "" || os.Getenv("COMMS_MAIL_NO_OPEN") != "" {
 		return
 	}
 	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {

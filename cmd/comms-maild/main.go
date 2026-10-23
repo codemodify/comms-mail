@@ -1,15 +1,15 @@
 // Command comms-maild is the comms-mail daemon: accounts, folders and
 // messages, IMAP/POP3 + SMTP + OAuth, with an on-disk cache. No config means
 // an empty store (first run offers add-account). The seeded MemoryStore is
-// explicit UITK_MAIL=memory. It listens on a Unix socket and speaks JSON-RPC
+// explicit COMMS_MAIL=memory. It listens on a Unix socket and speaks JSON-RPC
 // 2.0 (NDJSON). See docs/mail.md.
 //
 //	comms-maild
 //	comms-maild install     # start at every login (systemd user unit, or XDG autostart)
 //	comms-maild uninstall   # stop starting at login
-//	UITK_MAIL=memory comms-maild   # seeded demo store
+//	COMMS_MAIL=memory comms-maild   # seeded demo store
 //	# real account: File -> Add Account in the UI, or ~/.config/comms-mail/mail.json
-//	UITK_MAIL_PASS=secret comms-maild
+//	COMMS_MAIL_PASS=secret comms-maild
 package main
 
 import (

@@ -22,7 +22,18 @@ it runs, and its tray item and menu register.
 
 ## Open
 
-None.
+### 1. The porting guide names comms-mail's old variables
+desktop-ui-porting.md:480 says applications that borrowed the prefix
+(`UITK_MAIL_*`, `UITK_CHAT_*`) keep it as their own. Lines 504–505 say
+comms-mail reads `UITK_MAIL_NO_NOTIFY` and `UITK_MAIL_NO_OPEN` itself.
+Since 2026-10-23 comms-mail's variables are `COMMS_MAIL_*`
+(`COMMS_MAIL_NO_NOTIFY`, `COMMS_MAIL_NO_OPEN`, `COMMS_MAIL_SOCK`, …), and no
+name with UITK is left in it. Nothing else in the workspace sets the old
+names (searched the .md, .py, .sh and .go files outside old-*).
+**Fix asked for:** the two rows and the sentence name `COMMS_MAIL_*` for
+comms-mail, or drop it from the example.
+
+Found 2026-10-23 against 3248771.
 
 ## Not gaps
 

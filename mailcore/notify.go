@@ -96,7 +96,7 @@ func notifyDesktop(title, body string) {
 	if notify == nil {
 		return
 	}
-	if os.Getenv("UITK_MAIL_NO_NOTIFY") != "" {
+	if os.Getenv("COMMS_MAIL_NO_NOTIFY") != "" {
 		return
 	}
 	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {

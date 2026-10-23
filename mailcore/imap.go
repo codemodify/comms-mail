@@ -15,17 +15,17 @@ import (
 
 // IMAP environment (comms-maild only — the UI never dials IMAP):
 //
-//	UITK_MAIL=imap
-//	UITK_MAIL_HOST=imap.example.com:993
-//	UITK_MAIL_USER=you@example.com
-//	UITK_MAIL_PASS=secret
-//	UITK_MAIL_TLS=1          # default on when port is 993
-//	UITK_MAIL_NAME=Ada       # optional From: display name
+//	COMMS_MAIL=imap
+//	COMMS_MAIL_HOST=imap.example.com:993
+//	COMMS_MAIL_USER=you@example.com
+//	COMMS_MAIL_PASS=secret
+//	COMMS_MAIL_TLS=1          # default on when port is 993
+//	COMMS_MAIL_NAME=Ada       # optional From: display name
 //
 // This is a skeleton: CONNECT + LOGIN + LIST + SELECT + FETCH + STORE +
 // APPEND. MIME trees, IDLE, UTF-7 mailbox names, and MOVE are not
 // production-complete. Missing config returns a clear Health() error and
-// MemoryStore is available only when UITK_MAIL=memory.
+// MemoryStore is available only when COMMS_MAIL=memory.
 
 // IMAPStore is a single-account IMAP backend for comms-maild.
 type IMAPStore struct {
@@ -46,17 +46,17 @@ type IMAPStore struct {
 	health   error
 }
 
-// NewIMAPStoreFromEnv builds an IMAPStore from UITK_MAIL_* (not connected).
+// NewIMAPStoreFromEnv builds an IMAPStore from COMMS_MAIL_* (not connected).
 func NewIMAPStoreFromEnv() *IMAPStore {
-	host := strings.TrimSpace(os.Getenv("UITK_MAIL_HOST"))
-	user := strings.TrimSpace(os.Getenv("UITK_MAIL_USER"))
-	pass := os.Getenv("UITK_MAIL_PASS")
-	name := strings.TrimSpace(os.Getenv("UITK_MAIL_NAME"))
+	host := strings.TrimSpace(os.Getenv("COMMS_MAIL_HOST"))
+	user := strings.TrimSpace(os.Getenv("COMMS_MAIL_USER"))
+	pass := os.Getenv("COMMS_MAIL_PASS")
+	name := strings.TrimSpace(os.Getenv("COMMS_MAIL_NAME"))
 	if name == "" {
 		name = DisplayName(user)
 	}
 	tlsOn := true
-	if v := strings.TrimSpace(os.Getenv("UITK_MAIL_TLS")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("COMMS_MAIL_TLS")); v != "" {
 		tlsOn = v != "0" && !strings.EqualFold(v, "false")
 	} else if host != "" && !strings.HasSuffix(host, ":993") && strings.Contains(host, ":") {
 		tlsOn = false
@@ -66,7 +66,7 @@ func NewIMAPStoreFromEnv() *IMAPStore {
 		cache: map[MessageID]Message{}, seq: map[MessageID]int{},
 	}
 	if host == "" || user == "" || pass == "" {
-		s.health = fmt.Errorf("imap: set UITK_MAIL_HOST, UITK_MAIL_USER, UITK_MAIL_PASS (see docs/mail.md)")
+		s.health = fmt.Errorf("imap: set COMMS_MAIL_HOST, COMMS_MAIL_USER, COMMS_MAIL_PASS (see docs/mail.md)")
 	}
 	if user != "" {
 		s.accounts = []Account{{ID: "imap", Name: name, Address: user}}
@@ -103,7 +103,7 @@ func (s *IMAPStore) connectLocked() error {
 		return nil
 	}
 	if s.host == "" || s.user == "" || s.pass == "" {
-		s.health = fmt.Errorf("imap: set UITK_MAIL_HOST, UITK_MAIL_USER, UITK_MAIL_PASS (see docs/mail.md)")
+		s.health = fmt.Errorf("imap: set COMMS_MAIL_HOST, COMMS_MAIL_USER, COMMS_MAIL_PASS (see docs/mail.md)")
 		return s.health
 	}
 	dialer := net.Dialer{Timeout: 12 * time.Second}

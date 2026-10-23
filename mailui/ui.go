@@ -2461,7 +2461,7 @@ func (s *session) about() {
 		"Mail — on goframework.io desktop-ui "+ui.Version()+".\n"+
 			"comms-mail talks JSON-RPC to comms-maild (Unix socket).\n"+
 			"No IMAP/SMTP in this process. Empty until you add an account.\n"+
-			"MemoryStore dogfood: UITK_MAIL=memory.\n\n"+
+			"MemoryStore dogfood: COMMS_MAIL=memory.\n\n"+
 			"Message view is plain text only (HTML is stripped).\n"+
 			"UI: Titillium Web. Source tab: JetBrains Mono.\n"+
 			"See docs/mail.md",

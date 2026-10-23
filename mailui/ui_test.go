@@ -1114,7 +1114,7 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 }
 
 func TestMailAttachmentSelectOpenSaveAs(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,

@@ -4,7 +4,7 @@
 //	comms-mail            # starts comms-maild when it is not running
 //	comms-maild install   # or have it start at every login
 //
-//	UITK_MAIL_SOCK=/tmp/mail.sock comms-mail
+//	COMMS_MAIL_SOCK=/tmp/mail.sock comms-mail
 package main
 
 import (

@@ -364,8 +364,8 @@ func TestServerConfigPasswordPrefersInline(t *testing.T) {
 	if got := (mailcore.ServerConfig{Pass: "inline"}).Password(); got != "inline" {
 		t.Fatalf("inline %q", got)
 	}
-	t.Setenv("UITK_MAIL_CUSTOM_PASS", "custom")
-	if got := (mailcore.ServerConfig{PassEnv: "UITK_MAIL_CUSTOM_PASS"}).Password(); got != "custom" {
+	t.Setenv("COMMS_MAIL_CUSTOM_PASS", "custom")
+	if got := (mailcore.ServerConfig{PassEnv: "COMMS_MAIL_CUSTOM_PASS"}).Password(); got != "custom" {
 		t.Fatalf("passEnv %q", got)
 	}
 	a := mailcore.KeepExistingSecrets(

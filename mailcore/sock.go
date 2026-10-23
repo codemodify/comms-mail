@@ -12,17 +12,17 @@ import (
 
 // Env vars for comms-maild / comms-mail.
 const (
-	EnvMail = "UITK_MAIL"      // unset: empty LocalStore | memory | imap
-	EnvSock = "UITK_MAIL_SOCK" // Unix socket path
-	EnvHost = "UITK_MAIL_HOST"
-	EnvUser = "UITK_MAIL_USER"
-	EnvPass = "UITK_MAIL_PASS"
-	EnvTLS  = "UITK_MAIL_TLS"
-	EnvName = "UITK_MAIL_NAME"
+	EnvMail = "COMMS_MAIL"      // unset: empty LocalStore | memory | imap
+	EnvSock = "COMMS_MAIL_SOCK" // Unix socket path
+	EnvHost = "COMMS_MAIL_HOST"
+	EnvUser = "COMMS_MAIL_USER"
+	EnvPass = "COMMS_MAIL_PASS"
+	EnvTLS  = "COMMS_MAIL_TLS"
+	EnvName = "COMMS_MAIL_NAME"
 )
 
 // DefaultSocket is the comms-maild listen path.
-// UITK_MAIL_SOCK overrides; else $XDG_RUNTIME_DIR/comms-maild.sock;
+// COMMS_MAIL_SOCK overrides; else $XDG_RUNTIME_DIR/comms-maild.sock;
 // else /tmp/comms-maild-<uid>.sock.
 func DefaultSocket() string {
 	if p := os.Getenv(EnvSock); p != "" {
@@ -36,8 +36,8 @@ func DefaultSocket() string {
 
 // OpenStore selects the disk+IMAP/POP3 LocalStore, or MemoryStore when asked.
 //
-//	UITK_MAIL=memory|demo|mem  — seeded in-memory dogfood (explicit only)
-//	UITK_MAIL=imap             — LocalStore from env and/or mail.json
+//	COMMS_MAIL=memory|demo|mem  — seeded in-memory dogfood (explicit only)
+//	COMMS_MAIL=imap             — LocalStore from env and/or mail.json
 //	unset + config file        — LocalStore (real accounts)
 //	unset + no config          — empty LocalStore (no demo accounts)
 func OpenStore() (Store, error) {
@@ -65,14 +65,14 @@ func OpenStore() (Store, error) {
 			return NewLocalStore(cfg)
 		}
 		if os.Getenv(EnvMail) != "" {
-			return nil, fmt.Errorf("UITK_MAIL=%s: want memory or imap", os.Getenv(EnvMail))
+			return nil, fmt.Errorf("COMMS_MAIL=%s: want memory or imap", os.Getenv(EnvMail))
 		}
 		return NewLocalStore(MailConfig{})
 	}
 }
 
 // StartDemo runs comms-maild in-process on a temp socket with the seeded
-// MemoryStore (screenshots / UITK_MAIL=memory dogfood).
+// MemoryStore (screenshots / COMMS_MAIL=memory dogfood).
 func StartDemo(ctx context.Context) (socket string, stop func(), err error) {
 	return startStore(ctx, NewDemoStore())
 }

@@ -8,7 +8,7 @@
 // daemon. The three-pane desktop UI lives in the sibling mailui package.
 //
 // The default backend is an empty LocalStore (IMAP or POP3 + SMTP with a
-// disk cache). The seeded MemoryStore is UITK_MAIL=memory only.
+// disk cache). The seeded MemoryStore is COMMS_MAIL=memory only.
 package mailcore
 
 import (
@@ -359,11 +359,11 @@ type DaemonStatus struct {
 }
 
 // Store is the comms-maild backend. LocalStore is the default (IMAP+SMTP).
-// MemoryStore is UITK_MAIL=memory only. comms-mail never calls this.
+// MemoryStore is COMMS_MAIL=memory only. comms-mail never calls this.
 //
-// IMAP mapping (IMAPStore skeleton, UITK_MAIL=imap):
+// IMAP mapping (IMAPStore skeleton, COMMS_MAIL=imap):
 //
-//	Accounts     — LOGIN identity (UITK_MAIL_USER) + settings UI
+//	Accounts     — LOGIN identity (COMMS_MAIL_USER) + settings UI
 //	ListFolders  — LIST / SPECIAL-USE; map \Inbox \Sent \Trash \Junk \Drafts
 //	ListMessages — SELECT + FETCH 1:* (FLAGS RFC822.SIZE headers)
 //	GetMessage   — FETCH BODY.PEEK[HEADER] BODY.PEEK[TEXT]

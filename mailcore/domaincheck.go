@@ -90,7 +90,7 @@ func CachedDomain(domain string) (DomainReport, bool) {
 	return r, true
 }
 
-// resolverAddr is the DNS resolver to ask: UITK_MAIL_DNS's, else the
+// resolverAddr is the DNS resolver to ask: COMMS_MAIL_DNS's, else the
 // first nameserver in /etc/resolv.conf, with its port ("" none). A
 // variable for tests.
 var resolverAddr = func() string {

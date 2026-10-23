@@ -14,8 +14,8 @@ real mail.** The test suite must never touch a live IMAP or POP3 account.
 3. Do not call the destructive RPCs (`Delete`, `Junk`, `Archive`,
    `Expunge`, Empty Trash, `Move`, `Send`) against a real daemon.
 4. `mailcore.IsolateTestEnv` / `IsolateTestEnvTB` point XDG and
-   `UITK_MAIL_CONFIG` at a temp dir, force `UITK_MAIL=memory`, and unset
-   `UITK_MAIL_HOST` / `_USER` / `_PASS` / `_SOCK`.
+   `COMMS_MAIL_CONFIG` at a temp dir, force `COMMS_MAIL=memory`, and unset
+   `COMMS_MAIL_HOST` / `_USER` / `_PASS` / `_SOCK`.
    `mailcore.IsDisposableMailSocket` refuses any socket that is not a
    `StartDemo` temp path (a `comms-maild-*` directory).
 5. `cmd/comms-mail` run against a daemon you started by hand is **not** a

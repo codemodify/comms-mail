@@ -162,7 +162,7 @@ func newWindowFrom(t *testing.T, a *ui.Application, open func()) *ui.Window {
 }
 
 func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	cli := demoClient(t)
 	for _, look := range []struct {
 		name string

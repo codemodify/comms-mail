@@ -91,8 +91,8 @@ func accountFormOn(a *ui.Application, win *ui.Window, cli *mailcore.Client, base
 		"Passwords and sign-ins are kept encrypted, locked with your passphrase.\n" +
 			"OAuth (Google / Microsoft) is IMAP + SMTP only.\n" +
 			"Redirect: http://127.0.0.1:<port>/oauth/callback (loopback) or device code.\n" +
-			"Or set UITK_MAIL_OAUTH_GOOGLE_CLIENT_ID / UITK_MAIL_OAUTH_MS_CLIENT_ID.\n" +
-			"Optional: UITK_MAIL_PASS / passEnv still works if the password field is empty.",
+			"Or set COMMS_MAIL_OAUTH_GOOGLE_CLIENT_ID / COMMS_MAIL_OAUTH_MS_CLIENT_ID.\n" +
+			"Optional: COMMS_MAIL_PASS / passEnv still works if the password field is empty.",
 	)
 	status := widgets.NewStatusBar("IMAP or POP3 · Test connection · typed password or OAuth", mailcore.ConfigPath(), ui.Version())
 

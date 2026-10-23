@@ -69,7 +69,7 @@ func TestOpenPartClearsOldOpenedCopies(t *testing.T) {
 	st.mu.Lock()
 	st.WriteRawLocked(st.Messages[0], []byte("From: a@example.com\r\nSubject: s\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n--b\r\nContent-Type: text/plain\r\n\r\nhi\r\n--b\r\nContent-Type: text/plain; name=\"notes.txt\"\r\nContent-Disposition: attachment; filename=\"notes.txt\"\r\n\r\nnotes\r\n--b--\r\n"))
 	st.mu.Unlock()
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	if _, err := st.OpenPart(st.Messages[0].ID, "2"); err != nil {
 		t.Fatal(err)
 	}

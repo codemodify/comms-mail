@@ -59,7 +59,7 @@ func startLoopbackSession(t *testing.T, h *oauthHub, req oauthReq) (OAuthStart, 
 }
 
 func TestOAuthAuthorizeURLCarriesStateAndPKCE(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	dir := t.TempDir()
 	t.Setenv(EnvData, dir)
 	SetDefaultTokenStore(NewTokenStore(filepath.Join(dir, "secrets")))
@@ -95,7 +95,7 @@ func TestOAuthAuthorizeURLCarriesStateAndPKCE(t *testing.T) {
 }
 
 func TestOAuthCallbackRejectsForeignState(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	dir := t.TempDir()
 	t.Setenv(EnvData, dir)
 	SetDefaultTokenStore(NewTokenStore(filepath.Join(dir, "secrets")))
@@ -142,7 +142,7 @@ func TestOAuthCallbackRejectsForeignState(t *testing.T) {
 }
 
 func TestOAuthCallbackAcceptsMatchingStateOnce(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	dir := t.TempDir()
 	t.Setenv(EnvData, dir)
 	SetDefaultTokenStore(NewTokenStore(filepath.Join(dir, "secrets")))
@@ -191,7 +191,7 @@ func TestOAuthCallbackAcceptsMatchingStateOnce(t *testing.T) {
 }
 
 func TestOAuthCallbackEscapesProviderError(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	dir := t.TempDir()
 	t.Setenv(EnvData, dir)
 	SetDefaultTokenStore(NewTokenStore(filepath.Join(dir, "secrets")))

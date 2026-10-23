@@ -11,14 +11,17 @@ import (
 
 // Env extras for the real client.
 const (
-	EnvConfig   = "UITK_MAIL_CONFIG"
-	EnvData     = "UITK_MAIL_DATA"
-	EnvSMTPHost = "UITK_MAIL_SMTP"
-	EnvPassEnv  = "UITK_MAIL_PASS_ENV" // name of env var that holds the password
-	EnvXOAuth   = "UITK_MAIL_XOAUTH2"
+	EnvConfig   = "COMMS_MAIL_CONFIG"
+	EnvData     = "COMMS_MAIL_DATA"
+	EnvSMTPHost = "COMMS_MAIL_SMTP"
+	EnvPassEnv  = "COMMS_MAIL_PASS_ENV" // name of env var that holds the password
+	EnvXOAuth   = "COMMS_MAIL_XOAUTH2"
 	// EnvDNS is the DNS resolver a sender's domain is looked up with
 	// (host:port), instead of /etc/resolv.conf's first.
-	EnvDNS = "UITK_MAIL_DNS"
+	EnvDNS = "COMMS_MAIL_DNS"
+	// legacyEnvPass is EnvPass's name before the variables took the
+	// COMMS_MAIL_ prefix; a mail.json that names it means EnvPass.
+	legacyEnvPass = "UITK_MAIL_PASS"
 )
 
 // Incoming protocols persisted on each account.
@@ -85,7 +88,7 @@ func (a AccountConfig) Incoming() ServerConfig {
 // ServerConfig is a host + how to get the password.
 //
 //	"password" is stored in mail.json (mode 0600) — temporary plaintext
-//	"passEnv": "UITK_MAIL_PASS"  reads os.Getenv when password is empty
+//	"passEnv": "COMMS_MAIL_PASS"  reads os.Getenv when password is empty
 //	"user" may differ from the From address
 //
 // Connection security is one enum — see TLSMode and ServerConfig.Mode:
@@ -124,7 +127,7 @@ func (s ServerConfig) Password() string {
 		return p
 	}
 	name := strings.TrimSpace(s.PassEnv)
-	if name == "" {
+	if name == "" || name == legacyEnvPass {
 		name = EnvPass
 	}
 	return os.Getenv(name)
@@ -143,7 +146,7 @@ func ConfigDir() string {
 	return filepath.Join(os.TempDir(), "comms-mail-config")
 }
 
-// ConfigPath is the account file, ConfigDir/mail.json. UITK_MAIL_CONFIG
+// ConfigPath is the account file, ConfigDir/mail.json. COMMS_MAIL_CONFIG
 // overrides it with an exact path (test isolation, a second profile).
 func ConfigPath() string {
 	if p := os.Getenv(EnvConfig); p != "" {
@@ -154,7 +157,7 @@ func ConfigPath() string {
 
 // DataDir is the on-disk cache root: the SQLite database, the raw .eml
 // blobs, OAuth tokens and opened-attachment copies — everything a re-sync
-// can rebuild. UITK_MAIL_DATA overrides it; otherwise ~/.data/comms-mail, a
+// can rebuild. COMMS_MAIL_DATA overrides it; otherwise ~/.data/comms-mail, a
 // sibling of ConfigDir. This is deliberately not the XDG ~/.local/share
 // default: the project keeps config and data as .config and .data beside
 // each other under home.
@@ -292,7 +295,7 @@ func sanitizeServerSecret(s *ServerConfig) {
 
 func envVarName(s string) string {
 	s = strings.TrimSpace(s)
-	if s == "" {
+	if s == "" || s == legacyEnvPass {
 		return EnvPass
 	}
 	for i, c := range s {
@@ -425,12 +428,12 @@ func LoadConfig() (MailConfig, error) {
 	return cfg, nil
 }
 
-// ConfigFromEnv builds a single-account config from UITK_MAIL_* (no file).
+// ConfigFromEnv builds a single-account config from COMMS_MAIL_* (no file).
 func ConfigFromEnv() (MailConfig, error) {
 	host := strings.TrimSpace(os.Getenv(EnvHost))
 	user := strings.TrimSpace(os.Getenv(EnvUser))
 	if host == "" || user == "" {
-		return MailConfig{}, fmt.Errorf("imap: set UITK_MAIL_HOST and UITK_MAIL_USER (or a config file)")
+		return MailConfig{}, fmt.Errorf("imap: set COMMS_MAIL_HOST and COMMS_MAIL_USER (or a config file)")
 	}
 	name := strings.TrimSpace(os.Getenv(EnvName))
 	if name == "" {

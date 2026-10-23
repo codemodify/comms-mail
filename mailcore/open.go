@@ -10,9 +10,9 @@ import (
 // comms-maild writes an attachment cache file, and reports whether it did.
 // It does not without a display — a daemon started at login by systemd may
 // have none, and then the window, which always has one, opens the file
-// (Client.OpenPart) — or when UITK_MAIL_NO_OPEN is set (tests / headless).
+// (Client.OpenPart) — or when COMMS_MAIL_NO_OPEN is set (tests / headless).
 func openCachedFile(path string) bool {
-	if path == "" || os.Getenv("UITK_MAIL_NO_OPEN") != "" {
+	if path == "" || os.Getenv("COMMS_MAIL_NO_OPEN") != "" {
 		return false
 	}
 	if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" && runtime.GOOS == "linux" {

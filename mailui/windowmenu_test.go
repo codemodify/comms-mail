@@ -35,7 +35,7 @@ func hasWindowMenu(bs []platform.CaptionButton) bool {
 // changing): the button is left out for the whole app, so a window opened
 // before the mail window loses it too.
 func TestNoWindowMenuButton(t *testing.T) {
-	t.Setenv("UITK_MAIL_NO_OPEN", "1")
+	t.Setenv("COMMS_MAIL_NO_OPEN", "1")
 	cli := demoClient(t)
 	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	// A desktop whose captions have the button (KWin's default does).
