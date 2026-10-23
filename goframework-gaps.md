@@ -11,32 +11,27 @@ v0.23.21 with nothing open but #52 (no printing, declined and settled).
 That file is in git history (last at f8f7cdc); comments and BACKLOG.md
 entries that cite "uitoolkit-gaps.md #N" mean that file.
 
-Last checked against the **goframework.io workspace at 85a3be7**
-(2026-10-23 18:53), unpublished. comms-mail builds against a checkout at
+Last checked against the **goframework.io workspace at 2c0be7b**
+(2026-10-23 18:58), unpublished. comms-mail builds against a checkout at
 ~/go/src/goframework.io, offline (`GOPROXY=off`), through go.mod replace
-lines that `make replace` writes (244 modules, unchanged at 85a3be7). It
+lines that `make replace` writes (244 modules, unchanged at 2c0be7b). It
 was ported against 3248771. The commits since then change only documents
 and the site's tools, no module's Go code or go.mod. On 85a3be7
-comms-mail builds, vets and passes all its tests (run uncached). Its thirteen screenshots match the ones
+comms-mail builds, vets and passes all its tests (run uncached); 2c0be7b
+changes only the porting guide. Its thirteen screenshots match the ones
 uitoolkit v0.23.21 drew pixel for pixel, except where the demo's own text
 changed and where the version reads "(devel)". On the KDE Plasma desktop
 it runs, and its tray item and menu register.
 
 ## Open
 
-### 1. The porting guide names comms-mail's old variables
-desktop-ui-porting.md:480 says applications that borrowed the prefix
-(`UITK_MAIL_*`, `UITK_CHAT_*`) keep it as their own. Lines 504–505 say
-comms-mail reads `UITK_MAIL_NO_NOTIFY` and `UITK_MAIL_NO_OPEN` itself.
-Since 2026-10-23 comms-mail's variables are `COMMS_MAIL_*`
-(`COMMS_MAIL_NO_NOTIFY`, `COMMS_MAIL_NO_OPEN`, `COMMS_MAIL_SOCK`, …), and no
-name with UITK is left in it. Nothing else in the workspace sets the old
-names (searched the .md, .py, .sh and .go files outside old-*).
-**Fix asked for:** the two rows and the sentence name `COMMS_MAIL_*` for
-comms-mail, or drop it from the example.
+None.
 
-Found 2026-10-23 against 3248771. Still as described at 85a3be7, whose
-todo.md lists it as being fixed in the guide.
+## Fixed
+
+| # | Gap | Fixed in | Change |
+| --- | --- | --- | --- |
+| 1 | The porting guide named comms-mail's old `UITK_MAIL_*` variables (found against 3248771) | 2c0be7b | desktop-ui-porting.md:481–483 and 506–507 name comms-mail's own `COMMS_MAIL_*`; comms-chat-lan's `UITK_CHAT_*` is the example of an application's own prefix |
 
 ## Not gaps
 
