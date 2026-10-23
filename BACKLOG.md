@@ -162,4 +162,13 @@ the file that preceded it, in git history (last at f8f7cdc).
   password fields could use it; the passphrase still crosses the socket
   to comms-maild as JSON text, so the protocol would carry bytes too.
 
-
+## Found in the end-to-end run (2026-10-23)
+- **Write's Attach is still a stub** (mailui/compose.go:542, "Attach file
+  (stub)"): the window shows no list of what is attached and nothing can
+  be taken off again; only the status bar says "Attached <path>". The
+  file dialog opens in the process's working folder, not the home folder.
+  The message does go out with the file.
+- **A move waiting for Undo is missing from where it went**: it leaves
+  the source folder at once, but reaches the destination only when it is
+  committed (mailui/ui.go:1884–1907), so opening the destination during
+  the undo window shows it without the message.
