@@ -4,10 +4,10 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 func (s *session) attachTray() {
@@ -29,7 +29,7 @@ func (s *session) attachTray() {
 			Tooltip:    "Mail",
 			MenuChrome: platform.HostMenu,
 			Icon:       trayIcon(false),
-			Menu: app.StatusMenuFromItems([]*widgets.MenuItem{
+			Menu: ui.StatusMenuFromItems([]*widgets.MenuItem{
 				widgets.ItemIcon(style.IconMail, "Show Mail", s.showMain),
 				widgets.Sep(),
 				widgets.ItemIcon(style.IconQuit, "Quit", s.quitFromTray),
@@ -72,7 +72,7 @@ func (s *session) statusItem() platform.StatusItem {
 }
 
 // newMailNotifier makes the window's notifier (a seam for tests).
-var newMailNotifier = func(a *app.Application) mailNotifier {
+var newMailNotifier = func(a *ui.Application) mailNotifier {
 	return a.NewNotifier(platform.NotifierOptions{AppName: "Mail", DesktopEntry: "comms-mail"})
 }
 
@@ -127,7 +127,7 @@ func (s *session) newMailWaiting() bool {
 
 // watchFocus puts the plain logo back in the tray when win takes the
 // focus: new mail has been seen.
-func (s *session) watchFocus(win *app.Window) {
+func (s *session) watchFocus(win *ui.Window) {
 	if win == nil {
 		return
 	}

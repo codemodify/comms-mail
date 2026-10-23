@@ -5,19 +5,18 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/diag"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/diag"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // runSearch opens the search dialog with Ctrl+F, types query, sets All
 // folders, and presses Search.
-func runSearch(t *testing.T, a *app.Application, w *app.Window, query string, all bool) {
+func runSearch(t *testing.T, a *ui.Application, w *ui.Window, query string, all bool) {
 	t.Helper()
 	w.Inject(platform.Event{Kind: platform.EventKeyDown, Key: platform.KeyF, Mods: platform.ModCtrl})
 	a.PumpOnce()
@@ -124,8 +123,8 @@ func TestMailTitleBarChrome(t *testing.T) {
 		}
 	}
 	for _, b := range buttons {
-		img := paintengine2d.NewImage(int(b.Bounds().Dx()), int(b.Bounds().Dy()))
-		b.Paint(paintengine2d.NewContext(img))
+		img := paint2d.NewImage(int(b.Bounds().Dx()), int(b.Bounds().Dy()))
+		b.Paint(paint2d.NewContext(img))
 		if ink := cellInk(img, 0, img.Width); ink < 20 {
 			t.Fatalf("button %q draws nothing (%d)", b.AccessibleName(), ink)
 		}
@@ -178,7 +177,7 @@ func TestMailTitleBarChrome(t *testing.T) {
 // overrules a title bar, so no such finding is the test.
 func TestTitleBarIsTheCaptionUnderAStackedPack(t *testing.T) {
 	if !style.ThemePackAvailable("kde1") {
-		t.Skip("kde1 is not in this build (-tags theme_engine_all)")
+		t.Skip("kde1 is not in this build (it imports desktop-ui-themes-all)")
 	}
 	var look style.LookAndFeel
 	for _, p := range style.ListBuiltinThemes() {
@@ -234,7 +233,7 @@ func TestTitleBarUnderACaptionTab(t *testing.T) {
 		}
 	}
 	if look == nil {
-		t.Skip("beos is not in this build (-tags theme_engine_all)")
+		t.Skip("beos is not in this build (it imports desktop-ui-themes-all)")
 	}
 	if !style.DecorationOf(look, style.DecorationState{Active: true}).CaptionFits {
 		t.Skip("beos no longer fits its caption to its title")
@@ -274,19 +273,19 @@ func TestTitleBarMarksAtCompact(t *testing.T) {
 		}
 	}
 	if look == nil {
-		t.Skip("metal-ocean is not in this build (-tags theme_engine_all)")
+		t.Skip("metal-ocean is not in this build (it imports desktop-ui-themes-all)")
 	}
 	s, a, _, done := openMailLookSession(t, look, false, AppOptions{})
 	defer done()
 	lk := a.Look()
 	for _, b := range []*widgets.IconButton{&s.appBtn.IconButton, s.fetchBtn, s.writeBtn, s.searchBtn} {
 		w, h := int(b.Bounds().Dx()), int(b.Bounds().Dy())
-		with := paintengine2d.NewImage(w, h)
-		b.Paint(paintengine2d.NewContext(with))
+		with := paint2d.NewImage(w, h)
+		b.Paint(paint2d.NewContext(with))
 		icon := b.Icon
 		b.Icon = style.IconNone
-		without := paintengine2d.NewImage(w, h)
-		b.Paint(paintengine2d.NewContext(without))
+		without := paint2d.NewImage(w, h)
+		b.Paint(paint2d.NewContext(without))
 		b.Icon = icon
 		x0, x1, y0, y1 := w, -1, h, -1
 		for y := 0; y < h; y++ {
@@ -386,10 +385,10 @@ func TestMessageTabKeepsFolderPane(t *testing.T) {
 	}
 }
 
-var _ = uitoolkit.Version
+var _ = ui.Version
 
 // appMenuButton is the app menu's button in the title bar.
-func appMenuButton(t *testing.T, w *app.Window) *widgets.MenuButton {
+func appMenuButton(t *testing.T, w *ui.Window) *widgets.MenuButton {
 	t.Helper()
 	var btn *widgets.MenuButton
 	walkAll(mailTree(w), func(c widget.Component) {
@@ -405,7 +404,7 @@ func appMenuButton(t *testing.T, w *app.Window) *widgets.MenuButton {
 
 // openAppMenu opens the app menu from its button and returns it; it stays
 // open.
-func openAppMenu(t *testing.T, a *app.Application, w *app.Window) *widgets.PopupMenu {
+func openAppMenu(t *testing.T, a *ui.Application, w *ui.Window) *widgets.PopupMenu {
 	t.Helper()
 	if !appMenuButton(t, w).Open() {
 		t.Fatal("the app menu did not open")
@@ -419,7 +418,7 @@ func openAppMenu(t *testing.T, a *app.Application, w *app.Window) *widgets.Popup
 }
 
 // appMenuRows is the app menu's rows, the menu closed again.
-func appMenuRows(t *testing.T, a *app.Application, w *app.Window) []*widgets.MenuItem {
+func appMenuRows(t *testing.T, a *ui.Application, w *ui.Window) []*widgets.MenuItem {
 	t.Helper()
 	pop := openAppMenu(t, a, w)
 	items := pop.Items

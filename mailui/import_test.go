@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
-func windowChecks(w *app.Window) []*widgets.Checkbox {
+func windowChecks(w *ui.Window) []*widgets.Checkbox {
 	var out []*widgets.Checkbox
 	widget.Walk(w.Content(), func(c widget.Component) {
 		if cb, ok := c.(*widgets.Checkbox); ok {
@@ -43,7 +42,7 @@ func TestImportWindowPerClient(t *testing.T) {
 		},
 		{Source: "Geary", Accounts: []mailcore.ImportedAccount{{Source: "Geary", Account: mailcore.AccountConfig{Address: "g@gmail.com", Protocol: "imap", Provider: "google"}}}},
 	}
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w := openImportWindow(a, cli, sources, map[string]bool{"already@here.com": true}, nil)
 	if w == nil {
 		t.Fatal("no window")
@@ -98,7 +97,7 @@ func TestImportWindowPerClient(t *testing.T) {
 // With nothing found, the window still opens, to add a folder by hand.
 func TestImportWindowEmptyOffersFolder(t *testing.T) {
 	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w := openImportWindow(a, cli, nil, nil, nil)
 	defer w.Close()
 	a.PumpOnce()

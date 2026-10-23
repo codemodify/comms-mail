@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // The attachment strip is the same height for four attachments or twelve

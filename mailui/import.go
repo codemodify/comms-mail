@@ -6,16 +6,16 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/widget"
 )
 
 // startImport scans the other mail clients installed for this user, then
 // opens the import window. Accounts already set up here are left out.
 // onDone runs after an import so the caller can refresh.
-func startImport(a *app.Application, win *app.Window, cli *mailcore.Client, existing []mailcore.Account, onDone func()) {
+func startImport(a *ui.Application, win *ui.Window, cli *mailcore.Client, existing []mailcore.Account, onDone func()) {
 	have := map[string]bool{}
 	for _, acc := range existing {
 		have[strings.ToLower(acc.Address)] = true
@@ -58,7 +58,7 @@ type importOutcome struct {
 // openImportWindow lists what each client offers — its account settings and
 // its on-disk mail, each behind its own checkbox — and lets the user add a
 // folder or mailbox file of their own.
-func openImportWindow(a *app.Application, cli *mailcore.Client, sources []mailcore.ImportSource, have map[string]bool, onDone func()) *app.Window {
+func openImportWindow(a *ui.Application, cli *mailcore.Client, sources []mailcore.ImportSource, have map[string]bool, onDone func()) *ui.Window {
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: "Import", Width: 660, Height: 600, MinWidth: 500, MinHeight: 440,
 	})

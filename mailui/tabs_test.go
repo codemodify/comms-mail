@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/richtext"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui-richtext"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 func press(s *session, k platform.Key, mods platform.Modifiers) bool {

@@ -5,14 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // Educate is one picture of a message's route, its steps numbered 1 to 8
@@ -30,7 +29,7 @@ import (
 // window, a middling one and the narrowest the picture takes, its box as
 // tall as what it draws.
 func TestEducateIsOnePicture(t *testing.T) {
-	probe := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	probe := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	pw, err := probe.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 600, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +44,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 	}
 	for _, width := range []int{narrowest, 460, 560} {
 		for _, les := range scenarios() {
-			a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+			a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 			w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: width, Height: 900, Headless: true})
 			if err != nil {
 				t.Fatal(err)
@@ -159,7 +158,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 			// are — with what it is, and the line it is on.
 			type box struct {
 				what   string
-				r      paintengine2d.Rect
+				r      paint2d.Rect
 				radius float32 // a circle's, in r
 				on     int     // the step whose line it is on, 0 for none
 			}
@@ -178,7 +177,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 				if strings.HasSuffix(tx.text, "…") {
 					t.Errorf("at %d: %q is cut", width, tx.text)
 				}
-				texts = append(texts, box{"words " + tx.text, paintengine2d.XYWH(tx.at.X, tx.at.Y, font.Advance(tx.text), font.Height()), 0, 0})
+				texts = append(texts, box{"words " + tx.text, paint2d.XYWH(tx.at.X, tx.at.Y, font.Advance(tx.text), font.Height()), 0, 0})
 			}
 			seen := map[int]int{}
 			onLine := map[int]bool{2: true, 4: true, 6: true, 8: true}
@@ -188,7 +187,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 				if onLine[mk.n] {
 					on = mk.n
 				}
-				marks = append(marks, box{"number " + string(rune('0'+mk.n)), paintengine2d.XYWH(mk.x-m/2, mk.y-m/2, m, m), m / 2, on})
+				marks = append(marks, box{"number " + string(rune('0'+mk.n)), paint2d.XYWH(mk.x-m/2, mk.y-m/2, m, m), m / 2, on})
 			}
 			for n := 1; n <= 8; n++ {
 				if seen[n] != 1 {
@@ -204,7 +203,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 			// A stop is where the message would have been, on step 6's line.
 			stop := style.Dip(lk, stopSize)
 			for _, st := range g.stops {
-				envs = append(envs, box{"stop", paintengine2d.XYWH(st.X-stop/2, st.Y-stop/2, stop, stop), stop / 2, 6})
+				envs = append(envs, box{"stop", paint2d.XYWH(st.X-stop/2, st.Y-stop/2, stop, stop), stop / 2, 6})
 			}
 			if (len(g.stops) == 1) != rejected(les) || len(g.stops) > 1 {
 				t.Errorf("at %d, %+v: %d stops", width, les, len(g.stops))
@@ -290,7 +289,7 @@ func TestEducateIsOnePicture(t *testing.T) {
 					t.Errorf("at %d, %+v: step %d's arrow is not green with TLS, red without", width, les, n)
 				}
 				for _, mk := range g.marks {
-					if mk.n == n && distToSegment(paintengine2d.Pt(mk.x, mk.y), l.a, l.b) > 0.5 {
+					if mk.n == n && distToSegment(paint2d.Pt(mk.x, mk.y), l.a, l.b) > 0.5 {
 						t.Errorf("at %d: %d is not on its line", width, n)
 					}
 				}
@@ -522,7 +521,7 @@ func lessons() []lesson {
 // choose sets page's ticks to l: the first lesson's are checked first —
 // nothing done to the message, no TLS, the domains doing all they can —
 // and MTA-STS and DANE can be ticked only with TLS.
-func choose(t *testing.T, a *app.Application, page widget.Component, l lesson) {
+func choose(t *testing.T, a *ui.Application, page widget.Component, l lesson) {
 	t.Helper()
 	boxes := map[string]*widgets.Checkbox{}
 	widget.Walk(page, func(c widget.Component) {
@@ -564,14 +563,14 @@ func choose(t *testing.T, a *app.Application, page widget.Component, l lesson) {
 }
 
 // circleMeets says the circle at c of radius rad and r share a point.
-func circleMeets(c paintengine2d.Point, rad float32, r paintengine2d.Rect) bool {
+func circleMeets(c paint2d.Point, rad float32, r paint2d.Rect) bool {
 	nx := max(r.Min.X, min(c.X, r.Max.X))
 	ny := max(r.Min.Y, min(c.Y, r.Max.Y))
-	return c.Sub(paintengine2d.Pt(nx, ny)).Len() < rad
+	return c.Sub(paint2d.Pt(nx, ny)).Len() < rad
 }
 
 // distToSegment is how far p is from the segment a–b.
-func distToSegment(p, a, b paintengine2d.Point) float32 {
+func distToSegment(p, a, b paint2d.Point) float32 {
 	ab := b.Sub(a)
 	t := p.Sub(a).Dot(ab) / ab.Dot(ab)
 	t = max(0, min(1, t))
@@ -581,7 +580,7 @@ func distToSegment(p, a, b paintengine2d.Point) float32 {
 // The picture is as big whatever is ticked — its rows and columns where
 // they were — so ticking does not move what is under it.
 func TestEducateKeepsItsSize(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 600, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -608,7 +607,7 @@ func TestEducateKeepsItsSize(t *testing.T) {
 // and scroll with them when it does not,
 // changing back and forth as the window is made taller and shorter.
 func TestEducatePinsThePicture(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 900, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -840,7 +839,7 @@ func TestEducateSaysWhatGoesWrong(t *testing.T) {
 	}
 
 	// On the page: under the ticks, red, changing with them.
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Educate", Width: 560, Height: 900, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -888,7 +887,7 @@ func TestEducateNumbersAreWhiteOnBlue(t *testing.T) {
 			t.Errorf("%s: the disc %v is not the accent %v darkened", lk.Name(), disc, a)
 		}
 	}
-	for _, c := range []paintengine2d.Color{paintengine2d.RGB(0.72, 0.81, 0.9), paintengine2d.RGB(1, 1, 0.4), paintengine2d.RGB(0, 0, 0.5)} {
+	for _, c := range []paint2d.Color{paint2d.RGB(0.72, 0.81, 0.9), paint2d.RGB(1, 1, 0.4), paint2d.RGB(0, 0, 0.5)} {
 		if contrast(white, whiteOn(c)) < 4.5 {
 			t.Errorf("white on %v: %.1f:1", whiteOn(c), contrast(white, whiteOn(c)))
 		}

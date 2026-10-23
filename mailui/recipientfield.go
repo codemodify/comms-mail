@@ -5,15 +5,15 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // recipientField is a To / Cc / Bcc field. Every recipient is a chip
-// (uitoolkit's TokenField) with a cross that takes it out; a comma, a
+// (desktop-ui-widgets' TokenField) with a cross that takes it out; a comma, a
 // semicolon or Return ends one, Backspace in the empty editor takes the
 // last one back to fix it, and leaving the field keeps what was typed.
 //
@@ -277,7 +277,7 @@ func (rf *recipientField) showPopup() {
 	}
 	o := widget.DeviceOrigin(rf)
 	b := rf.LocalBounds()
-	anchor := paintengine2d.XYWH(o.X, o.Y, b.Dx(), b.Dy())
+	anchor := paint2d.XYWH(o.X, o.Y, b.Dx(), b.Dy())
 	widget.PlacePopupForAnchor(rf, rf.pop, anchor, b.Dx(), 2)
 	widget.ShowPopup(rf, rf.pop)
 	rf.pop.Invalidate()
@@ -347,13 +347,13 @@ func (rf *recipientField) moveSel(d int) {
 	rf.list.Invalidate()
 }
 
-func (rf *recipientField) Measure(c layout.Constraints) paintengine2d.Point {
+func (rf *recipientField) Measure(c layout.Constraints) paint2d.Point {
 	return rf.chips.Measure(c)
 }
 
-func (rf *recipientField) Arrange(r paintengine2d.Rect) {
+func (rf *recipientField) Arrange(r paint2d.Rect) {
 	rf.SetBounds(r)
-	rf.chips.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+	rf.chips.Arrange(paint2d.XYWH(0, 0, r.Dx(), r.Dy()))
 }
 
 // suggestPopup is the suggestion list on the window's popup layer. It
@@ -364,14 +364,14 @@ type suggestPopup struct {
 	rf *recipientField
 }
 
-func (p *suggestPopup) Measure(c layout.Constraints) paintengine2d.Point {
+func (p *suggestPopup) Measure(c layout.Constraints) paint2d.Point {
 	h := p.rf.list.HeightForRows(len(p.rf.items))
-	return c.Constrain(paintengine2d.Pt(p.rf.LocalBounds().Dx(), h))
+	return c.Constrain(paint2d.Pt(p.rf.LocalBounds().Dx(), h))
 }
 
-func (p *suggestPopup) Arrange(r paintengine2d.Rect) {
+func (p *suggestPopup) Arrange(r paint2d.Rect) {
 	p.SetBounds(r)
-	p.rf.list.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+	p.rf.list.Arrange(paint2d.XYWH(0, 0, r.Dx(), r.Dy()))
 }
 
 func (p *suggestPopup) KeyPress(e widget.KeyEvent) bool { return p.rf.listKey(e) }

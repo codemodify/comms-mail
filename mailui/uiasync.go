@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/codemodify/uitoolkit/app"
+	"goframework.io/desktop-ui"
 )
 
 // Off-thread RPC plumbing for the Mail window.
@@ -45,7 +45,7 @@ func (s *session) async(work func() (any, error), done func(any, error)) {
 }
 
 // appLooping reports whether a is pumping its event loop.
-func appLooping(a *app.Application) bool {
+func appLooping(a *ui.Application) bool {
 	return a.Looping()
 }
 
@@ -122,7 +122,7 @@ func (r *refreshCoalescer) stop() {
 }
 
 // postUI runs fn on the UI goroutine of a (possibly nil) Application.
-func postUI(a *app.Application, fn func()) {
+func postUI(a *ui.Application, fn func()) {
 	if fn == nil {
 		return
 	}
@@ -135,7 +135,7 @@ func postUI(a *app.Application, fn func()) {
 
 // runAsync is the session-free form of session.async, for windows (Compose,
 // Add Account) that hold an Application but no session.
-func runAsync(a *app.Application, work func() (any, error), done func(any, error)) {
+func runAsync(a *ui.Application, work func() (any, error), done func(any, error)) {
 	if work == nil {
 		return
 	}

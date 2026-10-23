@@ -4,10 +4,10 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/graphics-paint2d"
 )
 
 // S stars the message and S again takes the star off; J moves it to Junk.
@@ -68,7 +68,7 @@ func TestMessageMenu(t *testing.T) {
 	s, _, w, done := openMailLookSession(t, style.DarkLook(), false, AppOptions{})
 	defer done()
 	s.selected = []mailcore.MessageID{s.rows[0].ID}
-	s.messageMenu(s.table, paintengine2d.Pt(10, 10))
+	s.messageMenu(s.table, paint2d.Pt(10, 10))
 	pop, ok := w.Popup().(*widgets.PopupMenu)
 	if !ok {
 		t.Fatal("no menu")

@@ -5,15 +5,15 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // promptField is the text field of the prompt on w's overlay layer, or
 // nil when there is no overlay or it has no field (a warning).
-func promptField(w *app.Window) *widgets.TextField {
+func promptField(w *ui.Window) *widgets.TextField {
 	var f *widgets.TextField
 	if o := w.Overlay(); o != nil {
 		widget.Walk(o, func(c widget.Component) {
@@ -26,7 +26,7 @@ func promptField(w *app.Window) *widgets.TextField {
 }
 
 // pressPrimary presses the default button of what is on w's overlay.
-func pressPrimary(t *testing.T, a *app.Application, w *app.Window) {
+func pressPrimary(t *testing.T, a *ui.Application, w *ui.Window) {
 	t.Helper()
 	var ok *widgets.Button
 	widget.Walk(w.Overlay(), func(c widget.Component) {
@@ -44,7 +44,7 @@ func pressPrimary(t *testing.T, a *app.Application, w *app.Window) {
 }
 
 // fillAndSubmit opens the prompt, types text into it and presses OK.
-func fillAndSubmit(t *testing.T, a *app.Application, w *app.Window, open func(), text string) {
+func fillAndSubmit(t *testing.T, a *ui.Application, w *ui.Window, open func(), text string) {
 	t.Helper()
 	open()
 	a.PumpOnce()

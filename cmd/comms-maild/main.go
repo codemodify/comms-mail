@@ -8,7 +8,7 @@
 //	comms-maild install     # start at every login (systemd user unit, or XDG autostart)
 //	comms-maild uninstall   # stop starting at login
 //	UITK_MAIL=memory comms-maild   # seeded demo store
-//	# real account: File -> Add Account in the UI, or ~/.config/uitoolkit/mail.json
+//	# real account: File -> Add Account in the UI, or ~/.config/comms-mail/mail.json
 //	UITK_MAIL_PASS=secret comms-maild
 package main
 

@@ -32,7 +32,7 @@ func TestInboxNewestIsWelcome(t *testing.T) {
 	if len(all) == 0 {
 		t.Fatal("empty")
 	}
-	if all[0].Subject != "Welcome to Mail on uitoolkit" {
+	if all[0].Subject != "Welcome to Mail on goframework.io" {
 		t.Fatalf("first %q date %v", all[0].Subject, all[0].Date)
 	}
 }

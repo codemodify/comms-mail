@@ -1,6 +1,6 @@
 // Package mailui is comms-mail's desktop UI: the three-pane window, the
 // compose, account, preferences and filter dialogs, the tray item and the
-// screenshot harness. It is built on github.com/codemodify/uitoolkit.
+// screenshot harness. It is built on goframework.io/desktop-ui.
 //
 // It talks to the daemon only through a mailcore.Client over a Unix
 // socket, and never speaks IMAP, POP3 or SMTP itself.
@@ -18,14 +18,13 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // LayoutMode is Thunderbird’s View → Layout.
@@ -57,7 +56,7 @@ type AppOptions struct {
 }
 
 // MailApp starts an in-process comms-maild (MemoryStore) and the UI client.
-func MailApp(a *app.Application, win *app.Window) widget.Component {
+func MailApp(a *ui.Application, win *ui.Window) widget.Component {
 	sock, _, err := mailcore.StartDemo(context.Background())
 	if err != nil {
 		return widgets.NewLabel("comms-maild: " + err.Error())
@@ -70,7 +69,7 @@ func MailApp(a *app.Application, win *app.Window) widget.Component {
 }
 
 // Open builds the Mail chrome against a comms-maild Client (no Store / IMAP).
-func Open(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOptions) widget.Component {
+func Open(a *ui.Application, win *ui.Window, cli *mailcore.Client, opts AppOptions) widget.Component {
 	noWindowMenu(a)
 	// The desktop's reduced motion applies: comms-mail has no setting of
 	// its own for it, and it is there for people whom movement makes ill.
@@ -90,10 +89,10 @@ type session struct {
 	// vaultAsked: the window has checked for a locked daemon or passwords
 	// in plain text (checkVault); unlockWin is the unlock prompt, while up.
 	vaultAsked bool
-	unlockWin  *app.Window
+	unlockWin  *ui.Window
 
-	app  *app.Application
-	win  *app.Window
+	app  *ui.Application
+	win  *ui.Window
 	cli  *mailcore.Client
 	opts AppOptions
 
@@ -167,7 +166,7 @@ type session struct {
 	// images holds the pictures HTML mail showed (cid: parts by message,
 	// remote ones by URL) and the senders whose remote images load
 	// without asking.
-	images     map[string]*paintengine2d.Image
+	images     map[string]*paint2d.Image
 	imgSenders map[string]bool
 	// folderNames names each folder, for the rows of a list that mixes
 	// folders (search, unified views).
@@ -195,7 +194,7 @@ type session struct {
 	pendingRefresh atomic.Bool
 }
 
-func newSession(a *app.Application, win *app.Window, cli *mailcore.Client, opts AppOptions) *session {
+func newSession(a *ui.Application, win *ui.Window, cli *mailcore.Client, opts AppOptions) *session {
 	s := &session{
 		app: a, win: win, cli: cli, opts: opts,
 		sortCol: colWhen, sortAsc: false, online: true,
@@ -263,7 +262,7 @@ func (s *session) applyLook() {
 }
 
 // setPalette makes comms-mail's own theme the plain light or dark one
-// (look.json, shared with every uitoolkit app, is not touched).
+// (look.json, shared with every desktop-ui app, is not touched).
 func (s *session) setPalette(light bool) {
 	theme := style.ThemeDark
 	if light {
@@ -286,7 +285,7 @@ func (s *session) rebuild() {
 func (s *session) build() widget.Component {
 	s.applyLook()
 	if s.opts.ShowStatusBar {
-		s.status = widgets.NewStatusBar("Ready.", "", "Offline demo", "v"+uitoolkit.Version)
+		s.status = widgets.NewStatusBar("Ready.", "", "Offline demo", ui.Version())
 	} else {
 		s.status = nil
 	}
@@ -318,7 +317,7 @@ func (s *session) build() widget.Component {
 	// Inside the selection the menu acts on every selected message; on a row
 	// outside it, on that row alone (the table's right-click does the same,
 	// this covers callers that open the menu directly).
-	s.table.OnContext = func(i int, p paintengine2d.Point) {
+	s.table.OnContext = func(i int, p paint2d.Point) {
 		if i >= 0 && i < len(s.rows) && !s.table.IsSelected(i) {
 			s.clickRow(i, false)
 		}
@@ -337,7 +336,7 @@ func (s *session) build() widget.Component {
 	s.cards.SetAccessibleName("Messages")
 	s.cards.Mode = widgets.SelectExtended
 	s.cards.OnSelectionChange = func(rows []int) { s.viewSelection(rows, s.cards.Selected) }
-	s.cards.OnContext = func(i int, p paintengine2d.Point) {
+	s.cards.OnContext = func(i int, p paint2d.Point) {
 		if i >= 0 && i < len(s.rows) && !s.cards.IsSelected(i) {
 			s.clickRow(i, false)
 		}
@@ -425,7 +424,7 @@ func (s *session) build() widget.Component {
 
 	// The window's title bar: empty over the folder pane, then the menu,
 	// Fetch, Write and Search and the tabs, starting where the pages do.
-	// It is the caption of the frame uitoolkit draws (caption buttons at
+	// It is the caption of the frame desktop-ui draws (caption buttons at
 	// the desktop's sides, free space — the empty part included — moves
 	// the window), or the first row under the desktop's own frame.
 	head := widgets.NewHeaderBar([]widget.Component{s.titleButtons()}, s.tabs, nil)
@@ -535,7 +534,7 @@ func (s *session) notifyMenuItems() *widgets.MenuItem {
 	)
 }
 
-func (s *session) tagPopup(from widget.Component, p paintengine2d.Point) {
+func (s *session) tagPopup(from widget.Component, p paint2d.Point) {
 	names := s.tagNames()
 	items := make([]*widgets.MenuItem, 0, len(names))
 	for _, t := range names {
@@ -547,7 +546,7 @@ func (s *session) tagPopup(from widget.Component, p paintengine2d.Point) {
 
 // messageMenu is the right-click menu on a message; every row has an
 // icon.
-func (s *session) messageMenu(from widget.Component, p paintengine2d.Point) {
+func (s *session) messageMenu(from widget.Component, p paint2d.Point) {
 	star := "Star"
 	if m, ok := s.primary(); ok && m.Starred {
 		star = "Unstar"
@@ -628,7 +627,7 @@ var colSort = [...]int{
 }
 
 // starColor is a starred message's star.
-var starColor = paintengine2d.RGB(0.95, 0.68, 0.1)
+var starColor = paint2d.RGB(0.95, 0.68, 0.1)
 
 func (s *session) cellText(row, col int) string {
 	if row < 0 || row >= len(s.rows) {
@@ -660,8 +659,8 @@ func (s *session) cellText(row, col int) string {
 // cellIcon is a row's marks: the filled star, the paperclip, the status
 // (the unread dot, else forwarded or replied) and the muted bell before
 // the topic. Unread is also the row in bold.
-func (s *session) cellIcon(row, col int) (style.ToolIcon, paintengine2d.Color) {
-	var none paintengine2d.Color
+func (s *session) cellIcon(row, col int) (style.ToolIcon, paint2d.Color) {
+	var none paint2d.Color
 	if row < 0 || row >= len(s.rows) {
 		return style.IconNone, none
 	}
@@ -987,7 +986,7 @@ func (s *session) wireFolderTree(tv *widgets.TreeView) {
 			s.openAccountInbox(acct)
 		}
 	}
-	tv.OnContext = func(n *widgets.TreeNode, p paintengine2d.Point) {
+	tv.OnContext = func(n *widgets.TreeNode, p paint2d.Point) {
 		var folder mailcore.Folder
 		haveFolder := false
 		if n != nil {
@@ -1489,7 +1488,7 @@ func (s *session) refreshStatus() {
 	} else {
 		s.status.Set(2, "Offline · "+line)
 	}
-	s.status.Set(3, "v"+uitoolkit.Version)
+	s.status.Set(3, ui.Version())
 }
 
 func (s *session) mark(msg string) {
@@ -2459,7 +2458,7 @@ func (s *session) toggleFilterPin(p filterPin) {
 
 func (s *session) about() {
 	widgets.Info(s.win.Content(), "About Mail",
-		"Mail — Thunderbird chrome on uitoolkit "+uitoolkit.Version+".\n"+
+		"Mail — on goframework.io desktop-ui "+ui.Version()+".\n"+
 			"comms-mail talks JSON-RPC to comms-maild (Unix socket).\n"+
 			"No IMAP/SMTP in this process. Empty until you add an account.\n"+
 			"MemoryStore dogfood: UITK_MAIL=memory.\n\n"+
@@ -2511,7 +2510,7 @@ func (s *session) cardAt(i int) widgets.CardContent {
 	}
 	var badges []widgets.CardBadge
 	for _, name := range m.Tags {
-		col := paintengine2d.RGB(0.5, 0.5, 0.55)
+		col := paint2d.RGB(0.5, 0.5, 0.55)
 		if t, ok := mailcore.TagByName(s.tags, name); ok {
 			col = mailcore.ParseHexColor(t.Color)
 		}
@@ -2626,7 +2625,7 @@ func newAttachHit(text string, on func()) *attachHit {
 	return h
 }
 
-func (h *attachHit) Measure(c layout.Constraints) paintengine2d.Point {
+func (h *attachHit) Measure(c layout.Constraints) paint2d.Point {
 	lk := h.Look()
 	f := lk.Font()
 	sz := f.Measure(h.Text)
@@ -2635,17 +2634,17 @@ func (h *attachHit) Measure(c layout.Constraints) paintengine2d.Point {
 	return c.Constrain(sz)
 }
 
-func (h *attachHit) Arrange(r paintengine2d.Rect) { h.SetBounds(r) }
+func (h *attachHit) Arrange(r paint2d.Rect) { h.SetBounds(r) }
 
 // Paint is the look's list row with a paperclip icon before the name.
-func (h *attachHit) Paint(ctx *paintengine2d.Context) {
+func (h *attachHit) Paint(ctx *paint2d.Context) {
 	lk := h.Look()
 	b := h.LocalBounds()
 	st := style.RowState(h.Selected, h.Hovered())
 	lk.DrawListRow(ctx, b, st, "")
 	fg := lk.Palette().Text
 	if st.Checked() {
-		if on := lk.Palette().TextOnAccent; on != (paintengine2d.Color{}) {
+		if on := lk.Palette().TextOnAccent; on != (paint2d.Color{}) {
 			fg = on
 		}
 	}
@@ -2653,13 +2652,13 @@ func (h *attachHit) Paint(ctx *paintengine2d.Context) {
 	pad := style.Dip(lk, 6)
 	sz := f.Height()
 	y := b.Min.Y + (b.Dy()-sz)*0.5
-	style.DrawToolIcon(ctx, paintengine2d.XYWH(b.Min.X+pad, y, sz, sz), style.IconAttach, fg, style.IconSetOf(lk))
+	style.DrawToolIcon(ctx, paint2d.XYWH(b.Min.X+pad, y, sz, sz), style.IconAttach, fg, style.IconSetOf(lk))
 	x := b.Min.X + 2*pad + sz
 	text := h.Text
 	if room := b.Max.X - pad - x; f.Advance(text) > room {
 		text = f.Fit(text, room)
 	}
-	f.Draw(ctx, text, paintengine2d.Pt(x, b.Min.Y+(b.Dy()-f.Height())*0.5), fg)
+	f.Draw(ctx, text, paint2d.Pt(x, b.Min.Y+(b.Dy()-f.Height())*0.5), fg)
 }
 
 func (h *attachHit) MousePress(widget.MouseEvent) bool {
@@ -3072,14 +3071,14 @@ func (s *session) viewSource() {
 // PrepareShot selects Ada’s Inbox welcome message and optionally opens File.
 // WalkWindow visits w's title bar (Mail's chrome row lives there) and then
 // its content.
-func WalkWindow(w *app.Window, fn func(widget.Component)) {
+func WalkWindow(w *ui.Window, fn func(widget.Component)) {
 	if tb := w.TitleBar(); tb != nil {
 		widget.Walk(tb, fn)
 	}
 	widget.Walk(w.Content(), fn)
 }
 
-func PrepareShot(w *app.Window, openMenu int) {
+func PrepareShot(w *ui.Window, openMenu int) {
 	WalkWindow(w, func(c widget.Component) {
 		if tv, ok := c.(*widgets.TableView); ok && len(tv.Columns) >= 5 {
 			tv.Selected = 0
@@ -3102,7 +3101,7 @@ func PrepareShot(w *app.Window, openMenu int) {
 }
 
 // PrepareShotCards forces card view for screenshots.
-func PrepareShotCards(w *app.Window) {
+func PrepareShotCards(w *ui.Window) {
 	WalkWindow(w, func(c widget.Component) {
 		if cl, ok := c.(*widgets.CardList); ok {
 			cl.SetVisible(true)

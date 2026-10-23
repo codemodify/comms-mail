@@ -11,13 +11,12 @@ import (
 
 	"github.com/codemodify/comms-mail/internal/svtest"
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // vaultDaemon is comms-maild over a disk store holding one account whose
@@ -48,7 +47,7 @@ func vaultDaemon(t *testing.T) (*mailcore.Client, string) {
 }
 
 // passFields are a passphrase window's fields, in order, and its buttons.
-func passFields(w *app.Window) (fields []*widgets.TextField, buttons map[string]*widgets.Button) {
+func passFields(w *ui.Window) (fields []*widgets.TextField, buttons map[string]*widgets.Button) {
 	buttons = map[string]*widgets.Button{}
 	widget.Walk(w.Content(), func(c widget.Component) {
 		switch v := c.(type) {
@@ -76,7 +75,7 @@ func shownFields(fields []*widgets.TextField) int {
 
 // chooserParts are the store chooser's radios by title, its fields and
 // its buttons.
-func chooserParts(w *app.Window) (radios map[string]*widgets.RadioButton, fields []*widgets.TextField, buttons map[string]*widgets.Button) {
+func chooserParts(w *ui.Window) (radios map[string]*widgets.RadioButton, fields []*widgets.TextField, buttons map[string]*widgets.Button) {
 	radios = map[string]*widgets.RadioButton{}
 	fields, buttons = passFields(w)
 	widget.Walk(w.Content(), func(c widget.Component) {
@@ -95,7 +94,7 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 	if st, _ := cli.SecretsStatus(); !st.Supported || st.Store != "" || !st.PlainSecrets {
 		t.Fatalf("before: %+v", st)
 	}
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1100, Height: 720, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +183,7 @@ func TestWindowAsksWhereToKeepPlainPasswords(t *testing.T) {
 func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 	sv := svtest.Start(t, false)
 	cli, _ := vaultDaemon(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	st, _ := cli.SecretsStatus()
 	if !st.SecretVaultAvailable {
 		t.Fatalf("secretvault runs, and is not offered: %+v", st)
@@ -283,7 +282,7 @@ func TestChoosingSecretVaultInTheWindow(t *testing.T) {
 // Choosing the plain file keeps the password where it was.
 func TestChoosingThePlainFileKeepsMailJSON(t *testing.T) {
 	cli, _ := vaultDaemon(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	st, _ := cli.SecretsStatus()
 	w := newWindowFrom(t, a, func() { openStoreChooser(a, cli, accountIntro, st, nil) })
 	radios, _, buttons := chooserParts(w)
@@ -306,7 +305,7 @@ func TestUnlockAndChangePassphrase(t *testing.T) {
 		t.Fatal(err)
 	}
 	mailcore.OpenVault(filepath.Join(dir, "secrets", "vault.json")).Lock() // the next run
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 
 	var unlocked bool
 	w := newWindowFrom(t, a, func() { openPassphrase(a, cli, passUnlock, func() { unlocked = true }) })
@@ -392,7 +391,7 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 		t.Fatalf("status %+v", status)
 	}
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1100, Height: 720, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +422,7 @@ func TestNoAccountsNoPasswordsToProtect(t *testing.T) {
 }
 
 // labelTexts are the texts of w's labels, one a line.
-func labelTexts(w *app.Window) string {
+func labelTexts(w *ui.Window) string {
 	var texts []string
 	widget.Walk(w.Content(), func(c widget.Component) {
 		if l, ok := c.(*widgets.Label); ok {
@@ -440,7 +439,7 @@ func labelTexts(w *app.Window) string {
 // page then shows the new place in use, with Change passphrase… under it.
 func TestPasswordsPageIsTheChoice(t *testing.T) {
 	cli, dir := vaultDaemon(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 900, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -607,7 +606,7 @@ func placesSay(root widget.Component) []string {
 // width, nothing scrolled away, and a parent measuring it again after the
 // layout (probing how narrow it can go) leaves it as it was.
 func TestPathViewShowsAllOfIt(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Path", Width: 260, Height: 300, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -655,7 +654,7 @@ func placeTitle(text string) string {
 func TestPasswordsInANamedVault(t *testing.T) {
 	sv := svtest.Start(t, false)
 	cli, _ := vaultDaemon(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 900, Headless: true})
 	if err != nil {
 		t.Fatal(err)

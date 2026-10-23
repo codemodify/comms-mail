@@ -3,17 +3,17 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/a11y"
-	"github.com/codemodify/uitoolkit/a11y/a11ytest"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/a11y"
+	"goframework.io/desktop-ui/a11y/a11ytest"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 // Mail's window passes the accessibility audit: every control named, ids
 // unique, the folder tree and message list present.
 func TestMailIsAccessible(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)

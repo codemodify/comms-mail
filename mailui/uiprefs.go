@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
 )
 
 // ChromePrefs is UI-only (card vs table, density, layout, filter). Lives
@@ -22,7 +22,7 @@ type ChromePrefs struct {
 	// InviteLess folds invitation cards (Less / More).
 	InviteLess bool `json:"inviteLess,omitempty"`
 	// Theme is comms-mail's own theme (Settings › Appearance), over the
-	// one every uitoolkit app shares in look.json; "" follows look.json.
+	// one every desktop-ui app shares in look.json; "" follows look.json.
 	Theme string `json:"theme,omitempty"`
 	// Tabs are the messages open in tabs, in order, and TabShowing the
 	// one showing ("" the Mail tab): the next start reopens them.

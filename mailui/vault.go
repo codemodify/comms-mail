@@ -4,12 +4,12 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // Where comms-mail keeps saved passwords and sign-ins (mailcore's
@@ -304,14 +304,14 @@ func (c *storeChoices) passphrase() (string, string) {
 
 // move takes the secrets to the place picked: the passwords'; see
 // moveWith.
-func (c *storeChoices) move(a *app.Application, cli *mailcore.Client, from widget.Component, btn *widgets.Button, done func()) {
+func (c *storeChoices) move(a *ui.Application, cli *mailcore.Client, from widget.Component, btn *widgets.Button, done func()) {
 	c.moveWith(a, from, btn, func(kind, p, vault string) error { return cli.UseStoreIn(kind, p, vault) }, done)
 }
 
 // moveWith has use take the secrets to the place picked, with its
 // passphrase and vault. btn is off while it works; done runs on the UI
 // goroutine once they have moved. Warnings show over from.
-func (c *storeChoices) moveWith(a *app.Application, from widget.Component, btn *widgets.Button, use func(kind, passphrase, vault string) error, done func()) {
+func (c *storeChoices) moveWith(a *ui.Application, from widget.Component, btn *widgets.Button, use func(kind, passphrase, vault string) error, done func()) {
 	if !c.moving() || !btn.Enabled() {
 		return
 	}
@@ -343,7 +343,7 @@ func (c *storeChoices) moveWith(a *app.Application, from widget.Component, btn *
 // openStoreChooser asks where the secrets should be kept and moves them
 // there. Nothing is picked beforehand. done runs on the UI goroutine once
 // they have moved.
-func openStoreChooser(a *app.Application, cli *mailcore.Client, intro string, st mailcore.SecretsStatus, done func()) *app.Window {
+func openStoreChooser(a *ui.Application, cli *mailcore.Client, intro string, st mailcore.SecretsStatus, done func()) *ui.Window {
 	title := "Where should comms-mail keep your passwords?"
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: title, Width: 620, Height: 800, MinWidth: 460, MinHeight: 420,
@@ -405,17 +405,17 @@ const (
 
 // openPassphrase asks for the encrypted file's passphrase: to unlock it,
 // or to change it. done runs on the UI goroutine once it worked.
-func openPassphrase(a *app.Application, cli *mailcore.Client, mode passMode, done func()) *app.Window {
+func openPassphrase(a *ui.Application, cli *mailcore.Client, mode passMode, done func()) *ui.Window {
 	return openPassphraseFor(a, cli, mode, "", done)
 }
 
 // openUnlockKeys asks for the encrypted file's passphrase, to use
 // comms-mail's own keys of format kept in it.
-func openUnlockKeys(a *app.Application, cli *mailcore.Client, format string, done func()) *app.Window {
+func openUnlockKeys(a *ui.Application, cli *mailcore.Client, format string, done func()) *ui.Window {
 	return openPassphraseFor(a, cli, passUnlockKeys, format, done)
 }
 
-func openPassphraseFor(a *app.Application, cli *mailcore.Client, mode passMode, format string, done func()) *app.Window {
+func openPassphraseFor(a *ui.Application, cli *mailcore.Client, mode passMode, format string, done func()) *ui.Window {
 	title := map[passMode]string{passUnlock: "Unlock comms-mail", passChange: "Change passphrase", passUnlockKeys: "Unlock your keys"}[mode]
 	height := map[passMode]int{passUnlock: 330, passChange: 380, passUnlockKeys: 300}[mode]
 	win, err := a.NewWindow(platform.WindowOptions{
@@ -528,7 +528,7 @@ func openPassphraseFor(a *app.Application, cli *mailcore.Client, mode passMode, 
 
 // forgotPassphrase offers to start over: without the passphrase the saved
 // secrets cannot be read, so they are deleted; accounts and mail stay.
-func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window) {
+func forgotPassphrase(a *ui.Application, cli *mailcore.Client, win *ui.Window) {
 	widgets.Confirm(win.Content(), "Forget the saved passwords?",
 		"Without the passphrase nothing in the encrypted file can be read. Starting over deletes it: the saved passwords, every sign-in, "+
 			"and comms-mail's own keys if they are kept there — mail encrypted to those keys can then be opened only from a backup. "+
@@ -553,7 +553,7 @@ func forgotPassphrase(a *app.Application, cli *mailcore.Client, win *app.Window)
 // asks for its passphrase, the desktop keyring and secretvault show their
 // own prompts (comms-mail never sees secretvault's passphrase). For
 // secretvault it is also how to be asked again after saying no.
-func unlockStore(a *app.Application, cli *mailcore.Client, st mailcore.SecretsStatus, win *app.Window, then func()) *app.Window {
+func unlockStore(a *ui.Application, cli *mailcore.Client, st mailcore.SecretsStatus, win *ui.Window, then func()) *ui.Window {
 	if st.Store == mailcore.StoreEncrypted {
 		return openPassphrase(a, cli, passUnlock, then)
 	}
@@ -578,7 +578,7 @@ func unlockStore(a *app.Application, cli *mailcore.Client, st mailcore.SecretsSt
 // withVault runs then once the daemon can keep a secret: a place chosen
 // (asking first) and unlocked (asking to unlock first). A store that
 // keeps no secrets (the demo) runs it at once.
-func withVault(a *app.Application, cli *mailcore.Client, win *app.Window, intro string, then func()) {
+func withVault(a *ui.Application, cli *mailcore.Client, win *ui.Window, intro string, then func()) {
 	st, err := cli.SecretsStatus()
 	switch {
 	case err != nil || !st.Supported || st.Ready && st.Store != "":

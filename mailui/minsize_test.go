@@ -5,13 +5,12 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // Every window, at the smallest size it allows, shows each of its controls
@@ -60,7 +59,7 @@ func controlName(c widget.Component) string {
 
 // auditAtMinSize sizes w to minW×minH and checks its controls, on every
 // tab of every tab view.
-func auditAtMinSize(t *testing.T, a *app.Application, w *app.Window, name string, minW, minH int) {
+func auditAtMinSize(t *testing.T, a *ui.Application, w *ui.Window, name string, minW, minH int) {
 	t.Helper()
 	if mw, _ := w.MinSize(); int(mw+0.5) > minW {
 		minW = int(mw + 0.5)
@@ -77,7 +76,7 @@ func auditAtMinSize(t *testing.T, a *app.Application, w *app.Window, name string
 		type placed struct {
 			c     widget.Component
 			label string
-			r     paintengine2d.Rect
+			r     paint2d.Rect
 		}
 		var seen []placed
 		defer func() {
@@ -145,9 +144,9 @@ func auditAtMinSize(t *testing.T, a *app.Application, w *app.Window, name string
 }
 
 // newWindowFrom runs open and returns the window it made.
-func newWindowFrom(t *testing.T, a *app.Application, open func()) *app.Window {
+func newWindowFrom(t *testing.T, a *ui.Application, open func()) *ui.Window {
 	t.Helper()
-	before := map[*app.Window]bool{}
+	before := map[*ui.Window]bool{}
 	for _, w := range a.Windows() {
 		before[w] = true
 	}
@@ -169,7 +168,7 @@ func TestWindowsFitAtTheirMinimumSize(t *testing.T) {
 		name string
 		look style.LookAndFeel
 	}{{"light", style.LightLook()}, {"compact dark", style.WithDensity(style.DarkLook(), style.DensityCompact)}} {
-		a := uitoolkit.New(uitoolkit.Options{Look: look.look, Headless: true, Scale: 1})
+		a := ui.New(ui.Options{Look: look.look, Headless: true, Scale: 1})
 		reply := mailcore.Message{From: "Kai <kai@paintengine.example>", To: "ada@example.com", Subject: "A long thread",
 			Body: "a line of the quoted message\n"}
 		for i := 0; i < 6; i++ {

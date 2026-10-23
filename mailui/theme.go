@@ -3,18 +3,18 @@ package mailui
 import (
 	"strings"
 
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/style"
 )
 
-// The look. comms-mail follows the theme set for every uitoolkit app —
-// ~/.config/uitoolkit/look.json, what uitoolkit's Settings writes — unless
-// a theme of its own is chosen in Settings › Appearance. That choice is
-// kept in mailui.json ("theme") and overrides look.json's theme for
-// comms-mail alone; corners, icons and fonts still come from look.json,
-// and no other application is touched. A theme needs its engine in the
-// build (uitoolkit's engines are opt-in, docs/engines.md): comms-mail is
-// built with every one (the Makefile's -tags theme_engine_all).
+// The look. comms-mail follows the theme set for every desktop-ui app —
+// ~/.config/goframework-desktop-ui/look.json (style.AppearancePath), what
+// desktop-ui's settings application writes — unless a theme of its own is
+// chosen in Settings › Appearance. That choice is kept in mailui.json
+// ("theme") and overrides look.json's theme for comms-mail alone; corners,
+// icons and fonts still come from look.json, and no other application is
+// touched. A theme needs its engine in the build (desktop-ui's engines are
+// chosen by import): comms-mail imports every one (desktop.go).
 
 // PreferredLook is the look comms-mail starts with.
 func PreferredLook() style.LookAndFeel { return effectiveAppearance().Look() }
@@ -23,7 +23,7 @@ func PreferredLook() style.LookAndFeel { return effectiveAppearance().Look() }
 func ownTheme() string { return strings.TrimSpace(loadChromePrefs().Theme) }
 
 // OwnTheme is comms-mail's own theme (Settings › Appearance); "" when it
-// follows the theme every uitoolkit app shares.
+// follows the theme every desktop-ui app shares.
 func OwnTheme() string { return ownTheme() }
 
 // effectiveAppearance is look.json's appearance, with comms-mail's own
@@ -40,7 +40,7 @@ func effectiveAppearance() style.Appearance {
 
 // applyEffectiveLook puts the look comms-mail should have on every
 // window of a, at the density the window was set to.
-func applyEffectiveLook(a *app.Application) {
+func applyEffectiveLook(a *ui.Application) {
 	if a == nil {
 		return
 	}
@@ -49,7 +49,7 @@ func applyEffectiveLook(a *app.Application) {
 
 // setOwnTheme keeps name as comms-mail's own theme ("" follows look.json
 // again) and applies it.
-func setOwnTheme(a *app.Application, name string) {
+func setOwnTheme(a *ui.Application, name string) {
 	p := loadChromePrefs()
 	p.Theme = strings.TrimSpace(name)
 	saveChromePrefs(p)
@@ -57,9 +57,9 @@ func setOwnTheme(a *app.Application, name string) {
 }
 
 // keepOwnTheme puts comms-mail's own theme back after the app has applied
-// look.json (it watches the file and applies it as it is, when uitoolkit's
-// Settings changes it).
-func keepOwnTheme(a *app.Application) {
+// look.json (it watches the file and applies it as it is, when desktop-ui's
+// settings application changes it).
+func keepOwnTheme(a *ui.Application) {
 	if a == nil {
 		return
 	}
@@ -76,7 +76,7 @@ func keepOwnTheme(a *app.Application) {
 // a right click on the caption. The choice is comms-mail's own: look.json's
 // "hideWindowMenu", applied again whenever the file changes, does not undo
 // it.
-func noWindowMenu(a *app.Application) {
+func noWindowMenu(a *ui.Application) {
 	if a == nil {
 		return
 	}

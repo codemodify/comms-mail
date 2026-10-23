@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // Filters: the daemon's rules, which run on new mail — moving, tagging,
@@ -137,7 +137,7 @@ func moveTargets(cli *mailcore.Client) ([]mailcore.Folder, []string) {
 	return folders, labels
 }
 
-func prefsFilters(a *app.Application, win *app.Window, cli *mailcore.Client) widget.Component {
+func prefsFilters(a *ui.Application, win *ui.Window, cli *mailcore.Client) widget.Component {
 	rules, _ := cli.Rules()
 	names := map[mailcore.FolderID]string{}
 	folders, labels := moveTargets(cli)
@@ -304,7 +304,7 @@ func labelsOf(list []struct{ key, label string }) []string {
 // it looks only at mail arriving in an Inbox, stop, on.
 type ruleEditor struct {
 	cli             *mailcore.Client
-	win             *app.Window
+	win             *ui.Window
 	rule            mailcore.FilterRule
 	scope           []mailcore.RuleCondition // account scope, kept as it was
 	name            *widgets.TextField
@@ -334,7 +334,7 @@ type actRow struct {
 }
 
 // openRuleEditor opens the editor on r (a new rule when r.ID is empty).
-func openRuleEditor(a *app.Application, cli *mailcore.Client, r mailcore.FilterRule, onSave func()) *ruleEditor {
+func openRuleEditor(a *ui.Application, cli *mailcore.Client, r mailcore.FilterRule, onSave func()) *ruleEditor {
 	title := "New Rule"
 	if r.ID != "" {
 		title = "Edit Rule"

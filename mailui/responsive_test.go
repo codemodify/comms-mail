@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 // stuckBodyStore lists messages without their bodies and holds every body
@@ -55,7 +55,7 @@ func TestClickDoesNotWaitForTheBody(t *testing.T) {
 	}
 	defer cli.Close()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
 )
 
 // Print and Save As. There is no print path in the toolkit, so Print writes

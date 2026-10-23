@@ -3,9 +3,9 @@ package mailui
 import (
 	"strings"
 
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // Search is a dialog, opened by the Search button after Write or by

@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 func TestRuleSummary(t *testing.T) {
@@ -35,7 +35,7 @@ func TestRuleSummary(t *testing.T) {
 func TestFiltersTabAndEditor(t *testing.T) {
 	cli := demoClient(t)
 	before, _ := cli.Rules()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	e := openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true, Conditions: []mailcore.RuleCondition{{Field: "inbox"}}}, nil)
 	if e == nil || len(e.condRows) != 1 || len(e.actRows) != 1 || !e.inbox.Checked {
 		t.Fatalf("new editor %+v", e)
@@ -104,7 +104,7 @@ func TestFiltersTabAndEditor(t *testing.T) {
 // losing either.
 func TestEditorKeepsScopeAndServerPath(t *testing.T) {
 	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	r := mailcore.FilterRule{ID: "rule-x", Name: "Thunderbird: News", Enabled: true,
 		Conditions: []mailcore.RuleCondition{{Field: "account", Value: "ada"}, {Field: "inbox"}, {Field: "from", Op: "contains", Value: "news@"}},
 		Actions:    []mailcore.RuleAction{{Type: "move", Account: "ada", Path: "Lists/News"}}}
@@ -126,7 +126,7 @@ func TestEditorKeepsScopeAndServerPath(t *testing.T) {
 // and the rule keeps it.
 func TestEditorTestsAHeader(t *testing.T) {
 	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	e := openRuleEditor(a, cli, mailcore.FilterRule{Enabled: true}, nil)
 	cr := e.condRows[0]
 	if cr.header.Visible() {

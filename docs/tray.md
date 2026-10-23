@@ -1,12 +1,12 @@
 # Tray and desktop notifications
 
-The status item and the toast machinery belong to uitoolkit; this page is
-only what comms-mail does with them. For the Linux tray itself — KDE SNI,
-GNOME AppIndicator, Waybar, HostMenu vs ToolkitMenu, Windows
-`Shell_NotifyIconW`, macOS `NSStatusItem` — see uitoolkit's
-[tray.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/tray.md).
+The status item and the toast machinery belong to desktop-ui; this page is
+only what comms-mail does with them. For the tray itself — KDE SNI, GNOME
+AppIndicator, Waybar, HostMenu vs ToolkitMenu, Windows `Shell_NotifyIconW`,
+macOS `NSStatusItem` — see the readmes of desktop-ui-platform-freedesktop,
+-win32 and -appkit, and desktop-ui's for what they share.
 
-comms-mail calls only exported toolkit APIs (`app.NewStatusItem`,
+comms-mail calls only exported toolkit APIs (`ui.NewStatusItem`,
 `platform.StatusItem`, `platform.Notifier`). It adds nothing of its own to
 the platform layer.
 
@@ -28,7 +28,7 @@ the platform layer.
 ## What the daemon does *not* do
 
 `comms-maild` raises no toast. It links no GUI code at all — `go list
--deps ./cmd/comms-maild | grep uitoolkit` is empty — so it only broadcasts
+-deps ./cmd/comms-maild | grep goframework.io/desktop-ui` is empty — so it only broadcasts
 `mail.notify` and lets whichever client is connected show it.
 
 The one seam is in `mailcore`:
@@ -51,9 +51,9 @@ event, is governed by Prefs -> Notify instead.
 ## Testing
 
 ```bash
-UITK_TRAY=fake tools/testenv.sh go test ./mailui
-UITK_TRAY=stub go run ./cmd/comms-mail
-UITK_TRAY=fake go run ./cmd/comms-mail
+GOFRAMEWORK_DESKTOP_UI_TRAY=fake tools/testenv.sh go test ./mailui
+GOFRAMEWORK_DESKTOP_UI_TRAY=stub go run ./cmd/comms-mail
+GOFRAMEWORK_DESKTOP_UI_TRAY=fake go run ./cmd/comms-mail
 ```
 
 Headless and `CGO_ENABLED=0` builds get a stub item, so the tests need no

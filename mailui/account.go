@@ -7,28 +7,27 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/widget"
 )
 
 // FirstRunPrompt is the empty-account modal copy (Yes / No).
 const FirstRunPrompt = "There are no accounts, want to add one?"
 
 // OpenAddAccount opens the IMAP/POP3 / SMTP / OAuth setup window.
-func OpenAddAccount(a *app.Application, cli *mailcore.Client, onSaved func()) (*app.Window, error) {
+func OpenAddAccount(a *ui.Application, cli *mailcore.Client, onSaved func()) (*ui.Window, error) {
 	return openAccountForm(a, cli, nil, onSaved)
 }
 
 // OpenEditAccount opens the same window on an account's settings, as
 // cli.AccountConfig gives them.
-func OpenEditAccount(a *app.Application, cli *mailcore.Client, base mailcore.AccountConfig, onSaved func()) (*app.Window, error) {
+func OpenEditAccount(a *ui.Application, cli *mailcore.Client, base mailcore.AccountConfig, onSaved func()) (*ui.Window, error) {
 	return openAccountForm(a, cli, &base, onSaved)
 }
 
-func openAccountForm(a *app.Application, cli *mailcore.Client, base *mailcore.AccountConfig, onSaved func()) (*app.Window, error) {
+func openAccountForm(a *ui.Application, cli *mailcore.Client, base *mailcore.AccountConfig, onSaved func()) (*ui.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: accountFormTitle(base), Width: 600, Height: 720, MinWidth: 460, MinHeight: 520,
 	})
@@ -47,7 +46,7 @@ func accountFormTitle(base *mailcore.AccountConfig) string {
 }
 
 // AddAccountApp is the first-run / File → Add Account form.
-func AddAccountApp(win *app.Window, cli *mailcore.Client, onSaved func()) widget.Component {
+func AddAccountApp(win *ui.Window, cli *mailcore.Client, onSaved func()) widget.Component {
 	return AddAccountAppOn(nil, win, cli, onSaved)
 }
 
@@ -55,18 +54,18 @@ func AddAccountApp(win *app.Window, cli *mailcore.Client, onSaved func()) widget
 // Connection probes run on a background goroutine and their results touch
 // widgets, so they are applied through a.Post; pass nil (tests, headless)
 // to apply them inline.
-func AddAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, onSaved func()) widget.Component {
+func AddAccountAppOn(a *ui.Application, win *ui.Window, cli *mailcore.Client, onSaved func()) widget.Component {
 	return accountFormOn(a, win, cli, nil, onSaved)
 }
 
 // EditAccountAppOn is the form on base, an account's settings: what it
 // does not show (connection security, sign-in, identities) stays as it
 // is, and so does a saved password while the password is left empty.
-func EditAccountAppOn(a *app.Application, win *app.Window, cli *mailcore.Client, base mailcore.AccountConfig, onSaved func()) widget.Component {
+func EditAccountAppOn(a *ui.Application, win *ui.Window, cli *mailcore.Client, base mailcore.AccountConfig, onSaved func()) widget.Component {
 	return accountFormOn(a, win, cli, &base, onSaved)
 }
 
-func accountFormOn(a *app.Application, win *app.Window, cli *mailcore.Client, base *mailcore.AccountConfig, onSaved func()) widget.Component {
+func accountFormOn(a *ui.Application, win *ui.Window, cli *mailcore.Client, base *mailcore.AccountConfig, onSaved func()) widget.Component {
 	editing := base != nil
 	title := accountFormTitle(base)
 	start := mailcore.AccountConfig{IMAP: mailcore.ServerConfig{Host: "imap.example.com:993"},
@@ -95,7 +94,7 @@ func accountFormOn(a *app.Application, win *app.Window, cli *mailcore.Client, ba
 			"Or set UITK_MAIL_OAUTH_GOOGLE_CLIENT_ID / UITK_MAIL_OAUTH_MS_CLIENT_ID.\n" +
 			"Optional: UITK_MAIL_PASS / passEnv still works if the password field is empty.",
 	)
-	status := widgets.NewStatusBar("IMAP or POP3 · Test connection · typed password or OAuth", mailcore.ConfigPath(), "v"+uitoolkit.Version)
+	status := widgets.NewStatusBar("IMAP or POP3 · Test connection · typed password or OAuth", mailcore.ConfigPath(), ui.Version())
 
 	var applyingProbe bool
 	var detectGen atomic.Uint64

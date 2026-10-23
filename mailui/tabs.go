@@ -5,13 +5,13 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
-// Messages open in tabs, the way the uitoolkit Files sample opens folders:
+// Messages open in tabs, the way the desktop-ui Files sample opens folders:
 // a browser-style strip in the window's title bar, after the menu and
 // Fetch / Write / Search, over the pages it switches — the folder pane
 // stays beside them. The first tab is Mail — the list and the reading pane
@@ -48,7 +48,7 @@ func (s *session) setupTabs(main widget.Component) {
 	s.tabs.AddTab(widgets.BrowserTab{Title: "Mail", Icon: style.IconInbox, NoClose: true})
 	s.tabs.OnSelect = s.showTab
 	s.tabs.OnClose = s.closeTab
-	s.tabs.OnContextMenu = func(i int, at paintengine2d.Point) bool {
+	s.tabs.OnContextMenu = func(i int, at paint2d.Point) bool {
 		if i <= 0 {
 			return false
 		}
@@ -332,19 +332,19 @@ func (s *session) showTagMenu() {
 		return
 	}
 	var from widget.Component
-	var at paintengine2d.Point
+	var at paint2d.Point
 	if mt, ok := s.activeTab(); ok {
 		from = mt.rd.text
 		r := widget.LocalToWindow(mt.rd.text, mt.rd.text.LocalBounds())
-		at = paintengine2d.Pt(r.Min.X+8, r.Min.Y+8)
+		at = paint2d.Pt(r.Min.X+8, r.Min.Y+8)
 	} else if i := s.primaryIndex(); i >= 0 && s.table != nil && s.table.Visible() {
 		from = s.table
 		r := widget.LocalToWindow(s.table, s.table.RowBounds(i))
-		at = paintengine2d.Pt(r.Min.X+24, r.Max.Y)
+		at = paint2d.Pt(r.Min.X+24, r.Max.Y)
 	} else if s.cards != nil {
 		from = s.cards
 		r := widget.LocalToWindow(s.cards, s.cards.LocalBounds())
-		at = paintengine2d.Pt(r.Min.X+24, r.Min.Y+24)
+		at = paint2d.Pt(r.Min.X+24, r.Min.Y+24)
 	}
 	if from == nil {
 		return

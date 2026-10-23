@@ -3,11 +3,11 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // The Accounts tab's buttons — Add, Edit, Remove, Import — must be inside the
@@ -16,7 +16,7 @@ import (
 func TestSettingsButtonsFitAtMinSize(t *testing.T) {
 	const minW, minH = 710, 440
 	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: minW, Height: minH, Headless: true})
 	if err != nil {
 		t.Fatal(err)

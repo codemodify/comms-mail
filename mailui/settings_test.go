@@ -6,25 +6,24 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // openSettings is Settings over the demo daemon, 700×560.
-func openSettings(t *testing.T) (*app.Application, *app.Window, *mailcore.Client, *widgets.TabView) {
+func openSettings(t *testing.T) (*ui.Application, *ui.Window, *mailcore.Client, *widgets.TabView) {
 	t.Helper()
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
 	return openSettingsOn(t, demoClient(t))
 }
 
 // openSettingsOn is Settings over cli's daemon, 700×560.
-func openSettingsOn(t *testing.T, cli *mailcore.Client) (*app.Application, *app.Window, *mailcore.Client, *widgets.TabView) {
+func openSettingsOn(t *testing.T, cli *mailcore.Client) (*ui.Application, *ui.Window, *mailcore.Client, *widgets.TabView) {
 	t.Helper()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 560, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +45,7 @@ func openSettingsOn(t *testing.T, cli *mailcore.Client) (*app.Application, *app.
 
 // selectTab shows the tab called title and returns the tab view, which
 // walks as the page showing (hidden pages are not walked).
-func selectTab(a *app.Application, tv *widgets.TabView, title string) widget.Component {
+func selectTab(a *ui.Application, tv *widgets.TabView, title string) widget.Component {
 	for i, tt := range tv.Bar().Titles {
 		if tt == title {
 			tv.Select(i)

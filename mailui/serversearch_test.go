@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
 )
 
 // With On server on, a query is sent to the server, and what the server

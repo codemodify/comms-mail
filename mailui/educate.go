@@ -4,11 +4,11 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // Settings › Security › Educate: email security, step by step, as a
@@ -699,7 +699,7 @@ func newEducatePage(picture, ticks, side, steps, ports widget.Component, scene *
 
 func (p *educatePage) MinWidth() float32 { return p.scene.MinWidth() + style.Dip(p.Look(), 8) }
 
-func (p *educatePage) Measure(c layout.Constraints) paintengine2d.Point {
+func (p *educatePage) Measure(c layout.Constraints) paint2d.Point {
 	w, h := style.Dip(p.Look(), 560), style.Dip(p.Look(), 600)
 	if c.HasMaxW() {
 		w = c.MaxW
@@ -707,7 +707,7 @@ func (p *educatePage) Measure(c layout.Constraints) paintengine2d.Point {
 	if c.HasMaxH() {
 		h = c.MaxH
 	}
-	return c.Constrain(paintengine2d.Pt(w, h))
+	return c.Constrain(paint2d.Pt(w, h))
 }
 
 // sideWidth is what goes wrong's width beside a picture in inner.
@@ -715,7 +715,7 @@ func (p *educatePage) sideWidth(inner float32) float32 {
 	return min(max(inner*0.28, style.Dip(p.Look(), sideMin)), style.Dip(p.Look(), 340))
 }
 
-func (p *educatePage) Arrange(r paintengine2d.Rect) {
+func (p *educatePage) Arrange(r paint2d.Rect) {
 	p.SetBounds(r)
 	lk := p.Look()
 	pad := style.Dip(lk, 4)
@@ -777,15 +777,15 @@ func (p *educatePage) Arrange(r paintengine2d.Rect) {
 		return
 	}
 	if beside {
-		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, pw, picH))
-		p.side.Arrange(paintengine2d.XYWH(r.Min.X+pad+pw+style.Dip(lk, sideGap), r.Min.Y+pad, sw, picH))
+		p.picture.Arrange(paint2d.XYWH(r.Min.X+pad, r.Min.Y+pad, pw, picH))
+		p.side.Arrange(paint2d.XYWH(r.Min.X+pad+pw+style.Dip(lk, sideGap), r.Min.Y+pad, sw, picH))
 	} else {
-		p.picture.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, picH))
+		p.picture.Arrange(paint2d.XYWH(r.Min.X+pad, r.Min.Y+pad, inner, picH))
 	}
-	p.ticks.Arrange(paintengine2d.XYWH(r.Min.X+pad, r.Min.Y+pad+picH+gap, inner, ticksH))
+	p.ticks.Arrange(paint2d.XYWH(r.Min.X+pad, r.Min.Y+pad+picH+gap, inner, ticksH))
 	top := r.Min.Y + pad + picH + gap + ticksH + pad
-	p.rule.Arrange(paintengine2d.XYWH(r.Min.X, top, r.Dx(), ruleH))
-	p.scroll.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(r.Min.X, top+ruleH), Max: r.Max})
+	p.rule.Arrange(paint2d.XYWH(r.Min.X, top, r.Dx(), ruleH))
+	p.scroll.Arrange(paint2d.Rect{Min: paint2d.Pt(r.Min.X, top+ruleH), Max: r.Max})
 }
 
 // pair is a and b side by side, a aw wide and b gap after it; or, with
@@ -814,27 +814,27 @@ func (p *pair) split(w float32) (aw, ah, bw, bh float32) {
 	return aw, p.a.Measure(layout.Constraints{MaxW: aw, MaxH: -1}).Y, bw, p.b.Measure(layout.Constraints{MaxW: bw, MaxH: -1}).Y
 }
 
-func (p *pair) Measure(c layout.Constraints) paintengine2d.Point {
+func (p *pair) Measure(c layout.Constraints) paint2d.Point {
 	w := style.Dip(p.Look(), 560)
 	if c.HasMaxW() {
 		w = c.MaxW
 	}
 	_, ah, _, bh := p.split(w)
 	if p.aw > 0 {
-		return c.Constrain(paintengine2d.Pt(w, max(ah, bh)))
+		return c.Constrain(paint2d.Pt(w, max(ah, bh)))
 	}
-	return c.Constrain(paintengine2d.Pt(w, ah+style.Dip(p.Look(), 14)+bh))
+	return c.Constrain(paint2d.Pt(w, ah+style.Dip(p.Look(), 14)+bh))
 }
 
-func (p *pair) Arrange(r paintengine2d.Rect) {
+func (p *pair) Arrange(r paint2d.Rect) {
 	p.SetBounds(r)
 	aw, ah, bw, bh := p.split(r.Dx())
-	p.a.Arrange(paintengine2d.XYWH(r.Min.X, r.Min.Y, aw, ah))
+	p.a.Arrange(paint2d.XYWH(r.Min.X, r.Min.Y, aw, ah))
 	if p.aw > 0 {
-		p.b.Arrange(paintengine2d.XYWH(r.Min.X+aw+p.gap, r.Min.Y, bw, bh))
+		p.b.Arrange(paint2d.XYWH(r.Min.X+aw+p.gap, r.Min.Y, bw, bh))
 		return
 	}
-	p.b.Arrange(paintengine2d.XYWH(r.Min.X, r.Min.Y+ah+style.Dip(p.Look(), 14), bw, bh))
+	p.b.Arrange(paint2d.XYWH(r.Min.X, r.Min.Y+ah+style.Dip(p.Look(), 14), bw, bh))
 }
 
 // ---- marks ----
@@ -854,58 +854,58 @@ func newNumberMark(n int) *numberMark {
 
 const markSize = 20
 
-func (m *numberMark) Measure(c layout.Constraints) paintengine2d.Point {
+func (m *numberMark) Measure(c layout.Constraints) paint2d.Point {
 	s := style.Dip(m.Look(), markSize)
-	return c.Constrain(paintengine2d.Pt(s, max(s, m.Look().BoldFont().Height())))
+	return c.Constrain(paint2d.Pt(s, max(s, m.Look().BoldFont().Height())))
 }
 
-func (m *numberMark) Arrange(r paintengine2d.Rect) { m.SetBounds(r) }
+func (m *numberMark) Arrange(r paint2d.Rect) { m.SetBounds(r) }
 
-func (m *numberMark) Paint(ctx *paintengine2d.Context) {
+func (m *numberMark) Paint(ctx *paint2d.Context) {
 	b := m.LocalBounds()
 	s := style.Dip(m.Look(), markSize)
 	// Level with the first line of the words beside it.
-	drawNumber(ctx, m.Look(), m.n, paintengine2d.Pt(b.Min.X+s/2, b.Min.Y+max(s, m.Look().BoldFont().Height())/2), s)
+	drawNumber(ctx, m.Look(), m.n, paint2d.Pt(b.Min.X+s/2, b.Min.Y+max(s, m.Look().BoldFont().Height())/2), s)
 }
 
 // drawNumber draws n in a disc of size s centred at c: white on the
 // look's blue.
-func drawNumber(ctx *paintengine2d.Context, lk style.LookAndFeel, n int, c paintengine2d.Point, s float32) {
+func drawNumber(ctx *paint2d.Context, lk style.LookAndFeel, n int, c paint2d.Point, s float32) {
 	disc, ink := numberInks(lk)
-	ctx.DrawCircle(c, s/2, paintengine2d.Fill(disc))
+	ctx.DrawCircle(c, s/2, paint2d.Fill(disc))
 	f := lk.BoldFont()
 	t := strconv.Itoa(n)
-	f.Draw(ctx, t, paintengine2d.Pt(c.X-f.Advance(t)/2, c.Y-f.Height()/2), ink)
+	f.Draw(ctx, t, paint2d.Pt(c.X-f.Advance(t)/2, c.Y-f.Height()/2), ink)
 }
 
 // white is the numbers' and the stop's ink, whatever the look.
-var white = paintengine2d.RGB(1, 1, 1)
+var white = paint2d.RGB(1, 1, 1)
 
 // numberInks are a number's disc and figure: the look's accent, darkened
 // as far as white on it needs to be read (4.5:1), and white — where a
 // look's own text-on-accent can be black, on a light blue.
-func numberInks(lk style.LookAndFeel) (disc, ink paintengine2d.Color) {
+func numberInks(lk style.LookAndFeel) (disc, ink paint2d.Color) {
 	return whiteOn(lk.Palette().Accent), white
 }
 
 // whiteOn is c, darkened toward black until white on it reads at 4.5:1.
-func whiteOn(c paintengine2d.Color) paintengine2d.Color {
+func whiteOn(c paint2d.Color) paint2d.Color {
 	c.A = 1
 	for i := 0; i < 20 && contrast(white, c) < 4.5; i++ {
-		c = c.Lerp(paintengine2d.RGB(0, 0, 0), 0.1)
+		c = c.Lerp(paint2d.RGB(0, 0, 0), 0.1)
 		c.A = 1
 	}
 	return c
 }
 
 // contrast is the WCAG contrast ratio of a and b.
-func contrast(a, b paintengine2d.Color) float64 {
+func contrast(a, b paint2d.Color) float64 {
 	la, lb := luminance(a), luminance(b)
 	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 }
 
 // luminance is c's relative luminance (WCAG).
-func luminance(c paintengine2d.Color) float64 {
+func luminance(c paint2d.Color) float64 {
 	lin := func(v float32) float64 {
 		x := float64(v)
 		if x <= 0.03928 {
@@ -927,31 +927,31 @@ func chipSize(lk style.LookAndFeel, name string) (w, h float32) {
 }
 
 // drawChip draws name as a tag in r: an outline and text in the accent.
-func drawChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r paintengine2d.Rect) {
+func drawChip(ctx *paint2d.Context, lk style.LookAndFeel, name string, r paint2d.Rect) {
 	p := lk.Palette()
 	ink := p.Ink(p.Accent)
 	rad := chipRadius(lk)
-	ctx.DrawRoundRect(r, rad, rad, paintengine2d.Fill(p.Field))
-	ctx.DrawRoundRect(r, rad, rad, paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
+	ctx.DrawRoundRect(r, rad, rad, paint2d.Fill(p.Field))
+	ctx.DrawRoundRect(r, rad, rad, paint2d.StrokePaint(ink, style.Dip(lk, 1.25)))
 	f := lk.Font()
-	f.Draw(ctx, name, paintengine2d.Pt(r.Min.X+(r.Dx()-f.Advance(name))/2, r.Min.Y+(r.Dy()-f.Height())/2), ink)
+	f.Draw(ctx, name, paint2d.Pt(r.Min.X+(r.Dx()-f.Advance(name))/2, r.Min.Y+(r.Dy()-f.Height())/2), ink)
 }
 
 // drawMissingChip draws name as a tag that is not there: dashed and in
 // red, struck through — where it would be, so its absence shows.
-func drawMissingChip(ctx *paintengine2d.Context, lk style.LookAndFeel, name string, r paintengine2d.Rect) {
+func drawMissingChip(ctx *paint2d.Context, lk style.LookAndFeel, name string, r paint2d.Rect) {
 	p := lk.Palette()
 	ink := p.Ink(p.Danger)
 	rad := chipRadius(lk)
-	pen := paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25))
+	pen := paint2d.StrokePaint(ink, style.Dip(lk, 1.25))
 	pen.Stroke.Dash = []float32{style.Dip(lk, 3), style.Dip(lk, 2)}
-	ctx.DrawRoundRect(r, rad, rad, paintengine2d.Fill(p.Field))
+	ctx.DrawRoundRect(r, rad, rad, paint2d.Fill(p.Field))
 	ctx.DrawRoundRect(r, rad, rad, pen)
 	f := lk.Font()
 	x := r.Min.X + (r.Dx()-f.Advance(name))/2
-	f.Draw(ctx, name, paintengine2d.Pt(x, r.Min.Y+(r.Dy()-f.Height())/2), ink)
+	f.Draw(ctx, name, paint2d.Pt(x, r.Min.Y+(r.Dy()-f.Height())/2), ink)
 	y := r.Center().Y
-	ctx.DrawLine(paintengine2d.Pt(x-style.Dip(lk, 2), y), paintengine2d.Pt(x+f.Advance(name)+style.Dip(lk, 2), y), paintengine2d.StrokePaint(ink, style.Dip(lk, 1.25)))
+	ctx.DrawLine(paint2d.Pt(x-style.Dip(lk, 2), y), paint2d.Pt(x+f.Advance(name)+style.Dip(lk, 2), y), paint2d.StrokePaint(ink, style.Dip(lk, 1.25)))
 }
 
 // chipLines breaks names into lines of tags no wider than w, and says how
@@ -983,7 +983,7 @@ func chipLines(lk style.LookAndFeel, names []string, w float32) (lines [][]strin
 // struck through.
 type placedChip struct {
 	name    string
-	r       paintengine2d.Rect
+	r       paint2d.Rect
 	group   string
 	alt     int
 	missing bool
@@ -1004,7 +1004,7 @@ func placeChips(lk style.LookAndFeel, names []string, cx, top, w float32, left b
 		}
 		for _, n := range line {
 			cw, _ := chipSize(lk, n)
-			out = append(out, placedChip{name: n, r: paintengine2d.XYWH(x, y, cw, ch)})
+			out = append(out, placedChip{name: n, r: paint2d.XYWH(x, y, cw, ch)})
 			x += cw + gap
 		}
 		y += ch + gap
@@ -1027,16 +1027,16 @@ func newProtoChip(name string) *protoChip {
 	return c
 }
 
-func (c *protoChip) Measure(k layout.Constraints) paintengine2d.Point {
-	return k.Constrain(paintengine2d.Pt(chipSize(c.Look(), c.name)))
+func (c *protoChip) Measure(k layout.Constraints) paint2d.Point {
+	return k.Constrain(paint2d.Pt(chipSize(c.Look(), c.name)))
 }
 
-func (c *protoChip) Arrange(r paintengine2d.Rect) { c.SetBounds(r) }
+func (c *protoChip) Arrange(r paint2d.Rect) { c.SetBounds(r) }
 
-func (c *protoChip) Paint(ctx *paintengine2d.Context) {
+func (c *protoChip) Paint(ctx *paint2d.Context) {
 	b := c.LocalBounds()
 	w, h := chipSize(c.Look(), c.name)
-	drawChip(ctx, c.Look(), c.name, paintengine2d.XYWH(b.Min.X, b.Min.Y, w, h))
+	drawChip(ctx, c.Look(), c.name, paint2d.XYWH(b.Min.X, b.Min.Y, w, h))
 }
 
 // pointList is a step's points, lettered a, b, c…, and under each its
@@ -1086,16 +1086,16 @@ func newLetter(text string, w float32) *letter {
 	return l
 }
 
-func (l *letter) Measure(c layout.Constraints) paintengine2d.Point {
-	return c.Constrain(paintengine2d.Pt(style.Dip(l.Look(), l.w), l.Look().Font().Height()))
+func (l *letter) Measure(c layout.Constraints) paint2d.Point {
+	return c.Constrain(paint2d.Pt(style.Dip(l.Look(), l.w), l.Look().Font().Height()))
 }
 
-func (l *letter) Arrange(r paintengine2d.Rect) { l.SetBounds(r) }
+func (l *letter) Arrange(r paint2d.Rect) { l.SetBounds(r) }
 
-func (l *letter) Paint(ctx *paintengine2d.Context) {
+func (l *letter) Paint(ctx *paint2d.Context) {
 	b := l.LocalBounds()
 	f := l.Look().Font()
-	f.Draw(ctx, l.text, paintengine2d.Pt(b.Max.X-f.Advance(l.text), b.Min.Y), l.Look().Palette().TextMuted)
+	f.Draw(ctx, l.text, paint2d.Pt(b.Max.X-f.Advance(l.text), b.Min.Y), l.Look().Palette().TextMuted)
 }
 
 // altRow is groups' tags in a row that wraps, a group of alternatives
@@ -1126,7 +1126,7 @@ func altRow(groups [][]string) *widgets.Wrap {
 
 // symbol is one of the picture's symbols, and what it means.
 type symbol struct {
-	draw func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect)
+	draw func(ctx *paint2d.Context, lk style.LookAndFeel, box paint2d.Rect)
 	says string
 }
 
@@ -1135,17 +1135,17 @@ var symbols = []symbol{
 	{envelopeSymbol(envelope{seal: true}), "Signed by you"},
 	{envelopeSymbol(envelope{lock: true}), "Encrypted to TARGET"},
 	{envelopeSymbol(envelope{stamp: true}), "Signed by its domain"},
-	{func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
+	{func(ctx *paint2d.Context, lk style.LookAndFeel, box paint2d.Rect) {
 		y := box.Center().Y
-		drawArrow(ctx, lk, paintengine2d.Pt(box.Min.X+style.Dip(lk, 1), y), paintengine2d.Pt(box.Max.X-style.Dip(lk, 1), y), inksOf(lk).good)
+		drawArrow(ctx, lk, paint2d.Pt(box.Min.X+style.Dip(lk, 1), y), paint2d.Pt(box.Max.X-style.Dip(lk, 1), y), inksOf(lk).good)
 	}, "TLS"},
 }
 
 // envelopeSymbol draws e in the middle of a symbol's box.
-func envelopeSymbol(e envelope) func(*paintengine2d.Context, style.LookAndFeel, paintengine2d.Rect) {
-	return func(ctx *paintengine2d.Context, lk style.LookAndFeel, box paintengine2d.Rect) {
+func envelopeSymbol(e envelope) func(*paint2d.Context, style.LookAndFeel, paint2d.Rect) {
+	return func(ctx *paint2d.Context, lk style.LookAndFeel, box paint2d.Rect) {
 		w, _ := envSize(lk)
-		drawEnvelope(ctx, lk, paintengine2d.Pt(box.Min.X+w/2+style.Dip(lk, 2), box.Center().Y), e)
+		drawEnvelope(ctx, lk, paint2d.Pt(box.Min.X+w/2+style.Dip(lk, 2), box.Center().Y), e)
 	}
 }
 
@@ -1167,20 +1167,20 @@ func (it *symbolItem) iconBox() (w, h float32) {
 	return ew + style.Dip(it.Look(), 10), eh * 1.5
 }
 
-func (it *symbolItem) Measure(c layout.Constraints) paintengine2d.Point {
+func (it *symbolItem) Measure(c layout.Constraints) paint2d.Point {
 	iw, ih := it.iconBox()
 	f := it.Look().Font()
-	return c.Constrain(paintengine2d.Pt(iw+style.Dip(it.Look(), 6)+f.Advance(it.sy.says), max(ih, f.Height())))
+	return c.Constrain(paint2d.Pt(iw+style.Dip(it.Look(), 6)+f.Advance(it.sy.says), max(ih, f.Height())))
 }
 
-func (it *symbolItem) Arrange(r paintengine2d.Rect) { it.SetBounds(r) }
+func (it *symbolItem) Arrange(r paint2d.Rect) { it.SetBounds(r) }
 
-func (it *symbolItem) Paint(ctx *paintengine2d.Context) {
+func (it *symbolItem) Paint(ctx *paint2d.Context) {
 	b := it.LocalBounds()
 	iw, ih := it.iconBox()
 	f := it.Look().Font()
-	it.sy.draw(ctx, it.Look(), paintengine2d.XYWH(b.Min.X, b.Min.Y+(b.Dy()-ih)/2, iw, ih))
-	f.Draw(ctx, it.sy.says, paintengine2d.Pt(b.Min.X+iw+style.Dip(it.Look(), 6), b.Min.Y+(b.Dy()-f.Height())/2), it.Look().Palette().Text)
+	it.sy.draw(ctx, it.Look(), paint2d.XYWH(b.Min.X, b.Min.Y+(b.Dy()-ih)/2, iw, ih))
+	f.Draw(ctx, it.sy.says, paint2d.Pt(b.Min.X+iw+style.Dip(it.Look(), 6), b.Min.Y+(b.Dy()-f.Height())/2), it.Look().Palette().Text)
 }
 
 // strong is a line of bold text, at the body's size, that wraps: a step's

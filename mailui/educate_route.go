@@ -1,10 +1,10 @@
 package mailui
 
 import (
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // The picture on Settings › Security › Educate: a message's route, step by
@@ -82,7 +82,7 @@ var routeNames = [4]struct {
 // written in it in place of a picture — in a pill w wide and d tall, when
 // w is set.
 type routeDisc struct {
-	c    paintengine2d.Point
+	c    paint2d.Point
 	d    float32
 	pict pict
 	bad  bool
@@ -91,9 +91,9 @@ type routeDisc struct {
 }
 
 // box is where it draws.
-func (d routeDisc) box() paintengine2d.Rect {
+func (d routeDisc) box() paint2d.Rect {
 	w := max(d.w, d.d)
-	return paintengine2d.XYWH(d.c.X-w/2, d.c.Y-d.d/2, w, d.d)
+	return paint2d.XYWH(d.c.X-w/2, d.c.Y-d.d/2, w, d.d)
 }
 
 // The inks of a line.
@@ -107,7 +107,7 @@ const (
 // routeLine is a line of the picture from a to b, an arrow when head;
 // under names the tags it runs behind.
 type routeLine struct {
-	a, b   paintengine2d.Point
+	a, b   paint2d.Point
 	ink    int
 	dashed bool
 	head   bool
@@ -118,7 +118,7 @@ type routeLine struct {
 // bad is the attacker's, muted a caption.
 type placedText struct {
 	text  string
-	at    paintengine2d.Point
+	at    paint2d.Point
 	bad   bool
 	muted bool
 }
@@ -131,7 +131,7 @@ type sceneMark struct {
 
 // placedEnv is a message where it is drawn, on the line numbered step.
 type placedEnv struct {
-	c    paintengine2d.Point
+	c    paint2d.Point
 	e    envelope
 	step int
 }
@@ -146,7 +146,7 @@ type routeLayout struct {
 	marks        []sceneMark
 	chips        []placedChip
 	envs         []placedEnv
-	stops        []paintengine2d.Point // where the message goes no further
+	stops        []paint2d.Point // where the message goes no further
 	h            float32
 }
 
@@ -182,7 +182,7 @@ func (s *routeScene) columns(w float32) routeColumns {
 	d := min(max(w*0.1, s.dip(32)), s.dip(42))
 	r := d / 2
 	dnd := d * 0.72
-	eb := envBox(lk, paintengine2d.Pt(0, 0))
+	eb := envBox(lk, paint2d.Pt(0, 0))
 	thV := eb.Dx() + s.dip(8)
 	named := func(i int) float32 { return mk + s.dip(4) + font.Advance(routeNames[i].name) }
 	// DNS's captions, and its pill: its records flow after it.
@@ -205,15 +205,15 @@ func (s *routeScene) columns(w float32) routeColumns {
 	}
 }
 
-func (s *routeScene) Measure(c layout.Constraints) paintengine2d.Point {
+func (s *routeScene) Measure(c layout.Constraints) paint2d.Point {
 	w := s.dip(560)
 	if c.HasMaxW() {
 		w = c.MaxW
 	}
-	return c.Constrain(paintengine2d.Pt(w, s.layoutAt(w).h))
+	return c.Constrain(paint2d.Pt(w, s.layoutAt(w).h))
 }
 
-func (s *routeScene) Arrange(r paintengine2d.Rect) { s.SetBounds(r) }
+func (s *routeScene) Arrange(r paint2d.Rect) { s.SetBounds(r) }
 
 // groupGap is between groups of tags along a line.
 const groupGap = 8
@@ -251,7 +251,7 @@ func placeAlong(lk style.LookAndFeel, groups [][]string, cx, top, maxW, lo, hi f
 			gy := y + (rowH-gh)/2
 			for a, n := range groups[k] {
 				cw, _ := chipSize(lk, n)
-				out = append(out, placedChip{name: n, alt: k, r: paintengine2d.XYWH(x+(gw-cw)/2, gy+float32(a)*(ch+gap), cw, ch)})
+				out = append(out, placedChip{name: n, alt: k, r: paint2d.XYWH(x+(gw-cw)/2, gy+float32(a)*(ch+gap), cw, ch)})
 			}
 			x += gw + gg
 		}
@@ -295,7 +295,7 @@ func placeDown(lk style.LookAndFeel, groups [][]string, x, top float32, centred 
 		}
 		for _, n := range grp {
 			cw, _ := chipSize(lk, n)
-			out = append(out, placedChip{name: n, alt: k, r: paintengine2d.XYWH(cx, y, cw, ch)})
+			out = append(out, placedChip{name: n, alt: k, r: paint2d.XYWH(cx, y, cw, ch)})
 			cx += cw + gap
 		}
 		y += ch + gap
@@ -315,7 +315,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	d := min(max(w*0.1, s.dip(32)), s.dip(42))
 	r := d / 2
 	dnd := d * 0.72
-	eb := envBox(lk, paintengine2d.Pt(0, 0))
+	eb := envBox(lk, paint2d.Pt(0, 0))
 	thH, thV := eb.Dy()+s.dip(8), eb.Dx()+s.dip(8) // what an envelope takes on a line across, and down
 	head := s.dip(9)
 	l := s.l
@@ -368,12 +368,12 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 				lw := mk + s.dip(4) + font.Advance(l)
 				x := cx - lw/2
 				g.marks = append(g.marks, sceneMark{routeNames[i].step, x + mk/2, y + lineH/2})
-				g.texts = append(g.texts, placedText{text: l, at: paintengine2d.Pt(x+mk+s.dip(4), y+(lineH-fh)/2)})
+				g.texts = append(g.texts, placedText{text: l, at: paint2d.Pt(x+mk+s.dip(4), y+(lineH-fh)/2)})
 				half = max(half, lw/2)
 				y += lineH
 				continue
 			}
-			g.texts = append(g.texts, placedText{text: l, at: paintengine2d.Pt(cx-font.Advance(l)/2, y)})
+			g.texts = append(g.texts, placedText{text: l, at: paint2d.Pt(cx-font.Advance(l)/2, y)})
 			half = max(half, font.Advance(l)/2)
 			y += fh
 		}
@@ -405,7 +405,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 			}
 			wide = max(wide, cx+it.w-x)
 			if place {
-				r := paintengine2d.XYWH(cx, y, it.w, ch)
+				r := paint2d.XYWH(cx, y, it.w, ch)
 				if i == 0 {
 					g.discs = append(g.discs, routeDisc{c: r.Center(), d: ch, w: it.w, text: dnsName})
 				} else {
@@ -416,7 +416,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 			cx += it.w + gap
 		}
 		if place {
-			g.texts = append(g.texts, placedText{text: caption, at: paintengine2d.Pt(x, top), muted: true})
+			g.texts = append(g.texts, placedText{text: caption, at: paint2d.Pt(x, top), muted: true})
 		}
 		return wide, y + ch - top
 	}
@@ -516,7 +516,7 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 		ay = y2 + dnd/2 + s.dip(4)
 	}
 	for i, l := range attacker {
-		g.texts = append(g.texts, placedText{text: l, at: paintengine2d.Pt(xa-font.Advance(l)/2, ay+float32(i)*fh), bad: i > 0})
+		g.texts = append(g.texts, placedText{text: l, at: paint2d.Pt(xa-font.Advance(l)/2, ay+float32(i)*fh), bad: i > 0})
 	}
 
 	// The bottom row: the recipient, their server, the attacker.
@@ -549,13 +549,13 @@ func (s *routeScene) layoutAt(w float32) routeLayout {
 	g.h = foot + m
 
 	g.discs = append(g.discs, []routeDisc{
-		{c: paintengine2d.Pt(L, g.y1), d: d, pict: pictPerson},
-		{c: paintengine2d.Pt(R, g.y1), d: d, pict: pictServer},
-		{c: paintengine2d.Pt(R, y2), d: d, pict: pictServer},
-		{c: paintengine2d.Pt(L, y2), d: d, pict: pictPerson},
-		{c: paintengine2d.Pt(xa, y2), d: dnd, pict: pictPerson, bad: true},
+		{c: paint2d.Pt(L, g.y1), d: d, pict: pictPerson},
+		{c: paint2d.Pt(R, g.y1), d: d, pict: pictServer},
+		{c: paint2d.Pt(R, y2), d: d, pict: pictServer},
+		{c: paint2d.Pt(L, y2), d: d, pict: pictPerson},
+		{c: paint2d.Pt(xa, y2), d: dnd, pict: pictPerson, bad: true},
 	}...)
-	pt := paintengine2d.Pt
+	pt := paint2d.Pt
 	// The connections: green arrows with TLS; without, red — in the
 	// clear.
 	ink := inkGood
@@ -610,12 +610,12 @@ func rejected(l lesson) bool { return l.dmarc && !l.spf && !l.dkim }
 const stopSize = 22
 
 // drawStop draws a stop centred at c: a red disc with a cross.
-func drawStop(ctx *paintengine2d.Context, lk style.LookAndFeel, c paintengine2d.Point) {
+func drawStop(ctx *paint2d.Context, lk style.LookAndFeel, c paint2d.Point) {
 	p := lk.Palette()
 	d := style.Dip(lk, stopSize)
-	ctx.DrawCircle(c, d/2, paintengine2d.Fill(whiteOn(p.Ink(p.Danger))))
+	ctx.DrawCircle(c, d/2, paint2d.Fill(whiteOn(p.Ink(p.Danger))))
 	sz := d * 0.6
-	style.DrawToolIcon(ctx, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), style.IconClose, white, style.IconSetOf(lk))
+	style.DrawToolIcon(ctx, paint2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), style.IconClose, white, style.IconSetOf(lk))
 }
 
 // flat is groups' tags, one after another.
@@ -647,26 +647,26 @@ func fitsIn(cs []placedChip, left, right float32) bool {
 	return true
 }
 
-func (s *routeScene) Paint(ctx *paintengine2d.Context) {
+func (s *routeScene) Paint(ctx *paint2d.Context) {
 	lk := s.Look()
 	b := s.LocalBounds()
 	g := s.layoutAt(b.Dx())
 	in := inksOf(lk)
 	font := lk.Font()
-	at := func(p paintengine2d.Point) paintengine2d.Point { return p.Add(b.Min) }
-	inks := [...]paintengine2d.Color{inkGood: in.good, inkAccent: lk.Palette().Ink(lk.Palette().Accent), inkMuted: in.muted, inkBad: in.bad}
-	arrowHead := func(tip, dir paintengine2d.Point, c paintengine2d.Color, h float32) {
-		path := paintengine2d.NewPath()
+	at := func(p paint2d.Point) paint2d.Point { return p.Add(b.Min) }
+	inks := [...]paint2d.Color{inkGood: in.good, inkAccent: lk.Palette().Ink(lk.Palette().Accent), inkMuted: in.muted, inkBad: in.bad}
+	arrowHead := func(tip, dir paint2d.Point, c paint2d.Color, h float32) {
+		path := paint2d.NewPath()
 		path.MoveTo(tip.X, tip.Y)
 		path.LineTo(tip.X-dir.X*h-dir.Y*h*0.6, tip.Y-dir.Y*h+dir.X*h*0.6)
 		path.LineTo(tip.X-dir.X*h+dir.Y*h*0.6, tip.Y-dir.Y*h-dir.X*h*0.6)
 		path.Close()
-		ctx.DrawPath(path, paintengine2d.Fill(c))
+		ctx.DrawPath(path, paint2d.Fill(c))
 	}
 	for _, l := range g.lines {
 		c := inks[l.ink]
 		dir := l.b.Sub(l.a).Normalize()
-		p := paintengine2d.StrokePaint(c, s.dip(1.75))
+		p := paint2d.StrokePaint(c, s.dip(1.75))
 		if l.dashed {
 			p.Stroke.Dash = []float32{s.dip(5), s.dip(4)}
 		}
@@ -683,18 +683,18 @@ func (s *routeScene) Paint(ctx *paintengine2d.Context) {
 		c := at(d.c)
 		if d.w > 0 {
 			box := d.box().Translate(b.Min)
-			ctx.DrawRoundRect(box, d.d/2, d.d/2, paintengine2d.Fill(in.disc))
-			ctx.DrawRoundRect(box, d.d/2, d.d/2, paintengine2d.StrokePaint(edge, s.dip(1.5)))
+			ctx.DrawRoundRect(box, d.d/2, d.d/2, paint2d.Fill(in.disc))
+			ctx.DrawRoundRect(box, d.d/2, d.d/2, paint2d.StrokePaint(edge, s.dip(1.5)))
 		} else {
-			ctx.DrawCircle(c, d.d/2, paintengine2d.Fill(in.disc))
-			ctx.DrawCircle(c, d.d/2, paintengine2d.StrokePaint(edge, s.dip(1.5)))
+			ctx.DrawCircle(c, d.d/2, paint2d.Fill(in.disc))
+			ctx.DrawCircle(c, d.d/2, paint2d.StrokePaint(edge, s.dip(1.5)))
 		}
 		if d.text != "" {
-			font.Draw(ctx, d.text, paintengine2d.Pt(c.X-font.Advance(d.text)/2, c.Y-font.Height()/2), ink)
+			font.Draw(ctx, d.text, paint2d.Pt(c.X-font.Advance(d.text)/2, c.Y-font.Height()/2), ink)
 			continue
 		}
 		sz := d.d * 0.56
-		drawPict(ctx, lk, d.pict, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), ink)
+		drawPict(ctx, lk, d.pict, paint2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), ink)
 	}
 	for _, t := range g.texts {
 		ink := in.text
@@ -720,6 +720,6 @@ func (s *routeScene) Paint(ctx *paintengine2d.Context) {
 		drawEnvelope(ctx, lk, at(e.c), e.e)
 	}
 	for _, m := range g.marks {
-		drawNumber(ctx, lk, m.n, at(paintengine2d.Pt(m.x, m.y)), s.dip(markSize))
+		drawNumber(ctx, lk, m.n, at(paint2d.Pt(m.x, m.y)), s.dip(markSize))
 	}
 }

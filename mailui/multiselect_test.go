@@ -3,10 +3,10 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // e2e finding: Ctrl+click, Shift+click and Ctrl+A only ever selected one
@@ -20,7 +20,7 @@ func TestMailMessageListMultiSelects(t *testing.T) {
 	}
 	click := func(row int, mods platform.Modifiers) {
 		r := tv.RowBounds(row)
-		p := paintengine2d.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
+		p := paint2d.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 		tv.MousePress(widget.MouseEvent{Pos: p, Mods: mods, Button: platform.ButtonLeft})
 		tv.MouseRelease(widget.MouseEvent{Pos: p, Button: platform.ButtonLeft})
 		a.PumpOnce()

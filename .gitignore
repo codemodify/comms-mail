@@ -26,3 +26,7 @@ go.work.sum
 .DS_Store
 bin/
 /share/
+
+# a local go.work for the goframework.io workspace (machine-specific)
+/go.work
+/go.work.sum

@@ -3,14 +3,14 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // Settings › Appearance lists the themes in the build; picking one gives
-// comms-mail that theme alone — look.json, shared with every uitoolkit
+// comms-mail that theme alone — look.json, shared with every desktop-ui
 // app, is not touched, and a change to it later does not undo the pick —
 // and "Use the shared theme" goes back to following it.
 func TestAppearanceTabGivesCommsMailItsOwnTheme(t *testing.T) {
@@ -69,7 +69,7 @@ func TestAppearanceTabGivesCommsMailItsOwnTheme(t *testing.T) {
 		t.Fatal("no way back to the shared theme")
 	}
 
-	// uitoolkit's Settings changes the shared theme: comms-mail keeps its own.
+	// desktop-ui's settings application changes the shared theme: comms-mail keeps its own.
 	if err := style.SaveAppearance(style.Appearance{Theme: style.ThemeDark, Corners: style.CornersSquare}); err != nil {
 		t.Fatal(err)
 	}

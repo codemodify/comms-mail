@@ -3,8 +3,8 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/graphics-paint2d"
 )
 
 // The mail server is an icon of comms-mail's own, registered with the
@@ -15,9 +15,9 @@ func TestServerIsARegisteredIcon(t *testing.T) {
 		t.Fatalf("server registered as %v (%v), iconServer %v", icon, ok, iconServer)
 	}
 	for _, set := range []style.IconSetName{style.IconSetClassic, style.IconSetSharp} {
-		img := paintengine2d.NewImage(48, 48)
-		ink := paintengine2d.Bytes(200, 30, 30, 255)
-		style.DrawToolIcon(paintengine2d.NewContext(img), paintengine2d.XYWH(0, 0, 48, 48), iconServer, ink, set)
+		img := paint2d.NewImage(48, 48)
+		ink := paint2d.Bytes(200, 30, 30, 255)
+		style.DrawToolIcon(paint2d.NewContext(img), paint2d.XYWH(0, 0, 48, 48), iconServer, ink, set)
 		inked := 0
 		for y := 0; y < 48; y++ {
 			for x := 0; x < 48; x++ {

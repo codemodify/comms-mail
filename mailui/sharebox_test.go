@@ -3,10 +3,10 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // fixedBox is content of a known height.
@@ -21,11 +21,11 @@ func newFixedBox(h float32) *fixedBox {
 	return b
 }
 
-func (b *fixedBox) Measure(c layout.Constraints) paintengine2d.Point {
-	return c.Constrain(paintengine2d.Pt(300, b.h))
+func (b *fixedBox) Measure(c layout.Constraints) paint2d.Point {
+	return c.Constrain(paint2d.Pt(300, b.h))
 }
 
-func (b *fixedBox) Arrange(r paintengine2d.Rect) { b.SetBounds(r) }
+func (b *fixedBox) Arrange(r paint2d.Rect) { b.SetBounds(r) }
 
 // The reading pane's header is as tall as what is in it, and never takes
 // the room the body needs.

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/platform"
+	"goframework.io/desktop-ui/platform"
 )
 
 type recNotifier struct {

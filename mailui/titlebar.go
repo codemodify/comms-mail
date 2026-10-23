@@ -3,11 +3,11 @@ package mailui
 import (
 	"math"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // The title bar holds the menu, Fetch / Write / Search and the tabs, and
@@ -69,13 +69,13 @@ func newEdgeWatch(child widget.Component, arranged func(widget.Component)) *edge
 	return e
 }
 
-func (e *edgeWatch) Measure(c layout.Constraints) paintengine2d.Point {
+func (e *edgeWatch) Measure(c layout.Constraints) paint2d.Point {
 	return e.Children()[0].Measure(c)
 }
 
-func (e *edgeWatch) Arrange(r paintengine2d.Rect) {
+func (e *edgeWatch) Arrange(r paint2d.Rect) {
 	e.SetBounds(r)
-	e.Children()[0].Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+	e.Children()[0].Arrange(paint2d.XYWH(0, 0, r.Dx(), r.Dy()))
 	if e.arranged != nil {
 		e.arranged(e)
 	}

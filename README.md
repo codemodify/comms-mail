@@ -34,13 +34,20 @@ code at all:
 | [`mailui`](mailui) | the three-pane window, the compose / account / preferences / filter dialogs, the tray item | yes |
 
 ```console
-$ go list -deps ./cmd/comms-maild | grep -c uitoolkit
+$ go list -deps ./cmd/comms-maild | grep -c goframework.io/desktop-ui
 0
 ```
 
 ## Build and run
 
-Go 1.25 or newer. No cgo is required: the cache is SQLite through the pure-Go `modernc.org/sqlite`.
+Go 1.27 or newer. The cache is SQLite through the pure-Go `modernc.org/sqlite`,
+so the daemon needs no cgo; the window needs it on Linux (X11 and Wayland)
+and macOS, as desktop-ui does.
+
+Until goframework.io publishes desktop-ui, comms-mail builds against a
+checkout of the goframework.io workspace at `~/go/src/goframework.io`:
+`go.mod` replaces every goframework module with its folder there (`make
+replace` writes those lines again, from `GOFRAMEWORK=<folder>`).
 
 ```bash
 git clone https://github.com/codemodify/comms-mail
@@ -48,23 +55,23 @@ cd comms-mail
 make            # bin/comms-maild, bin/comms-mail, bin/comms-mail-demo
 ```
 
-`make` builds the window with every uitoolkit theme engine
-(`-tags theme_engine_all`) and with uitoolkit's full text support
-(`font_emoji`): a character the interface face lacks — Cyrillic, Greek,
+The window is built with every desktop-ui theme engine
+(it imports `desktop-ui-themes-all`) and with desktop-ui's full text
+support (`desktop-ui-text-complex`): a character the interface face lacks — Cyrillic, Greek,
 CJK, Arabic, Hebrew, the Indic scripts — is borrowed from a font installed
 on the machine instead of drawn as a box, right-to-left text is laid out
 right to left, lines break where Unicode allows, and emoji are drawn in
 colour from the machine's emoji font (Noto Color Emoji on most Linux
-desktops). uitoolkit only draws a theme whose engine is in
-the build ([its docs/engines.md](https://github.com/codemodify/uitoolkit/blob/dev/docs/engines.md)),
-and comms-mail shows whichever theme you chose for all uitoolkit apps
-(`~/.config/uitoolkit/look.json`) or its own (Settings › Appearance). A
-plain `go build` has only the default engine: a theme it lacks is drawn as
-the default, and comms-mail says so when it starts.
+desktops). desktop-ui only draws a theme whose engine is imported
+(desktop-ui-themes-all's readme), so every build of comms-mail, `go build`
+and `go install` included, has them all, and shows whichever theme you
+chose for all desktop-ui apps (`~/.config/goframework-desktop-ui/look.json`;
+uitoolkit's `~/.config/uitoolkit/look.json` is read while that one is
+missing) or its own (Settings › Appearance).
 
-`make` also copies uitoolkit's icon packs into `share/comms-mail/icons/`
+`make` also copies desktop-ui-icons' packs into `share/comms-mail/icons/`
 beside `bin/`. comms-mail draws from them wherever your own
-`~/.config/uitoolkit/icons` has no copy of an icon — a set you never
+`~/.config/goframework-desktop-ui/icons` has no copy of an icon — a set you never
 installed, or an icon newer than your copy — and never writes to that
 directory. It also looks in `~/.local/share/comms-mail` and
 `/usr/share/comms-mail`. `go run` and `go install …@latest` copy nothing,
@@ -98,8 +105,12 @@ To install the binaries:
 make install    # into $GOBIN, the icon packs into $GOBIN/../share/comms-mail
 # or, without a checkout:
 go install github.com/codemodify/comms-mail/cmd/comms-maild@latest
-go install -tags 'theme_engine_all font_emoji' github.com/codemodify/comms-mail/cmd/comms-mail@latest
+go install github.com/codemodify/comms-mail/cmd/comms-mail@latest
 ```
+
+`go install …@latest` works again once goframework.io publishes desktop-ui:
+until then go.mod's replace lines point at a local checkout, and the go
+command does not install a module that has them.
 
 ### Useful flags and variables
 
@@ -134,15 +145,15 @@ tools/testenv.sh go test ./...
 The tests never touch a real mailbox; see [docs/testing.md](docs/testing.md)
 for the rules that keep it that way.
 
-## Built on uitoolkit
+## Built on goframework.io desktop-ui
 
-The UI is written with [uitoolkit](https://github.com/codemodify/uitoolkit),
+The UI is written with goframework.io's desktop-ui (formerly uitoolkit),
 a pure-Go desktop widget toolkit — Wayland and X11, its own layout, text
-and theming, no GTK or Qt underneath. comms-mail uses only uitoolkit's
+and theming, no GTK or Qt underneath. comms-mail uses only desktop-ui's
 exported API:
 
 ```console
-$ go list -deps ./... | grep uitoolkit | grep internal
+$ go list -deps ./... | grep goframework.io/desktop-ui | grep internal
 $
 ```
 

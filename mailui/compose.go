@@ -8,13 +8,12 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // ComposeOptions configure a Write / Reply / Forward / Draft window.
@@ -31,7 +30,7 @@ type ComposeOptions struct {
 }
 
 // OpenCompose opens a second Window. Headless apps still get a surface.
-func OpenCompose(a *app.Application, cli *mailcore.Client, opts ComposeOptions) (*app.Window, error) {
+func OpenCompose(a *ui.Application, cli *mailcore.Client, opts ComposeOptions) (*ui.Window, error) {
 	title := "Write: (no subject)"
 	if opts.ReplyTo != nil && strings.TrimSpace(opts.ReplyTo.Subject) != "" {
 		title = "Write: Re: " + stripRe(opts.ReplyTo.Subject)
@@ -51,7 +50,7 @@ func OpenCompose(a *app.Application, cli *mailcore.Client, opts ComposeOptions) 
 }
 
 // ComposeApp is the Write window: From / To / Cc / Bcc / Subject / body.
-func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts ComposeOptions) widget.Component {
+func ComposeApp(a *ui.Application, win *ui.Window, cli *mailcore.Client, opts ComposeOptions) widget.Component {
 	idents := sendIdentities(cli)
 	fromItems := make([]string, 0, len(idents))
 	for _, id := range idents {
@@ -108,7 +107,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		body0 = curSig + body0
 	}
 
-	status := widgets.NewStatusBar("Write a message.", "Offline demo", "v"+uitoolkit.Version)
+	status := widgets.NewStatusBar("Write a message.", "Offline demo", ui.Version())
 	from := widgets.NewComboBox(fromItems, fromIdx, nil)
 	// To / Cc / Bcc complete addresses from the address book as you type.
 	newRcpt := func(placeholder, initial string) *recipientField {
@@ -510,7 +509,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 		widgets.NewMenu("&Help",
 			widgets.ItemIcon(style.IconInfo, "About Write", func() {
 				widgets.Info(win.Content(), "Write",
-					"Compose window on uitoolkit.\nUI: Titillium Web.\nSend files to Sent in the demo Store.", nil)
+					"Compose window on goframework.io desktop-ui.\nUI: Titillium Web.\nSend files to Sent in the demo Store.", nil)
 			}),
 		),
 	)
@@ -555,7 +554,7 @@ func ComposeApp(a *app.Application, win *app.Window, cli *mailcore.Client, opts 
 	form.AddRow("Security", protectRow)
 	fields := widgets.NewPad(10, form)
 
-	chrome := widgets.NewTitleBar("Write", "compose  ·  comms-maild  ·  v"+uitoolkit.Version)
+	chrome := widgets.NewTitleBar("Write", "compose  ·  comms-maild  ·  "+ui.Version())
 	bodyPad := widgets.NewPad(8, body)
 	root := widgets.NewColumn(menubar, tools, chrome, fields, bodyPad, status).WithGap(0)
 	root.AddFlex(bodyPad, 1)

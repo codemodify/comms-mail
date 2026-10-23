@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/codemodify/paintengine2d"
+	"goframework.io/graphics-paint2d"
 )
 
 // System tag names. These are first-class Tags (sidebar + Preferences)
@@ -283,18 +283,18 @@ func TagNames(list []Tag) []string {
 }
 
 // ParseHexColor accepts #rgb or #rrggbb.
-func ParseHexColor(s string) paintengine2d.Color {
+func ParseHexColor(s string) paint2d.Color {
 	s = strings.TrimSpace(strings.TrimPrefix(s, "#"))
 	if len(s) == 3 {
 		s = string([]byte{s[0], s[0], s[1], s[1], s[2], s[2]})
 	}
 	if len(s) != 6 {
-		return paintengine2d.RGB(0.5, 0.5, 0.55)
+		return paint2d.RGB(0.5, 0.5, 0.55)
 	}
 	n := func(a, b byte) float32 {
 		return float32(unhex(a)*16+unhex(b)) / 255
 	}
-	return paintengine2d.RGB(n(s[0], s[1]), n(s[2], s[3]), n(s[4], s[5]))
+	return paint2d.RGB(n(s[0], s[1]), n(s[2], s[3]), n(s[4], s[5]))
 }
 
 func unhex(c byte) int {

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
 )
 
 // inviteCard shows the calendar invitation a message carries, above its

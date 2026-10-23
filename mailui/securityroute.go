@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/a11y"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/a11y"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // The way a message came, drawn as Settings › Security › Educate draws
@@ -117,20 +117,20 @@ type routeNode struct {
 	person         bool
 }
 
-func (v *routeView) Measure(c layout.Constraints) paintengine2d.Point {
+func (v *routeView) Measure(c layout.Constraints) paint2d.Point {
 	w := style.Dip(v.Look(), 300)
 	if c.HasMaxW() {
 		w = c.MaxW
 	}
 	n := len(v.nodes())
 	h := float32(n)*v.rowH() + float32(max(n-1, 0))*v.edgeH()
-	return c.Constrain(paintengine2d.Pt(w, h))
+	return c.Constrain(paint2d.Pt(w, h))
 }
 
-func (v *routeView) Arrange(r paintengine2d.Rect) { v.SetBounds(r) }
+func (v *routeView) Arrange(r paint2d.Rect) { v.SetBounds(r) }
 
 // hopInk is the colour of a hop's arrow.
-func hopInk(lk style.LookAndFeel, h mailcore.RouteHop) paintengine2d.Color {
+func hopInk(lk style.LookAndFeel, h mailcore.RouteHop) paint2d.Color {
 	in := inksOf(lk)
 	switch {
 	case h.TLS == mailcore.HopTLS:
@@ -194,7 +194,7 @@ func laterWords(d time.Duration) string {
 	return strconv.Itoa(int(d.Hours()/24)) + " days later"
 }
 
-func (v *routeView) Paint(ctx *paintengine2d.Context) {
+func (v *routeView) Paint(ctx *paint2d.Context) {
 	lk := v.Look()
 	in := inksOf(lk)
 	f := lk.Font()
@@ -212,18 +212,18 @@ func (v *routeView) Paint(ctx *paintengine2d.Context) {
 	y := b.Min.Y
 	nodes := v.nodes()
 	for i, n := range nodes {
-		c := paintengine2d.Pt(cx, y+v.rowH()/2)
-		ctx.DrawCircle(c, d/2, paintengine2d.Fill(in.disc))
-		ctx.DrawCircle(c, d/2, paintengine2d.StrokePaint(in.discEdge, style.Dip(lk, 1.25)))
+		c := paint2d.Pt(cx, y+v.rowH()/2)
+		ctx.DrawCircle(c, d/2, paint2d.Fill(in.disc))
+		ctx.DrawCircle(c, d/2, paint2d.StrokePaint(in.discEdge, style.Dip(lk, 1.25)))
 		p := pictServer
 		if n.person {
 			p = pictPerson
 		}
 		sz := d * 0.56
-		drawPict(ctx, lk, p, paintengine2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), in.text)
+		drawPict(ctx, lk, p, paint2d.XYWH(c.X-sz/2, c.Y-sz/2, sz, sz), in.text)
 		ty := c.Y - f.Height()/2
 		name := fit(n.name)
-		f.Draw(ctx, name, paintengine2d.Pt(tx, ty), in.text)
+		f.Draw(ctx, name, paint2d.Pt(tx, ty), in.text)
 		x := tx + f.Advance(name)
 		for _, extra := range []string{n.ip, n.note} {
 			if extra == "" {
@@ -233,7 +233,7 @@ func (v *routeView) Paint(ctx *paintengine2d.Context) {
 			if x+f.Advance(s) > b.Max.X {
 				break
 			}
-			f.Draw(ctx, s, paintengine2d.Pt(x, ty), in.muted)
+			f.Draw(ctx, s, paint2d.Pt(x, ty), in.muted)
 			x += f.Advance(s)
 		}
 		y += v.rowH()
@@ -242,12 +242,12 @@ func (v *routeView) Paint(ctx *paintengine2d.Context) {
 		}
 		h := v.edges()[i]
 		ink := hopInk(lk, h)
-		a, z := paintengine2d.Pt(cx, y+style.Dip(lk, 2)), paintengine2d.Pt(cx, y+v.edgeH()-style.Dip(lk, 2))
+		a, z := paint2d.Pt(cx, y+style.Dip(lk, 2)), paint2d.Pt(cx, y+v.edgeH()-style.Dip(lk, 2))
 		if h.Inside && h.TLS != mailcore.HopTLS {
-			pen := paintengine2d.StrokePaint(ink, style.Dip(lk, 1.75))
+			pen := paint2d.StrokePaint(ink, style.Dip(lk, 1.75))
 			pen.Stroke.Dash = []float32{style.Dip(lk, 4), style.Dip(lk, 3)}
-			ctx.DrawLine(a, z.Sub(paintengine2d.Pt(0, style.Dip(lk, 4))), pen)
-			drawArrow(ctx, lk, z.Sub(paintengine2d.Pt(0, style.Dip(lk, 5))), z, ink)
+			ctx.DrawLine(a, z.Sub(paint2d.Pt(0, style.Dip(lk, 4))), pen)
+			drawArrow(ctx, lk, z.Sub(paint2d.Pt(0, style.Dip(lk, 5))), z, ink)
 		} else {
 			drawArrow(ctx, lk, a, z, ink)
 		}
@@ -264,8 +264,8 @@ func (v *routeView) Paint(ctx *paintengine2d.Context) {
 		if ink == in.bad {
 			howInk = in.bad
 		}
-		f.Draw(ctx, fit(how), paintengine2d.Pt(tx, ly), howInk)
-		f.Draw(ctx, fit(when), paintengine2d.Pt(tx, ly+f.Height()), in.muted)
+		f.Draw(ctx, fit(how), paint2d.Pt(tx, ly), howInk)
+		f.Draw(ctx, fit(when), paint2d.Pt(tx, ly+f.Height()), in.muted)
 		y += v.edgeH()
 	}
 }

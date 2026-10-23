@@ -7,14 +7,14 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // Settings › Appearance: the themes in this build, one click to use one in
-// comms-mail (theme.go: it overrides the theme every uitoolkit app shares,
+// comms-mail (theme.go: it overrides the theme every desktop-ui app shares,
 // for comms-mail alone), and a way back to the shared one.
 
 // themeLabel is how the list names a pack.
@@ -38,7 +38,7 @@ func themeLabelFor(name string) string {
 	return name + " (not in this build)"
 }
 
-func prefsAppearance(a *app.Application) widget.Component {
+func prefsAppearance(a *ui.Application) widget.Component {
 	all := style.ListThemes()
 	var rows []style.ThemePack
 	shade := 0 // all, light, dark
@@ -65,15 +65,15 @@ func prefsAppearance(a *app.Application) widget.Component {
 		table.Invalidate()
 	}
 	// Use the shared theme is on while comms-mail has a theme of its own;
-	// its tip says which it uses and which every other uitoolkit app keeps.
+	// its tip says which it uses and which every other desktop-ui app keeps.
 	show := func() {
 		shared := style.LoadAppearance().Name
 		if own := ownTheme(); own != "" {
-			follow.Tip = fmt.Sprintf("comms-mail uses %s; every other uitoolkit app keeps %s, the theme they share (%s).",
+			follow.Tip = fmt.Sprintf("comms-mail uses %s; every other desktop-ui app keeps %s, the theme they share (%s).",
 				themeLabelFor(own), themeLabelFor(shared), style.AppearancePath())
 			follow.SetEnabled(true)
 		} else {
-			follow.Tip = fmt.Sprintf("comms-mail follows %s, the theme every uitoolkit app shares (%s). Pick one in the list to use another in comms-mail alone.",
+			follow.Tip = fmt.Sprintf("comms-mail follows %s, the theme every desktop-ui app shares (%s). Pick one in the list to use another in comms-mail alone.",
 				themeLabelFor(shared), style.AppearancePath())
 			follow.SetEnabled(false)
 		}

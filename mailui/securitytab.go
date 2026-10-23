@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/a11y"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/a11y"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // The reading pane's say on a message's security, in two places: a row of
@@ -36,7 +36,7 @@ const (
 )
 
 // ink is the tone's colour in lk.
-func (t secTone) ink(lk style.LookAndFeel) paintengine2d.Color {
+func (t secTone) ink(lk style.LookAndFeel) paint2d.Color {
 	p := lk.Palette()
 	switch t {
 	case secGood:
@@ -90,16 +90,16 @@ func chipRadius(lk style.LookAndFeel) float32 {
 // iconSize is the mark's side: a little under the text's height.
 func (c *secChip) iconSize() float32 { return c.Look().Font().Height() * 0.85 }
 
-func (c *secChip) Measure(k layout.Constraints) paintengine2d.Point {
+func (c *secChip) Measure(k layout.Constraints) paint2d.Point {
 	f := c.Look().Font()
 	h := f.Height() + style.Dip(c.Look(), 8)
 	w := 2*c.pad() + c.iconSize() + style.Dip(c.Look(), 4) + f.Advance(c.Text)
-	return k.Constrain(paintengine2d.Pt(float32(int(w+0.999)), h))
+	return k.Constrain(paint2d.Pt(float32(int(w+0.999)), h))
 }
 
-func (c *secChip) Arrange(r paintengine2d.Rect) { c.SetBounds(r) }
+func (c *secChip) Arrange(r paint2d.Rect) { c.SetBounds(r) }
 
-func (c *secChip) Paint(ctx *paintengine2d.Context) {
+func (c *secChip) Paint(ctx *paint2d.Context) {
 	lk := c.Look()
 	b := c.LocalBounds()
 	ink := c.Tone.ink(lk)
@@ -108,14 +108,14 @@ func (c *secChip) Paint(ctx *paintengine2d.Context) {
 		alpha = 0.22
 	}
 	rad := chipRadius(lk)
-	ctx.DrawRoundRect(b, rad, rad, paintengine2d.Fill(ink.WithAlpha(alpha)))
-	ctx.DrawRoundRect(b.Inset(0.5), rad, rad, paintengine2d.StrokePaint(ink.WithAlpha(0.7), 1))
+	ctx.DrawRoundRect(b, rad, rad, paint2d.Fill(ink.WithAlpha(alpha)))
+	ctx.DrawRoundRect(b.Inset(0.5), rad, rad, paint2d.StrokePaint(ink.WithAlpha(0.7), 1))
 	f := lk.Font()
 	sz := c.iconSize()
 	x := b.Min.X + c.pad()
-	style.DrawToolIcon(ctx, paintengine2d.XYWH(x, b.Min.Y+(b.Dy()-sz)/2, sz, sz), c.Icon, ink, style.IconSetOf(lk))
+	style.DrawToolIcon(ctx, paint2d.XYWH(x, b.Min.Y+(b.Dy()-sz)/2, sz, sz), c.Icon, ink, style.IconSetOf(lk))
 	x += sz + style.Dip(lk, 4)
-	f.Draw(ctx, c.Text, paintengine2d.Pt(x, b.Min.Y+(b.Dy()-f.Height())/2), lk.Palette().Text)
+	f.Draw(ctx, c.Text, paint2d.Pt(x, b.Min.Y+(b.Dy()-f.Height())/2), lk.Palette().Text)
 	if c.State()&style.StateFocused != 0 {
 		lk.DrawFocusRing(ctx, b)
 	}
@@ -230,14 +230,14 @@ func (v *securityView) clear() {
 type jumpBox struct {
 	widget.Base
 	v        *securityView
-	measured map[layout.Constraints]paintengine2d.Point
+	measured map[layout.Constraints]paint2d.Point
 	fontH    float32
-	laid     paintengine2d.Point // the size the sections were laid out at
+	laid     paint2d.Point // the size the sections were laid out at
 }
 
 // changed is new sections: what was measured and laid out is gone.
 func (b *jumpBox) changed() {
-	b.measured, b.laid = nil, paintengine2d.Point{}
+	b.measured, b.laid = nil, paint2d.Point{}
 }
 
 // MinWidth is as narrow as the tab's lines are let wrap.
@@ -252,7 +252,7 @@ func newJumpBox(v *securityView) *jumpBox {
 
 // Measure, unbounded, is at a narrow width: the lines wrap, and the
 // reading pane can be as narrow as its other tabs let it.
-func (b *jumpBox) Measure(c layout.Constraints) paintengine2d.Point {
+func (b *jumpBox) Measure(c layout.Constraints) paint2d.Point {
 	if !c.HasMaxW() {
 		c.MaxW = style.Dip(b.Look(), 280)
 	}
@@ -265,17 +265,17 @@ func (b *jumpBox) Measure(c layout.Constraints) paintengine2d.Point {
 	}
 	p := b.v.body.Measure(c)
 	if b.measured == nil {
-		b.measured = map[layout.Constraints]paintengine2d.Point{}
+		b.measured = map[layout.Constraints]paint2d.Point{}
 	}
 	b.measured[c] = p
 	return p
 }
 
-func (b *jumpBox) Arrange(r paintengine2d.Rect) {
+func (b *jumpBox) Arrange(r paint2d.Rect) {
 	b.SetBounds(r)
-	if size := paintengine2d.Pt(r.Dx(), r.Dy()); size != b.laid {
+	if size := paint2d.Pt(r.Dx(), r.Dy()); size != b.laid {
 		b.laid = size
-		b.v.body.Arrange(paintengine2d.Rect{Min: paintengine2d.Pt(0, 0), Max: size})
+		b.v.body.Arrange(paint2d.Rect{Min: paint2d.Pt(0, 0), Max: size})
 	}
 	if sec := b.v.sections[b.v.jump]; sec != nil && b.v.jump != "" && r.Dy() > 0 {
 		b.v.jump = ""

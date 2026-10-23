@@ -19,9 +19,9 @@ import (
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/comms-mail/mailui"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 func main() {
@@ -66,7 +66,7 @@ func main() {
 
 	// AppID is what the desktop files the windows under (Wayland's app_id,
 	// X11's WM_CLASS), whatever the binary is called.
-	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: *headless, WatchLook: true, AppID: "comms-mail-demo"})
+	a := ui.New(ui.Options{Look: look, Headless: *headless, WatchLook: true, AppID: "comms-mail-demo"})
 	// The window icon the desktop shows in its title bar, task bar and
 	// switcher: comms-mail's logo (logo-normal.png).
 	a.SetIcon(mailui.AppIcons()...)

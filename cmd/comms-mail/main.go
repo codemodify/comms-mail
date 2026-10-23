@@ -14,9 +14,9 @@ import (
 
 	"github.com/codemodify/comms-mail/mailcore"
 	"github.com/codemodify/comms-mail/mailui"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 func main() {
@@ -44,12 +44,12 @@ func main() {
 	}
 	defer cli.Close()
 
-	// The theme every uitoolkit app shares (look.json), or comms-mail's own
-	// from Settings › Appearance. uitoolkit only draws the themes whose
-	// engines are in the build: `make` builds with all of them.
+	// The theme every desktop-ui app shares (look.json), or comms-mail's own
+	// from Settings › Appearance. desktop-ui only draws the themes whose
+	// engines are imported: mailui imports all of them.
 	for _, name := range []string{style.LoadAppearance().Name, mailui.OwnTheme()} {
 		if note := style.MissingThemeNote(name); note != "" {
-			log.Printf("comms-mail: %s; build comms-mail with `make` (-tags theme_engine_all)", note)
+			log.Printf("comms-mail: %s", note)
 		}
 	}
 	look := mailui.PreferredLook()
@@ -63,7 +63,7 @@ func main() {
 
 	// AppID is what the desktop files the windows under (Wayland's app_id,
 	// X11's WM_CLASS), whatever the binary is called.
-	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: *headless, WatchLook: true, AppID: "comms-mail"})
+	a := ui.New(ui.Options{Look: look, Headless: *headless, WatchLook: true, AppID: "comms-mail"})
 	// The window icon the desktop shows in its title bar, task bar and
 	// switcher: comms-mail's logo (logo-normal.png).
 	a.SetIcon(mailui.AppIcons()...)

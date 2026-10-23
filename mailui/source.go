@@ -5,16 +5,16 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // OpenMessageSource is Thunderbird View → Message Source (Ctrl+U):
 // a read-only, selectable, JetBrains Mono window of the stored RFC822.
-func OpenMessageSource(a *app.Application, msg mailcore.Message, rfc822 string) (*app.Window, error) {
+func OpenMessageSource(a *ui.Application, msg mailcore.Message, rfc822 string) (*ui.Window, error) {
 	title := "Message Source"
 	if subj := strings.TrimSpace(msg.Subject); subj != "" {
 		title = "Message Source: " + subj
@@ -30,7 +30,7 @@ func OpenMessageSource(a *app.Application, msg mailcore.Message, rfc822 string) 
 }
 
 // MessageSourceApp is the source window chrome.
-func MessageSourceApp(win *app.Window, msg mailcore.Message, rfc822 string) widget.Component {
+func MessageSourceApp(win *ui.Window, msg mailcore.Message, rfc822 string) widget.Component {
 	body := widgets.NewMonoTextView(rfc822, "No source")
 	status := widgets.NewStatusBar(
 		fmt.Sprintf("%d bytes", len(rfc822)),

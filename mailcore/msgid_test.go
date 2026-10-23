@@ -23,7 +23,7 @@ func TestMessageIDsAreNeutral(t *testing.T) {
 	if mid == nil || !re.MatchString(mid[1]) {
 		t.Fatalf("built message's Message-ID: %v\n%s", mid, raw)
 	}
-	if strings.Contains(strings.ToLower(raw), "uitoolkit") {
+	if l := strings.ToLower(raw); strings.Contains(l, "uitoolkit") || strings.Contains(l, "goframework") {
 		t.Fatal("the software is named in the message")
 	}
 }

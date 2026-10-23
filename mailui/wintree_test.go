@@ -1,9 +1,9 @@
 package mailui
 
 import (
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // windowTree is the whole Mail window for tests that look widgets up: its
@@ -16,11 +16,11 @@ type windowTree struct {
 
 func (t *windowTree) Children() []widget.Component { return t.kids }
 
-func mailTree(w *app.Window) widget.Component {
+func mailTree(w *ui.Window) widget.Component {
 	t := &windowTree{}
 	t.Init(t)
 	ww, hh := w.SurfaceSize()
-	t.SetBounds(paintengine2d.XYWH(0, 0, float32(ww), float32(hh)))
+	t.SetBounds(paint2d.XYWH(0, 0, float32(ww), float32(hh)))
 	if tb := w.TitleBar(); tb != nil {
 		t.kids = append(t.kids, tb)
 	}

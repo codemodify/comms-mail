@@ -8,12 +8,12 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/richtext"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-richtext"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // docOf is html as the reading pane's rich-text view reads it.
@@ -206,7 +206,7 @@ func TestRemoteImagesRemovesATrustedSender(t *testing.T) {
 	if err := cli.AllowRemoteImages("news@example.com", true); err != nil {
 		t.Fatal(err)
 	}
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 560, Headless: true})
 	if err != nil {
 		t.Fatal(err)

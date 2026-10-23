@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
 )
 
 // comms-mail registers the share directories that hold icon packs — its

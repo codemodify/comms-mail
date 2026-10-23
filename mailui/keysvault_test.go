@@ -6,9 +6,9 @@ import (
 
 	"github.com/codemodify/comms-mail/internal/svtest"
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/widget"
 )
 
 // Settings › Security › Keys: another of secretvault's vaults takes the

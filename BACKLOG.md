@@ -5,6 +5,10 @@ blockers — the roadmap features work — but the rough edges and smaller wants
 that make the difference in daily use. Grouped, roughly by area. Append as
 new ones turn up.
 
+comms-mail is built on goframework.io's desktop-ui (formerly uitoolkit);
+framework gaps go to goframework-gaps.md. "uitoolkit-gaps.md #N" below is
+the file that preceded it, in git history (last at f8f7cdc).
+
 ## Reading / HTML
 - **CSS background images and SVG** are not drawn (the renderer handles
   `<img>` in PNG / JPEG / GIF / WebP only).

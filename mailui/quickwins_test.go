@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 func demoClient(t *testing.T) *mailcore.Client {
@@ -34,7 +33,7 @@ func demoClient(t *testing.T) *mailcore.Client {
 // placeholder, plus the From box and the body.
 func composeFields(t *testing.T, cli *mailcore.Client, opts ComposeOptions) (map[string]*widgets.TextField, *widgets.ComboBox, *widgets.TextArea) {
 	t.Helper()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Write", Width: 760, Height: 640, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +68,7 @@ func composeFields(t *testing.T, cli *mailcore.Client, opts ComposeOptions) (map
 // fields by name.
 func composeRecipients(t *testing.T, cli *mailcore.Client, opts ComposeOptions) map[string]*recipientField {
 	t.Helper()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Write", Width: 760, Height: 640, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +209,7 @@ func TestMoveMenuAndDropMoveMessages(t *testing.T) {
 
 // liveLoop runs a's event loop on a goroutine and returns a function that
 // runs fn on the UI goroutine and waits for it.
-func liveLoop(t *testing.T, a *app.Application) func(func()) {
+func liveLoop(t *testing.T, a *ui.Application) func(func()) {
 	t.Helper()
 	ran := make(chan error, 1)
 	go func() { ran <- a.Run() }()
@@ -249,7 +248,7 @@ func TestUndoHoldsTheMoveBack(t *testing.T) {
 	defer func() { undoWindow = old }()
 
 	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)

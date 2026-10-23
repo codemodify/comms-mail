@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // A drag of an attachment offers the file it is going to write, and the
@@ -43,7 +43,7 @@ func TestAttachmentDragPromisesItsFile(t *testing.T) {
 	}
 	// The promised file is really there, under the scratch directory and
 	// nowhere near the user's own.
-	e := widget.NewDropEvent(paintengine2d.Point{}, "text/uri-list", data)
+	e := widget.NewDropEvent(paint2d.Point{}, "text/uri-list", data)
 	if len(e.Paths) != 1 {
 		t.Fatalf("the uri-list decodes to %q, want one path", e.Paths)
 	}

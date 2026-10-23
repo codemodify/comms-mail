@@ -13,14 +13,13 @@ import (
 
 	"github.com/codemodify/comms-mail/internal/svtest"
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/a11y"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/a11y"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 const (
@@ -69,7 +68,7 @@ hQEMA9xX0Lq2eW3YAQfzyzzyx
 // securityDaemon is comms-maild with its secrets in a stand-in
 // secretvault, holding a signed and an encrypted message, and the window
 // showing their folder.
-func securityDaemon(t *testing.T) (*session, *app.Application, *svtest.Vault, map[string]mailcore.MessageID) {
+func securityDaemon(t *testing.T) (*session, *ui.Application, *svtest.Vault, map[string]mailcore.MessageID) {
 	t.Helper()
 	sv := svtest.Start(t, false)
 	sv.InspectWith(func(raw []byte, decrypt bool) any {
@@ -124,7 +123,7 @@ func securityDaemon(t *testing.T) (*session, *app.Application, *svtest.Vault, ma
 	if err := cli.UseStore(mailcore.StoreSecretVault, ""); err != nil {
 		t.Fatal(err)
 	}
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +148,7 @@ func securityDaemon(t *testing.T) (*session, *app.Application, *svtest.Vault, ma
 
 // open shows message id in the reading pane and waits for secretvault's
 // say on it.
-func open(s *session, a *app.Application, id mailcore.MessageID) {
+func open(s *session, a *ui.Application, id mailcore.MessageID) {
 	s.selected = []mailcore.MessageID{id}
 	s.loadPreview()
 	for i := 0; i < 3; i++ {
@@ -280,7 +279,7 @@ func TestReadingSignedAndEncryptedMail(t *testing.T) {
 
 // writeParts are a Write window's Sign and Encrypt boxes, the note beside
 // them and its body.
-func writeParts(w *app.Window) (sign, encrypt *widgets.Checkbox, note string, body *widgets.TextArea) {
+func writeParts(w *ui.Window) (sign, encrypt *widgets.Checkbox, note string, body *widgets.TextArea) {
 	widget.Walk(w.Content(), func(c widget.Component) {
 		switch v := c.(type) {
 		case *widgets.Checkbox:
@@ -486,7 +485,7 @@ func TestSenderWarningsInTheReadingPane(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cli.Close()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -550,7 +549,7 @@ func TestSenderWarningsInTheReadingPane(t *testing.T) {
 // to save and a remove, and other people's keys get a list of their own.
 func TestKeysPlaces(t *testing.T) {
 	cli, _ := vaultDaemon(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	section, _ := keysSection(a, cli)
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Settings", Width: 700, Height: 1400, Headless: true})
 	if err != nil {
@@ -631,7 +630,7 @@ func TestKeysPlaces(t *testing.T) {
 // importedSession is a window on a store holding mails (file name → raw
 // message, with \n line ends), imported from files; and the messages'
 // ids by subject.
-func importedSession(t *testing.T, mails map[string]string) (*session, *app.Application, map[string]mailcore.MessageID) {
+func importedSession(t *testing.T, mails map[string]string) (*session, *ui.Application, map[string]mailcore.MessageID) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv(mailcore.EnvConfig, filepath.Join(dir, "mail.json"))
@@ -658,7 +657,7 @@ func importedSession(t *testing.T, mails map[string]string) (*session, *app.Appl
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cli.Close() })
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	main, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)

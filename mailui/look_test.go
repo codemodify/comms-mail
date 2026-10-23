@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 func TestMailRebuildDoesNotClobberLookJSON(t *testing.T) {
@@ -76,7 +75,7 @@ func TestMailWatchLookAppliesSettingsPack(t *testing.T) {
 	}
 }
 
-// View Light picks comms-mail's own theme; the theme every uitoolkit app
+// View Light picks comms-mail's own theme; the theme every desktop-ui app
 // shares (look.json) is not touched.
 func TestMailViewLightKeepsItsOwnTheme(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -102,14 +101,14 @@ func TestMailViewLightKeepsItsOwnTheme(t *testing.T) {
 	}
 }
 
-func openMailLookSession(t *testing.T, look style.LookAndFeel, watch bool, opts AppOptions) (*session, *app.Application, *app.Window, func()) {
+func openMailLookSession(t *testing.T, look style.LookAndFeel, watch bool, opts AppOptions) (*session, *ui.Application, *ui.Window, func()) {
 	t.Helper()
 	return openMailFramedSession(t, look, watch, opts, platform.DecorationsAuto)
 }
 
 // openMailFramedSession is openMailLookSession with the window's frame
 // drawn by deco: platform.DecorationsClient for the toolkit's own caption.
-func openMailFramedSession(t *testing.T, look style.LookAndFeel, watch bool, opts AppOptions, deco platform.Decorations) (*session, *app.Application, *app.Window, func()) {
+func openMailFramedSession(t *testing.T, look style.LookAndFeel, watch bool, opts AppOptions, deco platform.Decorations) (*session, *ui.Application, *ui.Window, func()) {
 	t.Helper()
 	sock, stopDemo, err := mailcore.StartDemo(context.Background())
 	if err != nil {
@@ -120,7 +119,7 @@ func openMailFramedSession(t *testing.T, look style.LookAndFeel, watch bool, opt
 		stopDemo()
 		t.Fatal(err)
 	}
-	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: true, Scale: 1, WatchLook: watch})
+	a := ui.New(ui.Options{Look: look, Headless: true, Scale: 1, WatchLook: watch})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true, Decorations: deco})
 	if err != nil {
 		cli.Close()
@@ -140,7 +139,7 @@ func openMailFramedSession(t *testing.T, look style.LookAndFeel, watch bool, opt
 // comms-mail's captions have no window-menu button, whatever look.json's
 // "hideWindowMenu" says each time the file is applied again.
 func TestNoWindowMenuOutlastsLookJSON(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	noWindowMenu(a)
 	ap := style.Appearance{Theme: style.ThemeDark}
 	ap.HideWindowMenu = false
@@ -150,7 +149,7 @@ func TestNoWindowMenuOutlastsLookJSON(t *testing.T) {
 	}
 }
 
-// The desktop's reduced-motion setting applies to comms-mail: uitoolkit
+// The desktop's reduced-motion setting applies to comms-mail: desktop-ui
 // only records it unless the application asks.
 func TestFollowsTheDesktopsReducedMotion(t *testing.T) {
 	t.Setenv(style.AnimationsEnv, "")
@@ -158,7 +157,7 @@ func TestFollowsTheDesktopsReducedMotion(t *testing.T) {
 	defer style.SetDesktopReduceMotion(style.DesktopReducesMotion())
 	style.SetFollowDesktopMotion(false)
 	cli := demoClient(t)
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 1280, Height: 800, Headless: true})
 	if err != nil {
 		t.Fatal(err)

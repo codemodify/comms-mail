@@ -5,19 +5,18 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // recipientWindow puts a To field and a Subject field in a headless
 // window, with the keyboard in To. asked records the suggestion requests.
-func recipientWindow(t *testing.T) (*app.Window, *recipientField, *widgets.TextField, *[]string) {
+func recipientWindow(t *testing.T) (*ui.Window, *recipientField, *widgets.TextField, *[]string) {
 	t.Helper()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Write", Width: 600, Height: 400, Headless: true})
 	if err != nil {
 		t.Fatal(err)

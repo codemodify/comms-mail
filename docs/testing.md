@@ -37,7 +37,7 @@ tools/testenv.sh go test ./...
 (so nothing can be auto-started), and its own `XDG_RUNTIME_DIR`,
 `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `XDG_DATA_HOME`. Unsetting
 `DBUS_SESSION_BUS_ADDRESS` alone is not enough — both godbus and
-uitoolkit's `platform` fall back to `$XDG_RUNTIME_DIR/bus`.
+desktop-ui's freedesktop services fall back to `$XDG_RUNTIME_DIR/bus`.
 
 The equivalent without the script, if you have no `dbus-daemon`:
 
@@ -60,7 +60,7 @@ display.
 ```bash
 tools/testenv.sh go test ./mailcore
 tools/testenv.sh go test ./mailui
-UITK_TRAY=fake tools/testenv.sh go test ./mailui   # exercise the tray path
+GOFRAMEWORK_DESKTOP_UI_TRAY=fake tools/testenv.sh go test ./mailui   # exercise the tray path
 ```
 
 ## Checks worth keeping green
@@ -69,8 +69,8 @@ UITK_TRAY=fake tools/testenv.sh go test ./mailui   # exercise the tray path
 go build ./...
 
 # The daemon must link no GUI code.
-go list -deps ./cmd/comms-maild | grep -c uitoolkit   # expect 0
+go list -deps ./cmd/comms-maild | grep -c goframework.io/desktop-ui   # expect 0
 
-# The app must use only uitoolkit's exported API.
-go list -deps ./... | grep uitoolkit | grep internal  # expect no output
+# The app must use only desktop-ui's exported API.
+go list -deps ./... | grep goframework.io/desktop-ui | grep internal  # expect no output
 ```

@@ -4,7 +4,7 @@
 // over a Unix socket.
 //
 // It deliberately links no GUI code — nothing here imports
-// github.com/codemodify/uitoolkit — so cmd/comms-maild is a headless
+// goframework.io/desktop-ui — so cmd/comms-maild is a headless
 // daemon. The three-pane desktop UI lives in the sibling mailui package.
 //
 // The default backend is an empty LocalStore (IMAP or POP3 + SMTP with a

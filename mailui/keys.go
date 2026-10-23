@@ -1,11 +1,11 @@
 package mailui
 
 import (
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // Thunderbird-like shortcuts (when focus is not a text field):
@@ -41,17 +41,17 @@ func wrapShortcutsReady(col *widgets.FlexBox, on func(widget.KeyEvent) bool, rea
 	return s
 }
 
-func (s *shortcutRoot) Measure(c layout.Constraints) paintengine2d.Point {
+func (s *shortcutRoot) Measure(c layout.Constraints) paint2d.Point {
 	if len(s.Children()) == 0 {
-		return paintengine2d.Point{}
+		return paint2d.Point{}
 	}
 	return s.Children()[0].Measure(c)
 }
 
-func (s *shortcutRoot) Arrange(r paintengine2d.Rect) {
+func (s *shortcutRoot) Arrange(r paint2d.Rect) {
 	s.SetBounds(r)
 	if len(s.Children()) > 0 {
-		s.Children()[0].Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+		s.Children()[0].Arrange(paint2d.XYWH(0, 0, r.Dx(), r.Dy()))
 	}
 	if !s.ready && s.Host() != nil && s.onReady != nil {
 		s.ready = true
@@ -59,7 +59,7 @@ func (s *shortcutRoot) Arrange(r paintengine2d.Rect) {
 	}
 }
 
-func (s *shortcutRoot) Paint(*paintengine2d.Context) {}
+func (s *shortcutRoot) Paint(*paint2d.Context) {}
 
 func (s *shortcutRoot) KeyPress(e widget.KeyEvent) bool {
 	if s.onKey != nil && s.onKey(e) {

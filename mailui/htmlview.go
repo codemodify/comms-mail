@@ -9,15 +9,15 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/richtext"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-richtext"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/graphics-paint2d"
 	_ "golang.org/x/image/webp" // images in HTML mail
 )
 
 // HTML mail is shown formatted, not stripped to text: comms-maild hands the
 // message's HTML over and the window renders it with a read-only RichText
-// (uitoolkit's HTML subset — no scripts, no external CSS). Links are
+// (desktop-ui-richtext's HTML subset — no scripts, no external CSS). Links are
 // followed on a click, after the real target is shown, so link text cannot
 // disguise where it goes.
 //
@@ -65,7 +65,7 @@ func hasPrefixFold(s, prefix string) bool {
 const maxImagePixels = 4096 * 4096
 
 // decodeImage turns PNG, JPEG, GIF or WebP bytes into pixels, or nil.
-func decodeImage(data []byte) *paintengine2d.Image {
+func decodeImage(data []byte) *paint2d.Image {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > maxImagePixels {
 		return nil
@@ -74,19 +74,19 @@ func decodeImage(data []byte) *paintengine2d.Image {
 	if err != nil {
 		return nil
 	}
-	return paintengine2d.NewImageFromNRGBA(img)
+	return paint2d.NewImageFromNRGBA(img)
 }
 
 // blockedImageResolver is a RichText.ResolveImageKind that draws nothing:
 // data: images are decoded by the widget before it is consulted, and
 // returning nil leaves a placeholder, with the image's alt text, rather
 // than fetching anything.
-func blockedImageResolver(string, richtext.ImageKind) *paintengine2d.Image { return nil }
+func blockedImageResolver(string, richtext.ImageKind) *paint2d.Image { return nil }
 
 // newReadOnlyRich is a read-only HTML view: links followed through onLink,
 // no network for images.
-func newReadOnlyRich(onLink func(string)) *widgets.RichText {
-	rt := widgets.NewRichText("")
+func newReadOnlyRich(onLink func(string)) *richtext.RichText {
+	rt := richtext.NewRichText("")
 	rt.ReadOnly = true
 	rt.MinRows = 8
 	rt.OnLink = onLink

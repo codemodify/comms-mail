@@ -6,16 +6,15 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // OpenPrefs opens Settings: Accounts / Signatures / Tags.
-func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.Window, error) {
+func OpenPrefs(a *ui.Application, cli *mailcore.Client, onChange func()) (*ui.Window, error) {
 	win, err := a.NewWindow(platform.WindowOptions{
 		Title: "Settings", Width: 960, Height: 900, MinWidth: 710, MinHeight: 440,
 	})
@@ -27,12 +26,12 @@ func OpenPrefs(a *app.Application, cli *mailcore.Client, onChange func()) (*app.
 }
 
 // OpenFilters opens Settings (whose Filters tab lists the rules).
-func OpenFilters(a *app.Application, cli *mailcore.Client) (*app.Window, error) {
+func OpenFilters(a *ui.Application, cli *mailcore.Client) (*ui.Window, error) {
 	return OpenPrefs(a, cli, nil)
 }
 
 // PrefsApp is tabbed: Accounts and Tags (sidebar Tags / filter pins share this model).
-func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+func PrefsApp(a *ui.Application, win *ui.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	// The status bar names the config file in use, and nothing else.
 	status := widgets.NewStatusBar(mailcore.ConfigPath())
 
@@ -67,7 +66,7 @@ func PrefsApp(a *app.Application, win *app.Window, cli *mailcore.Client, onChang
 	return root
 }
 
-func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+func prefsAccounts(a *ui.Application, win *ui.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	st, _ := cli.Status() // the backend, for an account that names no protocol
 	accounts, _ := cli.Accounts()
 	var table *widgets.TableView
@@ -158,7 +157,7 @@ func prefsAccounts(a *app.Application, win *app.Window, cli *mailcore.Client, on
 	return col
 }
 
-func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+func prefsTags(a *ui.Application, win *ui.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	tags, _ := cli.Tags()
 	var table *widgets.TableView
 	var remove *widgets.Button
@@ -269,7 +268,7 @@ func prefsTags(a *app.Application, win *app.Window, cli *mailcore.Client, onChan
 }
 
 // OpenTagEditor is Add / Edit for one tag (name + #rrggbb color).
-func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, onSave func(mailcore.Tag)) (*app.Window, error) {
+func OpenTagEditor(a *ui.Application, initial mailcore.Tag, nameLocked bool, onSave func(mailcore.Tag)) (*ui.Window, error) {
 	title := "Add tag"
 	if strings.TrimSpace(initial.Name) != "" {
 		title = "Edit tag"
@@ -317,7 +316,7 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 		wrapLabel(hint),
 	).WithGap(8)))
 	root := widgets.NewColumn(
-		widgets.NewTitleBar(title, "v"+uitoolkit.Version),
+		widgets.NewTitleBar(title, ui.Version()),
 		fields,
 		widgets.NewPad(12, widgets.NewButtonBox().AddButton(cancel, widgets.RoleReject).AddButton(save, widgets.RoleAccept)),
 	).WithGap(0)
@@ -331,7 +330,7 @@ func OpenTagEditor(a *app.Application, initial mailcore.Tag, nameLocked bool, on
 // typed — a moment after the typing stops, and at once when another From
 // is picked — with no button to press. Write puts it under the message,
 // above any quote.
-func prefsSignatures(a *app.Application, win *app.Window, cli *mailcore.Client) widget.Component {
+func prefsSignatures(a *ui.Application, win *ui.Window, cli *mailcore.Client) widget.Component {
 	idents := sendIdentities(cli)
 	if len(idents) == 0 {
 		return wrapLabel("Add an account first; each address you send from gets its own signature.")
@@ -418,7 +417,7 @@ type securityTopic struct {
 // right. shown
 // is for the tab showing: the page on show asks again, since the store may
 // have locked or a key been made in secretvault itself meanwhile.
-func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, onChange func()) (tab widget.Component, shown func()) {
+func prefsSecurity(a *ui.Application, win *ui.Window, cli *mailcore.Client, onChange func()) (tab widget.Component, shown func()) {
 	var topics []securityTopic
 	if pass, refresh := passwordsSection(a, win, cli); pass != nil {
 		topics = append(topics, securityTopic{"Passwords", pass, refresh})
@@ -471,7 +470,7 @@ func prefsSecurity(a *app.Application, win *app.Window, cli *mailcore.Client, on
 
 // remoteImagesSection lists the senders whose remote images load without
 // asking (given with Always in the reading pane), and takes them back.
-func remoteImagesSection(win *app.Window, cli *mailcore.Client, onChange func()) widget.Component {
+func remoteImagesSection(win *ui.Window, cli *mailcore.Client, onChange func()) widget.Component {
 	senders, _ := cli.RemoteImageSenders()
 	var table *widgets.TableView
 	var remove *widgets.Button
@@ -527,7 +526,7 @@ func remoteImagesSection(win *app.Window, cli *mailcore.Client, onChange func())
 // locked, with Unlock…, and Change passphrase… for the encrypted file.
 // None for a store that keeps no secrets (the demo). refresh asks the
 // daemon again and redraws the page when anything changed.
-func passwordsSection(a *app.Application, win *app.Window, cli *mailcore.Client) (section widget.Component, refresh func()) {
+func passwordsSection(a *ui.Application, win *ui.Window, cli *mailcore.Client) (section widget.Component, refresh func()) {
 	st, err := cli.SecretsStatus()
 	if err != nil || !st.Supported {
 		return nil, nil

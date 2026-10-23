@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/richtext"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-richtext"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/graphics-paint2d"
 )
 
 // The HTML view's pictures. Inline (cid:) images come from the message
@@ -32,7 +32,7 @@ func cidKey(id mailcore.MessageID, cid string) string {
 // message tab.
 type htmlPane struct {
 	s      *session
-	rich   *widgets.RichText
+	rich   *richtext.RichText
 	notice *widgets.Label
 	always *widgets.Button
 	bar    *widgets.FlexBox
@@ -206,8 +206,8 @@ func (p *htmlPane) alwaysShow() {
 // parts and remote images from the cache (a remote one is there only once
 // the user asked for it), a placeholder for everything else — a local
 // file is never read for a message.
-func (s *session) imageResolver(id mailcore.MessageID) func(string, richtext.ImageKind) *paintengine2d.Image {
-	return func(src string, kind richtext.ImageKind) *paintengine2d.Image {
+func (s *session) imageResolver(id mailcore.MessageID) func(string, richtext.ImageKind) *paint2d.Image {
+	return func(src string, kind richtext.ImageKind) *paint2d.Image {
 		switch kind {
 		case richtext.ImageInline:
 			if rest, ok := cutFold(strings.TrimSpace(src), "cid:"); ok {
@@ -220,12 +220,12 @@ func (s *session) imageResolver(id mailcore.MessageID) func(string, richtext.Ima
 	}
 }
 
-func (s *session) cacheImage(key string, img *paintengine2d.Image) {
+func (s *session) cacheImage(key string, img *paint2d.Image) {
 	if img == nil {
 		return
 	}
 	if s.images == nil || len(s.images) >= maxCachedImages {
-		s.images = map[string]*paintengine2d.Image{}
+		s.images = map[string]*paint2d.Image{}
 	}
 	s.images[key] = img
 }

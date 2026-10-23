@@ -11,9 +11,9 @@ import (
 	"github.com/godbus/dbus/v5"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 const (
@@ -28,7 +28,7 @@ const (
 // immediately calls GetLayout — the v0.16.0 panic). The UI process must
 // keep its window.
 func TestMailUIStartsWithStatusNotifierWatcher(t *testing.T) {
-	os.Unsetenv("UITK_TRAY")
+	os.Unsetenv("GOFRAMEWORK_DESKTOP_UI_TRAY")
 	conn, err := dbus.ConnectSessionBus()
 	if err != nil {
 		t.Skipf("no session bus: %v", err)
@@ -48,7 +48,7 @@ func TestMailUIStartsWithStatusNotifierWatcher(t *testing.T) {
 	mailcore.IsolateTestEnvTB(t)
 	// Keep the session bus after isolate rewrites XDG_RUNTIME_DIR.
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "autolaunch:")
-	t.Setenv("UITK_TRAY", "")
+	t.Setenv("GOFRAMEWORK_DESKTOP_UI_TRAY", "")
 
 	sock, stopDemo, err := mailcore.StartDemo(context.Background())
 	if err != nil {
@@ -67,7 +67,7 @@ func TestMailUIStartsWithStatusNotifierWatcher(t *testing.T) {
 		}
 	}()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: false})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: false})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 640, Height: 400})
 	if err != nil {
 		t.Skipf("no display for Mail window: %v", err)

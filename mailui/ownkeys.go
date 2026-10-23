@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // keysSection is Settings › Security › Keys: OpenPGP and S/MIME, one at a
@@ -21,7 +21,7 @@ import (
 // comms-mail does it — then your keys for each address you send from,
 // and, with comms-mail's own, other people's keys it knows. refresh asks
 // again.
-func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Component, refresh func()) {
+func keysSection(a *ui.Application, cli *mailcore.Client) (section widget.Component, refresh func()) {
 	formats := []string{mailcore.FormatOpenPGP, mailcore.FormatSMIME}
 	cur := 0
 	body := widgets.NewColumn().WithGap(12)
@@ -70,7 +70,7 @@ func keysSection(a *app.Application, cli *mailcore.Client) (section widget.Compo
 
 // keysPage is one format's page.
 type keysPage struct {
-	a       *app.Application
+	a       *ui.Application
 	cli     *mailcore.Client
 	format  string
 	st      mailcore.SecretsStatus

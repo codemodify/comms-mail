@@ -79,14 +79,14 @@ func seedDemo(s *MemoryStore) {
 		AccountID:   AcctAda,
 		From:        "Thunderbird Team <hello@thunderbird.example>",
 		To:          "Ada Lovelace <ada@example.com>",
-		Subject:     "Welcome to Mail on uitoolkit",
+		Subject:     "Welcome to Mail on goframework.io",
 		Date:        DemoNow.Add(-34 * time.Minute),
 		Read:        false,
 		Starred:     true,
 		HasAttach:   true,
 		Tags:        []string{"Important"},
 		Body:        welcomeBody,
-		Attachments: []string{"mail-shortcuts.txt", "uitoolkit-v080.png"},
+		Attachments: []string{"mail-shortcuts.txt", "desktop-ui-v004.png"},
 	})
 
 	people := [][2]string{
@@ -111,7 +111,7 @@ func seedDemo(s *MemoryStore) {
 		"Patch: TreeView unread badge",
 		"Lunch tomorrow?",
 		"Release checklist v0.7.0",
-		"Fwd: paintengine2d v0.9.0",
+		"Fwd: graphics-paint2d v0.9.0",
 		"Can you review the splitter?",
 		"Draft: conference talk outline",
 		"Spam: congratulations, you won",
@@ -124,10 +124,10 @@ func seedDemo(s *MemoryStore) {
 		"Please confirm your address",
 	}
 	bodies := []string{
-		"Looks good on UITK_SCENE=auto. Hover damage stays on the row.\n\n— sent from Mail dogfood\n",
+		"Looks good on GOFRAMEWORK_DESKTOP_UI_SCENE=auto. Hover damage stays on the row.\n\n— sent from Mail dogfood\n",
 		"Can we keep star / attachment as 28px columns and let Subject flex?\nI attached a PNG of the classic 3-pane.\n",
 		"Unread + Starred pins should AND with the query, same as Thunderbird.\n",
-		"I only see it on the GPU path. UITK_PAINT=cpu is fine.\n",
+		"I only see it on the GPU path. GOFRAMEWORK_PAINT2D=cpu is fine.\n",
 		"Titillium Web for chrome, JetBrains Mono for the Source tab.\n",
 		"Please find the invoice attached (PDF).\nNet 30.\n",
 		"Small patch. Tree labels become Inbox (12) when unread > 0.\n",
@@ -245,7 +245,7 @@ func seedDemo(s *MemoryStore) {
 		add(FolderAdaY2026, AcctAda, i+5, false, false, i%3 == 0, nil, -time.Duration(80+i*20)*time.Hour, "")
 	}
 	for i := 0; i < 9; i++ {
-		add(FolderAdaProjects, AcctAda, i+1, i%2 == 0, i == 0, true, []string{"Work"}, -time.Duration(i*14+6)*time.Hour, "uitoolkit:")
+		add(FolderAdaProjects, AcctAda, i+1, i%2 == 0, i == 0, true, []string{"Work"}, -time.Duration(i*14+6)*time.Hour, "desktop-ui:")
 	}
 
 	// Work account
@@ -320,8 +320,9 @@ func seedDemo(s *MemoryStore) {
 
 const welcomeBody = `Hi Ada,
 
-This is the uitoolkit Mail dogfood — Thunderbird’s classic 3-pane chrome
-on a retained scene (UITK_SCENE=auto), not a Mozilla protocol clone.
+This is the goframework.io Mail dogfood — Thunderbird’s classic 3-pane
+chrome on a retained scene (GOFRAMEWORK_DESKTOP_UI_SCENE=auto), not a
+Mozilla protocol clone.
 
 What is real in v0.10
   • comms-maild: MemoryStore demo or IMAP+SMTP with an on-disk cache
@@ -332,7 +333,7 @@ What is demo
   • This welcome lives in MemoryStore (UITK_MAIL=memory). Point a config
     file at a real IMAP/SMTP account — see docs/mail.md.
 
-— Mail on uitoolkit v0.10.0
+— Mail on goframework.io desktop-ui
 `
 
 // DemoInviteID is the calendar invitation in the demo work Inbox.
@@ -419,7 +420,7 @@ Content-Transfer-Encoding: base64
 const DemoNewsletterID MessageID = "m-newsletter"
 
 // DemoNewsletterBanner is the newsletter's remote image.
-const DemoNewsletterBanner = "https://images.example/uitoolkit/banner.png"
+const DemoNewsletterBanner = "https://images.example/desktop-ui/banner.png"
 
 func (s *MemoryStore) addDemoNewsletter() {
 	logo := image.NewNRGBA(image.Rect(0, 0, 96, 32))
@@ -436,9 +437,9 @@ func (s *MemoryStore) addDemoNewsletter() {
 		lines, b64 = append(lines, b64[:76]), b64[76:]
 	}
 	lines = append(lines, b64)
-	raw := strings.ReplaceAll(`From: uitoolkit Weekly <weekly@news.example>
+	raw := strings.ReplaceAll(`From: desktop-ui Weekly <weekly@news.example>
 To: Ada Lovelace <ada@example.com>
-Subject: uitoolkit Weekly — richtext images
+Subject: desktop-ui Weekly — richtext images
 Date: Thu, 10 Sep 2026 08:00:00 +0000
 Message-ID: <weekly-37@news.example>
 MIME-Version: 1.0
@@ -455,7 +456,7 @@ Content-Type: multipart/related; boundary="rel"
 --rel
 Content-Type: text/html; charset=utf-8
 
-<h1><img src="cid:logo@news.example" alt="uitoolkit" width="96" height="32"> Weekly</h1>
+<h1><img src="cid:logo@news.example" alt="desktop-ui" width="96" height="32"> Weekly</h1>
 <p>This week: <b>images in richtext</b>. The logo above is part of this
 message; the banner below is on a server and waits for you to ask.</p>
 <p><img src="`+DemoNewsletterBanner+`" alt="banner" width="480" height="120"></p>

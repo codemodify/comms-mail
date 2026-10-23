@@ -9,12 +9,11 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 func TestUnifiedInboxAggregates(t *testing.T) {
@@ -431,7 +430,7 @@ func TestFirstRunDialogYesNo(t *testing.T) {
 	}
 	defer cli.Close()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -502,7 +501,7 @@ func TestAddAccountProtocolAndTestButton(t *testing.T) {
 	}
 	defer cli.Close()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := OpenAddAccount(a, cli, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -551,7 +550,7 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -577,7 +576,7 @@ func TestRemoveAccountMenuAndFirstRunAgain(t *testing.T) {
 	}
 	prefs.OnClick()
 	a.PumpOnce()
-	var pw *app.Window
+	var pw *ui.Window
 	for _, win := range a.Windows() {
 		if win != w && win.Title() == "Settings" {
 			pw = win

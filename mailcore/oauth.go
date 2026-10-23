@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// OAuth client IDs are supplied by the user (env or wizard). uitoolkit does
+// OAuth client IDs are supplied by the user (env or wizard). comms-mail does
 // not ship Google/Microsoft app credentials — see docs/mail.md.
 
 const (

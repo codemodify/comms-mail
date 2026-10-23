@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // ScreenshotNames are the Mail PNGs written by WriteScreenshots, and the
@@ -82,15 +82,15 @@ func WriteScreenshots(dir string) error {
 
 // writeReadmeShot is the README's picture (docs/screenshots/mail.png): the
 // window in Aqua, the reading pane on the Security tab. Aqua's engine is
-// only in a build with -tags theme_engine_all; without it the picture is
+// only in a build that imports desktop-ui-themes-all; without it the picture is
 // skipped, not drawn in another look.
 func writeReadmeShot(cli *mailcore.Client, path string) error {
 	pack, ok := style.LoadTheme("aqua")
 	if !ok {
-		fmt.Println("skipped", path+": the Aqua theme is not in this build (-tags theme_engine_all)")
+		fmt.Println("skipped", path+": the Aqua theme is not in this build (mailui imports desktop-ui-themes-all)")
 		return nil
 	}
-	a := uitoolkit.New(uitoolkit.Options{Look: pack.Look(), Headless: true})
+	a := ui.New(ui.Options{Look: pack.Look(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -114,7 +114,7 @@ func writeReadmeShot(cli *mailcore.Client, path string) error {
 }
 
 func writeMailFolderShot(cli *mailcore.Client, path string, folder mailcore.FolderID) error {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -165,7 +165,7 @@ func writeAccountShot(path string) error {
 		return err
 	}
 	defer cli.Close()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := OpenAddAccount(a, cli, nil)
 	if err != nil {
 		return err
@@ -190,7 +190,7 @@ func writeEmptyShot(path string) error {
 		return err
 	}
 	defer cli.Close()
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -213,7 +213,7 @@ func writeMailShot(cli *mailcore.Client, path string, light bool, layout LayoutM
 		look = style.LightLook()
 	}
 	look = style.WithDensity(look, dens)
-	a := uitoolkit.New(uitoolkit.Options{Look: look, Headless: true})
+	a := ui.New(ui.Options{Look: look, Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -240,7 +240,7 @@ func writeMailShot(cli *mailcore.Client, path string, light bool, layout LayoutM
 // writeInviteShot shows the demo meeting invitation in the preview, its
 // card over the body.
 func writeInviteShot(cli *mailcore.Client, path string) error {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -266,7 +266,7 @@ func writeInviteShot(cli *mailcore.Client, path string) error {
 }
 
 func writeComposeShot(cli *mailcore.Client, path string) error {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := OpenCompose(a, cli, ComposeOptions{})
 	if err != nil {
 		return err
@@ -281,7 +281,7 @@ func writeComposeShot(cli *mailcore.Client, path string) error {
 }
 
 func writePrefsShot(cli *mailcore.Client, path string, tab int) error {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := OpenPrefs(a, cli, nil)
 	if err != nil {
 		return err

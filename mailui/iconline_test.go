@@ -3,17 +3,17 @@ package mailui
 import (
 	"testing"
 
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 // A mark and a long text keep every line of the text in a narrow column:
 // the line is as tall as the text wrapped to the width the mark leaves it.
 func TestIconLineShowsAllOfItsText(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true, Scale: 1})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true, Scale: 1})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Line", Width: 220, Height: 400, Headless: true})
 	if err != nil {
 		t.Fatal(err)

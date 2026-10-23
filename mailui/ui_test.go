@@ -10,18 +10,17 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 func TestMailAppPaints(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -80,7 +79,7 @@ func TestMailAppPaints(t *testing.T) {
 }
 
 func TestMailHiDPIResizeStable(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Scale: 2, Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Scale: 2, Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -130,7 +129,7 @@ func TestMailHiDPIResizeStable(t *testing.T) {
 }
 
 func TestMailSubjectColumnFillsThreadPane(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -189,7 +188,7 @@ func TestComposeAppPaints(t *testing.T) {
 	}
 	defer cli.Close()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := OpenCompose(a, cli, ComposeOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -223,7 +222,7 @@ func TestComposeAppPaints(t *testing.T) {
 }
 
 func TestMailPreviewReadOnlyAndListClamp(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -270,7 +269,7 @@ func TestMailPreviewReadOnlyAndListClamp(t *testing.T) {
 	}
 
 	for i := 0; i < 80; i++ {
-		table.MouseWheel(widget.MouseEvent{Scroll: paintengine2d.Pt(0, 40)})
+		table.MouseWheel(widget.MouseEvent{Scroll: paint2d.Pt(0, 40)})
 	}
 	if table.OffsetY > table.MaxOffset()+0.5 {
 		t.Fatalf("thread list scrolled past end offset=%v max=%v", table.OffsetY, table.MaxOffset())
@@ -288,13 +287,13 @@ func TestMailPreviewReadOnlyAndListClamp(t *testing.T) {
 			t.Fatalf("splitter panes overlap A=%+v B=%+v", a, b)
 		}
 		pa, pb := s.PaneA(), s.PaneB()
-		var sash, mid paintengine2d.Point
+		var sash, mid paint2d.Point
 		if s.Axis == widgets.SplitColumns {
-			sash = paintengine2d.Pt((pa.Max.X+pb.Min.X)*0.5, 8)
-			mid = paintengine2d.Pt(s.LocalBounds().Dx()*0.75, 8)
+			sash = paint2d.Pt((pa.Max.X+pb.Min.X)*0.5, 8)
+			mid = paint2d.Pt(s.LocalBounds().Dx()*0.75, 8)
 		} else {
-			sash = paintengine2d.Pt(8, (pa.Max.Y+pb.Min.Y)*0.5)
-			mid = paintengine2d.Pt(8, s.LocalBounds().Dy()*0.75)
+			sash = paint2d.Pt(8, (pa.Max.Y+pb.Min.Y)*0.5)
+			mid = paint2d.Pt(8, s.LocalBounds().Dy()*0.75)
 		}
 		s.MousePress(widget.MouseEvent{Pos: sash, Button: platform.ButtonLeft})
 		s.MouseMove(widget.MouseEvent{Pos: mid, Button: platform.ButtonLeft})
@@ -335,7 +334,7 @@ func TestWriteScreenshotsDistinct(t *testing.T) {
 }
 
 func TestFolderTreeOmitsVirtualSections(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -389,7 +388,7 @@ func TestFolderTreeOmitsVirtualSections(t *testing.T) {
 }
 
 func TestSelectAccountKeepsInboxList(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -443,7 +442,7 @@ func TestSelectAccountKeepsInboxList(t *testing.T) {
 }
 
 func TestClickUnreadKeepsList(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -503,7 +502,7 @@ func TestHiddenFromFolderTree(t *testing.T) {
 
 func TestMailChromeHidesStatusBarAndVIPFolder(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -561,7 +560,7 @@ func TestMailChromeHidesStatusBarAndVIPFolder(t *testing.T) {
 }
 
 func TestMailCollapsedTagsDoesNotStealOutbox(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -731,15 +730,15 @@ func assertFetchWriteIconsPaint(t *testing.T, bar *widgets.ToolBar) {
 	}
 }
 
-func rasterToolBar(tb *widgets.ToolBar) *paintengine2d.Image {
+func rasterToolBar(tb *widgets.ToolBar) *paint2d.Image {
 	sz := tb.Measure(layout.Unbounded())
 	h := sz.Y
 	if h < 36 {
 		h = 36
 	}
-	tb.Arrange(paintengine2d.XYWH(0, 0, sz.X, h))
-	img := paintengine2d.NewImage(int(sz.X)+4, int(h)+4)
-	tb.Paint(paintengine2d.NewContext(img))
+	tb.Arrange(paint2d.XYWH(0, 0, sz.X, h))
+	img := paint2d.NewImage(int(sz.X)+4, int(h)+4)
+	tb.Paint(paint2d.NewContext(img))
 	return img
 }
 
@@ -751,7 +750,7 @@ func toolIconBox(tb *widgets.ToolBar) (x0, y0, x1, y1 int) {
 	return x0, y0, x0 + int(side), y0 + int(side)
 }
 
-func toolIconContrast(tb *widgets.ToolBar, img *paintengine2d.Image) int {
+func toolIconContrast(tb *widgets.ToolBar, img *paint2d.Image) int {
 	br, bg, bb := styleRGB8(tb.Look().Palette().SurfaceAlt)
 	x0, y0, x1, y1 := toolIconBox(tb)
 	n := 0
@@ -769,7 +768,7 @@ func toolIconContrast(tb *widgets.ToolBar, img *paintengine2d.Image) int {
 	return n
 }
 
-func toolIconMaskDiff(a *widgets.ToolBar, ai *paintengine2d.Image, b *widgets.ToolBar, bi *paintengine2d.Image) int {
+func toolIconMaskDiff(a *widgets.ToolBar, ai *paint2d.Image, b *widgets.ToolBar, bi *paint2d.Image) int {
 	ax0, ay0, ax1, ay1 := toolIconBox(a)
 	bx0, by0, _, _ := toolIconBox(b)
 	w, h := ax1-ax0, ay1-ay0
@@ -793,7 +792,7 @@ func chanDelta(a, b uint8) int {
 	return int(b - a)
 }
 
-func styleRGB8(c paintengine2d.Color) (r, g, b uint8) {
+func styleRGB8(c paint2d.Color) (r, g, b uint8) {
 	return uint8(c.R*255 + 0.5), uint8(c.G*255 + 0.5), uint8(c.B*255 + 0.5)
 }
 
@@ -811,7 +810,7 @@ func parentRow(c widget.Component) *widgets.FlexBox {
 }
 
 func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -887,7 +886,7 @@ func TestMailChromeHasNoSidebarAccountPicker(t *testing.T) {
 }
 
 func TestMailChromeHasNoActiveFilterBanner(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -993,7 +992,7 @@ func assertNoFilterBanner(t *testing.T, root widget.Component) {
 }
 
 func TestMailColumnsTopicWhoWhen(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1037,7 +1036,7 @@ func titlesOf(tv *widgets.TableView) []string {
 }
 
 func TestMailStarRendersAfterToggle(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1076,7 +1075,7 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 	if table.OnContext == nil {
 		t.Fatal("thread context menu")
 	}
-	table.OnContext(row, paintengine2d.Pt(10, 10))
+	table.OnContext(row, paint2d.Pt(10, 10))
 	a.PumpOnce()
 	pop, ok := w.Popup().(*widgets.PopupMenu)
 	if !ok || pop == nil {
@@ -1099,10 +1098,10 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 	if got := table.CellText(row, colStar); got != "" {
 		t.Fatalf("the star is text %q, not an icon", got)
 	}
-	img := paintengine2d.NewImage(32, 28)
-	ctx := paintengine2d.NewContext(img)
+	img := paint2d.NewImage(32, 28)
+	ctx := paint2d.NewContext(img)
 	lk := table.Look()
-	style.DrawToolIcon(ctx, paintengine2d.XYWH(4, 4, 20, 20), style.IconStarFilled, starColor, style.IconSetOf(lk))
+	style.DrawToolIcon(ctx, paint2d.XYWH(4, 4, 20, 20), style.IconStarFilled, starColor, style.IconSetOf(lk))
 	if ink := cellInk(img, 0, 26); ink < 8 {
 		t.Fatalf("star icon missing in 28px cell, ink=%d", ink)
 	}
@@ -1116,7 +1115,7 @@ func TestMailStarRendersAfterToggle(t *testing.T) {
 
 func TestMailAttachmentSelectOpenSaveAs(t *testing.T) {
 	t.Setenv("UITK_MAIL_NO_OPEN", "1")
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1188,7 +1187,7 @@ func TestMailAttachmentSelectOpenSaveAs(t *testing.T) {
 	if err := confirmFileDialog(t, w, dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"mail-shortcuts.txt", "uitoolkit-v080.png"} {
+	for _, name := range []string{"mail-shortcuts.txt", "desktop-ui-v004.png"} {
 		p := filepath.Join(dir, name)
 		b, err := os.ReadFile(p)
 		if err != nil {
@@ -1252,7 +1251,7 @@ func findAttachChrome(root widget.Component) (hits []*attachHit, opens, saves []
 	return
 }
 
-func confirmFileDialog(t *testing.T, w *app.Window, path string) error {
+func confirmFileDialog(t *testing.T, w *ui.Window, path string) error {
 	t.Helper()
 	if w.Overlay() == nil {
 		return fmt.Errorf("file dialog overlay")
@@ -1315,7 +1314,7 @@ func TestOrderFolderChildrenOutboxLast(t *testing.T) {
 }
 
 func TestMailMessageSourceShowsRFC822(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1353,7 +1352,7 @@ func TestMailMessageSourceShowsRFC822(t *testing.T) {
 
 	w.Inject(platform.Event{Kind: platform.EventKeyDown, Key: platform.KeyU, Mods: platform.ModCtrl})
 	a.PumpOnce()
-	var srcWin *app.Window
+	var srcWin *ui.Window
 	for _, win := range a.Windows() {
 		if win == w {
 			continue
@@ -1396,7 +1395,7 @@ func textPreview(ta *widgets.TextArea) string {
 }
 
 func TestMailFolderTreePutsOutboxLast(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1410,7 +1409,7 @@ func TestMailFolderTreePutsOutboxLast(t *testing.T) {
 }
 
 func TestMailMenuHoverDoesNotRebuildTree(t *testing.T) {
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1433,7 +1432,7 @@ func TestMailMenuHoverDoesNotRebuildTree(t *testing.T) {
 		o := widget.DeviceOrigin(pop)
 		w.Inject(platform.Event{
 			Kind: platform.EventMouseMove,
-			Pos:  paintengine2d.Pt(o.X+(r.Min.X+r.Max.X)*0.5, o.Y+(r.Min.Y+r.Max.Y)*0.5),
+			Pos:  paint2d.Pt(o.X+(r.Min.X+r.Max.X)*0.5, o.Y+(r.Min.Y+r.Max.Y)*0.5),
 		})
 		a.PumpOnce()
 	}
@@ -1528,7 +1527,7 @@ func assertNoUnreadFolderFooter(t *testing.T, root widget.Component) {
 
 func TestMailAppMenu(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1671,7 +1670,7 @@ func TestMailSettingsTabs(t *testing.T) {
 	}
 	defer cli.Close()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := OpenPrefs(a, cli, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1689,7 +1688,7 @@ func TestMailSettingsTabs(t *testing.T) {
 	got := append([]string(nil), bar.Titles...)
 	// Filters came back when importing other clients' filters needed a
 	// place to see and manage them; Appearance when comms-mail got a theme
-	// of its own, over the one every uitoolkit app shares; Keys with
+	// of its own, over the one every desktop-ui app shares; Keys with
 	// signing and encrypting through secretvault.
 	if strings.Join(got, ",") != "Accounts,Signatures,Tags,Filters,Security,Appearance" {
 		t.Fatalf("Settings tabs %v want Accounts, Signatures, Tags, Filters, Security, Appearance", got)
@@ -1749,7 +1748,7 @@ func TestMailNotifyMenuPersists(t *testing.T) {
 	}
 	defer cli.Close()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{
 		Title: "Mail", Width: 1280, Height: 800, Headless: true,
 	})
@@ -1803,7 +1802,7 @@ func TestMailNotifyMenuPersists(t *testing.T) {
 	w.Close()
 }
 
-func cellInk(img *paintengine2d.Image, x0, x1 int) int {
+func cellInk(img *paint2d.Image, x0, x1 int) int {
 	n := 0
 	for y := 0; y < img.Height; y++ {
 		for x := x0; x < x1 && x < img.Width; x++ {

@@ -9,7 +9,7 @@ import (
 // IsolateTestEnv points mail config, cache, chrome prefs, and runtime
 // sockets at dir and forces the in-memory backend.
 //
-// It never reads the user's ~/.config/uitoolkit/mail.json or connects to
+// It never reads the user's ~/.config/comms-mail/mail.json or connects to
 // a live IMAP/POP3 account. Automated tests and uitest-driver MUST call
 // this (or IsolateTestEnvTB) before constructing Mail UI.
 func IsolateTestEnv(dir string) error {

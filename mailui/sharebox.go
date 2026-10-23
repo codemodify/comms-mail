@@ -1,11 +1,11 @@
 package mailui
 
 import (
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/layout"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/layout"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // reserveBox gives its child the child's own height, but always leaves
@@ -27,10 +27,10 @@ func newReserveBox(reserve float32, child widget.Component) *reserveBox {
 	return b
 }
 
-func (b *reserveBox) Measure(c layout.Constraints) paintengine2d.Point {
+func (b *reserveBox) Measure(c layout.Constraints) paint2d.Point {
 	kids := b.Children()
 	if len(kids) == 0 {
-		return c.Constrain(paintengine2d.Pt(0, 0))
+		return c.Constrain(paint2d.Pt(0, 0))
 	}
 	cc := layout.Constraints{MinW: c.MinW, MaxW: c.MaxW, MaxH: c.MaxH}
 	if c.HasMaxH() {
@@ -52,9 +52,9 @@ func newHeaderScroll(content widget.Component) *widgets.ScrollView {
 	return sv
 }
 
-func (b *reserveBox) Arrange(r paintengine2d.Rect) {
+func (b *reserveBox) Arrange(r paint2d.Rect) {
 	b.SetBounds(r)
 	for _, k := range b.Children() {
-		k.Arrange(paintengine2d.XYWH(0, 0, r.Dx(), r.Dy()))
+		k.Arrange(paint2d.XYWH(0, 0, r.Dx(), r.Dy()))
 	}
 }

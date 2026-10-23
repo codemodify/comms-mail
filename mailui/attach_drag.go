@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/widget"
+	"goframework.io/graphics-paint2d"
 )
 
 // Dragging an attachment out of the reading pane, which is how a mail
@@ -172,7 +172,7 @@ func safeDirName(id mailcore.MessageID, i int) string {
 }
 
 // DragAt drags the attachment out of its row (widget.DragSource).
-func (h *attachHit) DragAt(paintengine2d.Point) *widget.Drag {
+func (h *attachHit) DragAt(paint2d.Point) *widget.Drag {
 	if h.Drag == nil {
 		return nil
 	}

@@ -8,16 +8,15 @@ import (
 	"time"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
 )
 
 func TestMailTrayFakeClickRaises(t *testing.T) {
 	mailcore.IsolateTestEnvTB(t)
-	t.Setenv("UITK_TRAY", "fake")
+	t.Setenv("GOFRAMEWORK_DESKTOP_UI_TRAY", "fake")
 	sock, stop, err := mailcore.StartDemo(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -31,10 +30,10 @@ func TestMailTrayFakeClickRaises(t *testing.T) {
 
 	rec := &recNotifier{}
 	old := newMailNotifier
-	newMailNotifier = func(*app.Application) mailNotifier { return rec }
+	newMailNotifier = func(*ui.Application) mailNotifier { return rec }
 	defer func() { newMailNotifier = old }()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 640, Height: 400, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +48,7 @@ func TestMailTrayFakeClickRaises(t *testing.T) {
 		}
 	}
 	if tray == nil {
-		t.Fatal("Open should create a fake StatusItem when UITK_TRAY=fake")
+		t.Fatal("Open should create a fake StatusItem when GOFRAMEWORK_DESKTOP_UI_TRAY=fake")
 	}
 	// The tray wears comms-mail's logo, as a picture: with a theme name
 	// too, the tray host would draw its theme's icon instead.
@@ -98,7 +97,7 @@ func TestMailTrayFakeClickRaises(t *testing.T) {
 
 func TestMailNotifyEventSendsNotification(t *testing.T) {
 	mailcore.IsolateTestEnvTB(t)
-	t.Setenv("UITK_TRAY", "fake")
+	t.Setenv("GOFRAMEWORK_DESKTOP_UI_TRAY", "fake")
 	sock, stop, err := mailcore.StartDemo(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -112,10 +111,10 @@ func TestMailNotifyEventSendsNotification(t *testing.T) {
 
 	rec := &recNotifier{}
 	old := newMailNotifier
-	newMailNotifier = func(*app.Application) mailNotifier { return rec }
+	newMailNotifier = func(*ui.Application) mailNotifier { return rec }
 	defer func() { newMailNotifier = old }()
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 640, Height: 400, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +160,7 @@ func TestMailNotifyEventSendsNotification(t *testing.T) {
 
 func TestMailTrayNativeNeverPanics(t *testing.T) {
 	mailcore.IsolateTestEnvTB(t)
-	os.Unsetenv("UITK_TRAY")
+	os.Unsetenv("GOFRAMEWORK_DESKTOP_UI_TRAY")
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("Mail StatusItem panicked: %v", r)
@@ -173,7 +172,7 @@ func TestMailTrayNativeNeverPanics(t *testing.T) {
 		ID:      "comms-mail",
 		Title:   "Mail",
 		Tooltip: "Mail",
-		Icon:    app.StatusIconFromTool(style.IconMail, style.DarkLook(), 22),
+		Icon:    ui.StatusIconFromTool(style.IconMail, style.DarkLook(), 22),
 		Menu: []platform.StatusMenuItem{
 			{Text: "Show Mail"},
 			{Separator: true},
@@ -210,7 +209,7 @@ func TestFormatNewMailNoticeUsesSender(t *testing.T) {
 // at: it takes the focus, or is opened from the tray or the notification.
 // A repaint without the focus is not looking at it.
 func TestTrayShowsNewMailUntilSeen(t *testing.T) {
-	t.Setenv("UITK_TRAY", "fake")
+	t.Setenv("GOFRAMEWORK_DESKTOP_UI_TRAY", "fake")
 	item, err := platform.NewStatusItem(platform.StatusItemOptions{Icon: trayIcon(false)})
 	tray, _ := item.(*platform.FakeStatusItem)
 	if err != nil || tray == nil {
@@ -218,7 +217,7 @@ func TestTrayShowsNewMailUntilSeen(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = tray.Close() })
 
-	a := uitoolkit.New(uitoolkit.Options{Look: style.DarkLook(), Headless: true})
+	a := ui.New(ui.Options{Look: style.DarkLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Mail", Width: 320, Height: 200, Headless: true})
 	if err != nil {
 		t.Fatal(err)

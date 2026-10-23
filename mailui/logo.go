@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	commsmail "github.com/codemodify/comms-mail"
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/icons"
+	"goframework.io/desktop-ui-icons"
+	"goframework.io/graphics-paint2d"
 )
 
 // comms-mail's logo (logo-normal.png at the top of the source), at the
@@ -49,8 +49,8 @@ func (l *logoArt) source() *image.RGBA {
 
 // AppIcons is the logo at every size a window icon is asked for
 // (icons.AppIconSizes), for Application.SetIcon.
-func AppIcons() []*paintengine2d.Image {
-	var out []*paintengine2d.Image
+func AppIcons() []*paint2d.Image {
+	var out []*paint2d.Image
 	for _, side := range icons.AppIconSizes {
 		if img := logo.at(side); img != nil {
 			out = append(out, img)
@@ -60,12 +60,12 @@ func AppIcons() []*paintengine2d.Image {
 }
 
 // at is the logo side pixels square, or nil if it cannot be read.
-func (l *logoArt) at(side int) *paintengine2d.Image {
+func (l *logoArt) at(side int) *paint2d.Image {
 	src := l.source()
 	if src == nil || side <= 0 {
 		return nil
 	}
-	return paintengine2d.NewImageFromNRGBA(scaleSquare(src, side))
+	return paint2d.NewImageFromNRGBA(scaleSquare(src, side))
 }
 
 // scaleSquare draws src, centred in the square of its longer side, side

@@ -1,8 +1,8 @@
 package mailui
 
 import (
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/widget"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui/widget"
 )
 
 // fitMinWidth raises win's minimum width to what its content needs
@@ -11,7 +11,7 @@ import (
 // a look with larger controls, or a row of buttons that grew icons, would
 // otherwise let the window be made narrow enough for its buttons to
 // overlap.
-func fitMinWidth(win *app.Window, content widget.Component) {
+func fitMinWidth(win *ui.Window, content widget.Component) {
 	if win == nil || content == nil || win.Scale() <= 0 {
 		return
 	}
@@ -23,7 +23,7 @@ func fitMinWidth(win *app.Window, content widget.Component) {
 
 // setContent is win.SetContent, with the window's minimum width raised to
 // what content needs (fitMinWidth).
-func setContent(win *app.Window, content widget.Component) {
+func setContent(win *ui.Window, content widget.Component) {
 	win.SetContent(content)
 	fitMinWidth(win, content)
 }

@@ -4,14 +4,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
 )
 
-// UseShippedArt tells uitoolkit where the icon packs comms-mail ships are
-// (<dir>/icons/<set>/*.png, which `make` copies from the uitoolkit it was
+// UseShippedArt tells desktop-ui where the icon packs comms-mail ships are
+// (<dir>/icons/<set>/*.png, which `make` copies from the desktop-ui-icons it was
 // built with), so an icon the toolkit added since the user installed a
 // pack — or a pack they never installed — draws rather than showing the
-// missing-icon mark. The user's own ~/.config/uitoolkit/icons still comes
+// missing-icon mark. The user's own ~/.config/goframework-desktop-ui/icons comes
 // first, file by file; comms-mail never writes there. Call it before the
 // first window.
 func UseShippedArt() {

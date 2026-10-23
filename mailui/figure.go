@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/codemodify/paintengine2d"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/graphics-paint2d"
 )
 
 // The pictures Settings › Security › Educate draws: the toolkit's icons,
@@ -25,7 +25,7 @@ const (
 
 // inks are a picture's colours, from the look.
 type inks struct {
-	text, muted, good, bad, disc, discEdge paintengine2d.Color
+	text, muted, good, bad, disc, discEdge paint2d.Color
 }
 
 func inksOf(lk style.LookAndFeel) inks {
@@ -37,7 +37,7 @@ func inksOf(lk style.LookAndFeel) inks {
 }
 
 // drawPict draws p in box in ink.
-func drawPict(ctx *paintengine2d.Context, lk style.LookAndFeel, p pict, box paintengine2d.Rect, ink paintengine2d.Color) {
+func drawPict(ctx *paint2d.Context, lk style.LookAndFeel, p pict, box paint2d.Rect, ink paint2d.Color) {
 	switch p {
 	case pictPerson:
 		style.DrawToolIcon(ctx, box, style.IconUser, ink, style.IconSetOf(lk))
@@ -63,18 +63,18 @@ func registerIcon(stem string, draw style.IconDrawer) style.ToolIcon {
 
 // drawServer draws a server (iconServer) in a 24-unit box, as the icons
 // are drawn: strokes of one weight. A rack of two: a post office for mail.
-func drawServer(ctx *paintengine2d.Context, box paintengine2d.Rect, ink paintengine2d.Color) {
+func drawServer(ctx *paint2d.Context, box paint2d.Rect, ink paint2d.Color) {
 	u := box.Dx() / 24
-	at := func(x, y float32) paintengine2d.Point { return paintengine2d.Pt(box.Min.X+x*u, box.Min.Y+y*u) }
-	pen := paintengine2d.StrokePaint(ink, max(1, 1.75*u))
+	at := func(x, y float32) paint2d.Point { return paint2d.Pt(box.Min.X+x*u, box.Min.Y+y*u) }
+	pen := paint2d.StrokePaint(ink, max(1, 1.75*u))
 	line := func(x0, y0, x1, y1 float32) { ctx.DrawLine(at(x0, y0), at(x1, y1), pen) }
 	rrect := func(x, y, w, h, r float32) {
-		ctx.DrawRoundRect(paintengine2d.XYWH(box.Min.X+x*u, box.Min.Y+y*u, w*u, h*u), r*u, r*u, pen)
+		ctx.DrawRoundRect(paint2d.XYWH(box.Min.X+x*u, box.Min.Y+y*u, w*u, h*u), r*u, r*u, pen)
 	}
 	rrect(3.5, 3.5, 17, 7.5, 1.5)
 	rrect(3.5, 13, 17, 7.5, 1.5)
-	ctx.DrawCircle(at(16.5, 7.25), 1.1*u, paintengine2d.Fill(ink))
-	ctx.DrawCircle(at(16.5, 16.75), 1.1*u, paintengine2d.Fill(ink))
+	ctx.DrawCircle(at(16.5, 7.25), 1.1*u, paint2d.Fill(ink))
+	ctx.DrawCircle(at(16.5, 16.75), 1.1*u, paint2d.Fill(ink))
 	line(6.5, 7.25, 11, 7.25)
 	line(6.5, 16.75, 11, 16.75)
 }
@@ -127,69 +127,69 @@ func envSize(lk style.LookAndFeel) (w, h float32) {
 
 // envBox is where an envelope centred at c draws, its marks included:
 // they stand out over its edges.
-func envBox(lk style.LookAndFeel, c paintengine2d.Point) paintengine2d.Rect {
+func envBox(lk style.LookAndFeel, c paint2d.Point) paint2d.Rect {
 	w, h := envSize(lk)
-	return paintengine2d.XYWH(c.X-w/2, c.Y-h/2-0.2*h, w+0.3*h, h+0.4*h)
+	return paint2d.XYWH(c.X-w/2, c.Y-h/2-0.2*h, w+0.3*h, h+0.4*h)
 }
 
 // drawEnvelope draws e centred at c.
-func drawEnvelope(ctx *paintengine2d.Context, lk style.LookAndFeel, c paintengine2d.Point, e envelope) {
+func drawEnvelope(ctx *paint2d.Context, lk style.LookAndFeel, c paint2d.Point, e envelope) {
 	p := lk.Palette()
 	in := inksOf(lk)
 	w, h := envSize(lk)
-	r := paintengine2d.XYWH(c.X-w/2, c.Y-h/2, w, h)
+	r := paint2d.XYWH(c.X-w/2, c.Y-h/2, w, h)
 	line := in.text
 	if e.bad {
 		line = in.bad
 	}
-	pen := paintengine2d.StrokePaint(line, max(1, h/11))
-	ctx.DrawRoundRect(r, h/9, h/9, paintengine2d.Fill(p.Field))
+	pen := paint2d.StrokePaint(line, max(1, h/11))
+	ctx.DrawRoundRect(r, h/9, h/9, paint2d.Fill(p.Field))
 	ctx.DrawRoundRect(r, h/9, h/9, pen)
-	tip := paintengine2d.Pt(c.X, r.Min.Y+h*0.58)
-	flap := paintengine2d.NewPath()
+	tip := paint2d.Pt(c.X, r.Min.Y+h*0.58)
+	flap := paint2d.NewPath()
 	flap.MoveTo(r.Min.X+h*0.08, r.Min.Y+h*0.08)
 	flap.LineTo(tip.X, tip.Y)
 	flap.LineTo(r.Max.X-h*0.08, r.Min.Y+h*0.08)
 	ctx.DrawPath(flap, pen)
 	if e.seal {
 		// Wax on the flap's point, pressed: a disc and a ring in it.
-		ctx.DrawCircle(tip, h*0.27, paintengine2d.Fill(p.Ink(p.Warning)))
-		ctx.DrawCircle(tip, h*0.15, paintengine2d.StrokePaint(p.Field, max(1, h/16)))
+		ctx.DrawCircle(tip, h*0.27, paint2d.Fill(p.Ink(p.Warning)))
+		ctx.DrawCircle(tip, h*0.15, paint2d.StrokePaint(p.Field, max(1, h/16)))
 	}
 	if e.stamp {
 		// A postmark over the top right corner: two rings.
-		pc := paintengine2d.Pt(r.Max.X-h*0.06, r.Min.Y+h*0.04)
-		ctx.DrawCircle(pc, h*0.24, paintengine2d.Fill(p.Field))
-		ctx.DrawCircle(pc, h*0.24, paintengine2d.StrokePaint(in.muted, max(1, h/14)))
-		ctx.DrawCircle(pc, h*0.12, paintengine2d.StrokePaint(in.muted, max(1, h/14)))
+		pc := paint2d.Pt(r.Max.X-h*0.06, r.Min.Y+h*0.04)
+		ctx.DrawCircle(pc, h*0.24, paint2d.Fill(p.Field))
+		ctx.DrawCircle(pc, h*0.24, paint2d.StrokePaint(in.muted, max(1, h/14)))
+		ctx.DrawCircle(pc, h*0.12, paint2d.StrokePaint(in.muted, max(1, h/14)))
 	}
 	if e.lock {
-		drawPadlock(ctx, lk, paintengine2d.Pt(r.Max.X-h*0.02, r.Max.Y-h*0.12), h*0.62)
+		drawPadlock(ctx, lk, paint2d.Pt(r.Max.X-h*0.02, r.Max.Y-h*0.12), h*0.62)
 	}
 }
 
 // drawPadlock draws a closed padlock of size s centred at c, in the
 // look's accent: what encryption is everywhere in the picture.
-func drawPadlock(ctx *paintengine2d.Context, lk style.LookAndFeel, c paintengine2d.Point, s float32) {
+func drawPadlock(ctx *paint2d.Context, lk style.LookAndFeel, c paint2d.Point, s float32) {
 	p := lk.Palette()
 	ink := p.Ink(p.Accent)
-	body := paintengine2d.XYWH(c.X-s*0.42, c.Y-s*0.08, s*0.84, s*0.58)
-	shackle := paintengine2d.NewPath()
-	shackle.AddArc(paintengine2d.Pt(c.X, c.Y-s*0.08), s*0.26, s*0.3, math.Pi, math.Pi)
-	ctx.DrawPath(shackle, paintengine2d.StrokePaint(ink, max(1, s*0.14)))
-	ctx.DrawRoundRect(body, s*0.1, s*0.1, paintengine2d.Fill(ink))
-	ctx.DrawCircle(paintengine2d.Pt(c.X, body.Min.Y+body.Dy()*0.45), s*0.08, paintengine2d.Fill(p.Field))
+	body := paint2d.XYWH(c.X-s*0.42, c.Y-s*0.08, s*0.84, s*0.58)
+	shackle := paint2d.NewPath()
+	shackle.AddArc(paint2d.Pt(c.X, c.Y-s*0.08), s*0.26, s*0.3, math.Pi, math.Pi)
+	ctx.DrawPath(shackle, paint2d.StrokePaint(ink, max(1, s*0.14)))
+	ctx.DrawRoundRect(body, s*0.1, s*0.1, paint2d.Fill(ink))
+	ctx.DrawCircle(paint2d.Pt(c.X, body.Min.Y+body.Dy()*0.45), s*0.08, paint2d.Fill(p.Field))
 }
 
 // drawArrow draws a connection from a to b in ink: a line and its head.
-func drawArrow(ctx *paintengine2d.Context, lk style.LookAndFeel, a, b paintengine2d.Point, ink paintengine2d.Color) {
+func drawArrow(ctx *paint2d.Context, lk style.LookAndFeel, a, b paint2d.Point, ink paint2d.Color) {
 	h := style.Dip(lk, 7)
 	dir := b.Sub(a).Normalize()
-	ctx.DrawLine(a, b.Sub(dir.Mul(h/2)), paintengine2d.StrokePaint(ink, style.Dip(lk, 1.75)))
-	head := paintengine2d.NewPath()
+	ctx.DrawLine(a, b.Sub(dir.Mul(h/2)), paint2d.StrokePaint(ink, style.Dip(lk, 1.75)))
+	head := paint2d.NewPath()
 	head.MoveTo(b.X, b.Y)
 	head.LineTo(b.X-dir.X*h-dir.Y*h*0.6, b.Y-dir.Y*h+dir.X*h*0.6)
 	head.LineTo(b.X-dir.X*h+dir.Y*h*0.6, b.Y-dir.Y*h-dir.X*h*0.6)
 	head.Close()
-	ctx.DrawPath(head, paintengine2d.Fill(ink))
+	ctx.DrawPath(head, paint2d.Fill(ink))
 }

@@ -4,21 +4,20 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit"
-	"github.com/codemodify/uitoolkit/app"
-	"github.com/codemodify/uitoolkit/platform"
-	"github.com/codemodify/uitoolkit/style"
-	"github.com/codemodify/uitoolkit/widget"
-	"github.com/codemodify/uitoolkit/widgets"
+	"goframework.io/desktop-ui"
+	"goframework.io/desktop-ui-widgets"
+	"goframework.io/desktop-ui/platform"
+	"goframework.io/desktop-ui/style"
+	"goframework.io/desktop-ui/widget"
 )
 
 // openWriteForAutosave builds a Write window headless and hands back its
 // autosave step and close action.
-func openWriteForAutosave(t *testing.T, cli *mailcore.Client, opts ComposeOptions) (a *app.Application, w *app.Window, fields map[string]*widgets.TextField, body *widgets.TextArea, autosave, closeWin func()) {
+func openWriteForAutosave(t *testing.T, cli *mailcore.Client, opts ComposeOptions) (a *ui.Application, w *ui.Window, fields map[string]*widgets.TextField, body *widgets.TextArea, autosave, closeWin func()) {
 	t.Helper()
 	composeSeam = func(as, cl func()) { autosave, closeWin = as, cl }
 	t.Cleanup(func() { composeSeam = nil })
-	a = uitoolkit.New(uitoolkit.Options{Look: style.LightLook(), Headless: true})
+	a = ui.New(ui.Options{Look: style.LightLook(), Headless: true})
 	w, err := a.NewWindow(platform.WindowOptions{Title: "Write", Width: 760, Height: 640, Headless: true})
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +57,7 @@ func draftsWith(t *testing.T, cli *mailcore.Client, subject string) []mailcore.M
 	return out
 }
 
-func answerOverlay(t *testing.T, a *app.Application, w *app.Window, button string) {
+func answerOverlay(t *testing.T, a *ui.Application, w *ui.Window, button string) {
 	t.Helper()
 	a.PumpOnce()
 	ov := w.Overlay()

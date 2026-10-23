@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/codemodify/comms-mail/mailcore"
-	"github.com/codemodify/uitoolkit/style"
+	"goframework.io/desktop-ui/style"
 )
 
 // With "All folders" on, the message list is a search across every folder,
