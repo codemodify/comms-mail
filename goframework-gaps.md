@@ -11,15 +11,16 @@ v0.23.21 with nothing open but #52 (no printing, declined and settled).
 That file is in git history (last at f8f7cdc); comments and BACKLOG.md
 entries that cite "uitoolkit-gaps.md #N" mean that file.
 
-Last checked against the **goframework.io workspace at 67963fa**
-(2026-10-23), unpublished. comms-mail builds against a checkout at
+Last checked against the **goframework.io workspace at 065d26a**
+(2026-10-23), unpublished; its modules are repositories of their own, and
+the fixes below name their commits. comms-mail builds against a checkout at
 ~/go/src/goframework.io, offline (`GOPROXY=off`), through go.mod replace
 lines that `make replace` writes (244 modules). It was ported against
-3248771; the commits since change documents and the site's tools, no
-module's Go code or go.mod.
+3248771. On 065d26a (todo.md alone after 20c5a06), with #2's fixes in desktop-ui and its modules,
+comms-mail builds, vets and passes all its tests (run uncached), and
+go.mod's replace block is unchanged.
 
 What was checked:
-- comms-mail builds, vets and passes all its tests (run uncached, 85a3be7).
 - Its thirteen offscreen screenshots match uitoolkit v0.23.21's pixel for
   pixel, but for the demo's renamed text and the version, "(devel)".
 - On the KDE Plasma desktop it runs, and its tray item and menu register.
@@ -47,49 +48,15 @@ What was checked:
 
 ## Open
 
-### 2. A selected browser tab's title is drawn in the text colour on the selection fill
-In the core's `light` pack (Classic 95's, drawn by the base engine and
-desktop-ui's default theme, style/theme.go:29), the selected tab of a
-`BrowserTabs` is drawn black on navy and cannot be read. comms-mail's
-title bar shows its Mail tab that way on a desktop with no look.json.
-Rendered in a nested KWin: the same in uitoolkit v0.23.21, so it is not
-from the move. KDE 1 and Aqua, whose
-engines draw the tab themselves, show it readable; other packs were not
-checked.
-Cause: `BrowserTabs` paints the face with no label
-(desktop-ui-widgets/browsertabs.go:752), then the title in
-`style.TabLabelInkOf` (:754). Without an engine of its own, that is
-`Palette().Text` (desktop-ui/style/engine.go:1117–1120). The base look
-paints a selected tab's face with the selection fill through `paintFace`,
-which returns the ink that goes on it (desktop-ui/style/look.go:898–900),
-but `DrawBrowserTabOf` has no way to hand that ink back, so it is lost.
-**Fix asked for:** the title in the ink the face was painted for, e.g.
-`TabLabelInkOf` answering `paintFace`'s ink for a selected or hovered
-base-look tab, or `DrawBrowserTabOf` returning it.
-
-Found 2026-10-23 against 67963fa.
-
-### 3. The e2e rig's screenshot sends its options as `a{sb}`, and KWin refuses it
-tools/desktop-e2e-rig.py:466 passes `CaptureWorkspace` a Python dict
-holding only booleans. python-dbus types it `a{sb}`, KWin's method is
-`a{sv}h`, and KWin answers `UnknownMethod: No such method
-'CaptureWorkspace' … (signature 'a{sb}h')`. The rig turns that into
-`NoShots("KWin has no ScreenShot2 here (no OpenGL compositing)")` (:470).
-The same call with `dbus.Dictionary({...}, signature="sv")` returns the
-whole 1600×1200 workspace on this machine's nested KWin. So the
-docstring's reading (:33–38), that ScreenShot2 is missing in the VM for
-want of OpenGL, may be this instead; the KWin flows could take pictures.
-**Fix asked for:** type the options `a{sv}` (`dbus.Dictionary(...,
-signature="sv")`), and say UnknownMethod's signature in the error rather
-than guessing at OpenGL.
-
-Found 2026-10-23 against 67963fa.
+None.
 
 ## Fixed
 
 | # | Gap | Fixed in | Change |
 | --- | --- | --- | --- |
 | 1 | The porting guide named comms-mail's old `UITK_MAIL_*` variables (found against 3248771) | 2c0be7b | desktop-ui-porting.md:481–483 and 506–507 name comms-mail's own `COMMS_MAIL_*`; comms-chat-lan's `UITK_CHAT_*` is the example of an application's own prefix |
+| 2 | A selected browser tab's title was drawn in the text colour on the selection fill: black on navy in the `light` pack, desktop-ui's default (found against 67963fa; in uitoolkit v0.23.21 too) | desktop-ui 5cb5da4, desktop-ui-widgets f9f02b9, themes -web f73d124, -win31 854547c, -aqua fa15fe4, -macos 1693554, -hangar 6e13cf5; desktop-ui-tests cb5e001 | `DrawBrowserTabOf` returns the ink of the face it painted and `TabLabelInkOf` answers it; the same fault fixed in seven other widgets; every pack's tabs checked at 4.5:1. Rendered again in a nested KWin on Wayland and X11: comms-mail's Mail tab is white on navy |
+| 3 | The e2e rig's KWin screenshot sent its options as `a{sb}`, which KWin refuses (found against 67963fa) | d87921d | the options go out `a{sv}`. The rig's own `shot()`, unpatched, returns the 1600×1200 workspace on Wayland and X11 |
 
 ## Not gaps
 
